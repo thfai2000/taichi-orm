@@ -1,12 +1,13 @@
 {
   "name": "llorm",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "description": "Low-level Object Relation Mapper",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
     "dev": "nodemon",
-    "build": "etsc",
+    "build": "etsc && tsc dist/index.js --declaration --emitDeclarationOnly --allowJs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
