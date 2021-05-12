@@ -1,5 +1,5 @@
 {
-  "name": "lorm",
+  "name": "llorm",
   "version": "0.0.1",
   "description": "Low-level Object Relation Mapper",
   "main": "./dist/index.js",
@@ -11,14 +11,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thfai2000/lorm.git"
+    "url": "git+https://github.com/thfai2000/llorm.git"
   },
   "author": "Eddie",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/thfai2000/lorm/issues"
+    "url": "https://github.com/thfai2000/llorm/issues"
   },
-  "homepage": "https://github.com/thfai2000/lorm#readme",
+  "homepage": "https://github.com/thfai2000/llorm#readme",
   "devDependencies": {
     "esbuild-node-tsc": "^1.4.2",
     "nodemon": "^2.0.7"
