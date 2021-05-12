@@ -1,0 +1,26 @@
+{
+  "name": "lorm",
+  "version": "0.0.1",
+  "description": "Low-level Object Relation Mapper",
+  "main": "./dist/index.js",
+  "exports": "./dist/index.js",
+  "scripts": {
+    "dev": "nodemon",
+    "build": "etsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thfai2000/lorm.git"
+  },
+  "author": "Eddie",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/thfai2000/lorm/issues"
+  },
+  "homepage": "https://github.com/thfai2000/lorm#readme",
+  "devDependencies": {
+    "esbuild-node-tsc": "^1.4.2",
+    "nodemon": "^2.0.7"
+  }
+}
