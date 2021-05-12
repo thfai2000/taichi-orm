@@ -1,7 +1,7 @@
 {
   "version": 3,
   "sources": ["../src/index.ts"],
-  "sourcesContent": ["export function myABC(){\n    return 'foo bar'\n}"],
-  "mappings": ";;;;;;AAAA;AAAA;AAAA;AAAA;AAAO,iBAAgB;AACnB,SAAO;AAAA;",
+  "sourcesContent": ["export function myABC(){\n    return 'foo bar'\n}\n\nexport function hello(){\n    return 'xxx'\n}"],
+  "mappings": ";;;;;;AAAA;AAAA;AAAA;AAAA;AAAA;AAAO,iBAAgB;AACnB,SAAO;AAAA;AAGJ,iBAAgB;AACnB,SAAO;AAAA;",
   "names": []
 }
