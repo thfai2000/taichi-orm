@@ -2,6 +2,6 @@
     "watch": ["src"],
     "ignore": ["src/**/*.test.ts"],
     "ext": "ts,mjs,js,json,graphql",
-    "exec": "etsc && tsc dist/index.js --declaration --emitDeclarationOnly --allowJs",
+    "exec": "etsc && tsc dist/*.js --declaration --emitDeclarationOnly --allowJs && node dist/index.js",
     "legacyWatch": true
 }
