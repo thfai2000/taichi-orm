@@ -1,4 +1,4 @@
-import {Entity, Schema, Types, More} from '../../../llorm/dist';
+import {Entity, Schema, Types, More} from '../../../../dist';
 import Shop from './Shop';
 let knex: any = require('knex')
 export default class Product extends Entity{

@@ -62,18 +62,18 @@ __export(exports, {
   Entity: () => Entity,
   More: () => More,
   Schema: () => Schema,
-  Select: () => Select,
   Types: () => Types,
-  configure: () => configure
+  configure: () => configure,
+  select: () => select
 });
 var import_knex = __toModule(require("knex"));
 var fs = __toModule(require("fs"));
-let knexOption = {client: "mysql2"};
-const getKnexInstance = () => (0, import_knex.default)(knexOption);
 let config = {
   modelsPath: "models/",
-  dbSchemaPath: "db-schema.sql"
+  dbSchemaPath: "db-schema.sql",
+  knexConfig: {client: "mysql2"}
 };
+const getKnexInstance = () => (0, import_knex.default)(config.knexConfig);
 const types = {
   AutoIncrement: ["bigint", "NOT NULL", "AUTO_INCREMENT", "PRIMARY KEY"],
   String: (length, nullable) => [`varchar(${length})`],
@@ -156,7 +156,7 @@ const configure = function(newConfig) {
     console.log("schemas:", Object.keys(schemas));
   });
 };
-const Select = function(...args) {
+const select = function(...args) {
   let alias = args.map((s) => {
     var _a;
     return ((_a = /\[\[(.*)\]\]/g.exec(s)) == null ? void 0 : _a[1]) || "";
@@ -178,7 +178,7 @@ const Select = function(...args) {
   console.log(stmt.toSQL());
   return stmt;
 };
-Select("[[SKU|t1|name]].name", "[[SKU|t1|abc]].abc");
+select("[[SKU|t1|name]].name", "[[SKU|t1|abc]].abc");
 class Entity {
   constructor() {
   }
@@ -222,8 +222,8 @@ class Entity {
   Entity,
   More,
   Schema,
-  Select,
   Types,
-  configure
+  configure,
+  select
 });
 //# sourceMappingURL=index.js.map

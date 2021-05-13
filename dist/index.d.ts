@@ -30,7 +30,6 @@ export class Schema {
     prop(name: any, defination: any, options: any): void;
     computedProp(name: any, defination: any, options: any): void;
 }
-export function Select(...args: any[]): any;
 export namespace Types {
     const AutoIncrement: string[];
     function String(length: any, nullable: any): string[];
@@ -39,3 +38,4 @@ export namespace Types {
     function arrayOf(entity: any): void;
 }
 export function configure(newConfig: any): Promise<any>;
+export function select(...args: any[]): any;
