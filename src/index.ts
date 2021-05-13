@@ -2,22 +2,6 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs';
 
-// let knexObj: Knex<any, unknown[]> | null = null
-// const getGlobalKnex = () => {
-//     if(!knexObj){
-//         knexObj = knex({
-//         client: 'mysql2',
-//             // connection: {
-//             //     host : '127.0.0.1',
-//             //     user : 'example',
-//             //     password : 'example',
-//             //     database : 'example'
-//             // }
-//         });
-//     }
-//     return knexObj
-// }
-
 type Config = {
     modelsPath: string,
     dbSchemaPath: string,
@@ -25,17 +9,18 @@ type Config = {
     tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
     fieldNameToPropName?: (params:string) => string,
-    
+    knexConfig: object
 }
 
-let knexOption = {client: 'mysql2'}
-
-const getKnexInstance = () => knex(knexOption)
-
+// the new orm config
 let config: Config = {
     modelsPath: 'models/',
-    dbSchemaPath: 'db-schema.sql'
+    dbSchemaPath: 'db-schema.sql',
+    knexConfig: {client: 'mysql2'}
 }
+
+// a global knex instance
+const getKnexInstance = () => knex(config.knexConfig)
 
 
 const types = {
@@ -148,7 +133,7 @@ export const configure = async function(newConfig: Config){
 }
 
 
-export const Select = function(...args: any[]){
+export const select = function(...args: any[]){
 
     let alias: string[] = args.map(s => /\[\[(.*)\]\]/g.exec(s)?.[1] || '' ).filter(s => s.length > 0)
     
@@ -175,7 +160,7 @@ export const Select = function(...args: any[]){
     return stmt
 }
 
-Select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
+select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
 
 type QueryBuilder = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
 export class Entity {
