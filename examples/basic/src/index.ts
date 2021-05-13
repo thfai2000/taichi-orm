@@ -1,4 +1,4 @@
-import {configure, select} from '../../../dist/'
+import {configure} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
 
@@ -14,19 +14,27 @@ let run = async() =>{
         fieldNameToPropName: (attributeName: string) => camelCase(attributeName),
         knexConfig: {
             client: 'mysql2',
-            // connection: {
-            //     host : '127.0.0.1',
-            //     user : 'example',
-            //     password : 'example',
-            //     database : 'example'
-            // }
+            connection: {
+                host : '127.0.0.1',
+                user : 'example',
+                password : 'example',
+                database : 'example',
+                port: 3306
+            }
         }
     })
     
-    // get records
-    let records = await Shop.get( (stmt, f) => stmt.select(f.products).where(f.id, '=', 1) )
-    
-    console.log(records)
+    // let record = await Shop.create({
+
+    // })
+    // console.log('inserted', record)
+
+    // find records
+    let records = await Shop.find( (stmt, map) => {
+        console.log('xxxxx', map)
+        return stmt.select(map.$all, map.products()).where(map.id, '=', 1)
+    })
+    console.log('queried:', records)
 }
 
 run()

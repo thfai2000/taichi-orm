@@ -63,8 +63,7 @@ __export(exports, {
   More: () => More,
   Schema: () => Schema,
   Types: () => Types,
-  configure: () => configure,
-  select: () => select
+  configure: () => configure
 });
 var import_knex = __toModule(require("knex"));
 var fs = __toModule(require("fs"));
@@ -94,31 +93,30 @@ class Schema {
     this.tableName = config.entityNameToTableName ? config.entityNameToTableName(entityName) : entityName;
     this.primaryKey = {
       name: "id",
-      defination: [Types.AutoIncrement],
-      computed: false
+      definition: [Types.AutoIncrement],
+      computedFunc: null
     };
-    this.fields = [this.primaryKey];
+    this.properties = [this.primaryKey];
   }
   createTableStmt() {
     return `CREATE TABLE \`${this.tableName}\` (
-${this.fields.filter((f) => !f.computed).map((f) => `\`${f.name}\` ${f.defination.flat().join(" ")}`).join(",\n")}
+${this.properties.filter((f) => !f.computedFunc).map((f) => `\`${f.name}\` ${f.definition.flat().join(" ")}`).join(",\n")}
 )`;
   }
-  prop(name, defination, options) {
-    this.fields.push(__spreadProps(__spreadValues({
+  prop(name, definition, options) {
+    this.properties.push(__spreadProps(__spreadValues({
       name,
-      defination
+      definition
     }, options), {
-      computed: false
+      computedFunc: null
     }));
   }
-  computedProp(name, defination, options) {
-    this.fields.push(__spreadProps(__spreadValues({
+  computedProp(name, definition, computedFunc) {
+    this.properties.push({
       name,
-      defination
-    }, options), {
-      computed: true
-    }));
+      definition,
+      computedFunc
+    });
   }
 }
 function makeid(length) {
@@ -156,29 +154,6 @@ const configure = function(newConfig) {
     console.log("schemas:", Object.keys(schemas));
   });
 };
-const select = function(...args) {
-  let alias = args.map((s) => {
-    var _a;
-    return ((_a = /\[\[(.*)\]\]/g.exec(s)) == null ? void 0 : _a[1]) || "";
-  }).filter((s) => s.length > 0);
-  let info = alias.map((a) => {
-    let parts = a.split("|");
-    return {
-      fullName: `[[${a}]]`,
-      tableName: parts[0],
-      aliasName: parts[1],
-      fieldName: parts[2]
-    };
-  });
-  let distinctNames = [...new Set(info.map((i) => `${i.tableName} as ${i.aliasName}`))];
-  let stmt = getKnexInstance().select(...args);
-  if (distinctNames.length === 1) {
-    stmt = stmt.from(distinctNames[0]);
-  }
-  console.log(stmt.toSQL());
-  return stmt;
-};
-select("[[SKU|t1|name]].name", "[[SKU|t1|abc]].abc");
 class Entity {
   constructor() {
   }
@@ -190,29 +165,42 @@ class Entity {
   }
   static belongsTo(entityClass, propName) {
     let map = this.produceNameMap();
-    return getKnexInstance().from(`\`${entityClass.tableName}\` AS xxxx`).where(getKnexInstance().raw("?? = ??", [propName, entityClass.schema.primaryKey.name]));
+    return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]));
   }
   static hasMany(entityClass, propName) {
+    let map = entityClass.produceNameMap();
+    return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]));
   }
   static produceNameMap() {
-    let randomName = makeid(5);
-    return this.schema.fields.reduce((acc, f) => {
-      acc[f.name] = `${randomName}.${f.name}`;
-      return acc;
-    }, {
-      "_": `${this.schema.tableName} As ${randomName}`,
-      "all": `${randomName}.*`
+    var _a;
+    let randomTblName = makeid(5);
+    let propNameTofieldName = (_a = config.propNameTofieldName) != null ? _a : (name) => name;
+    let map = {
+      $: `${this.schema.tableName} AS ${randomTblName}`,
+      $all: `${randomTblName}.*`,
+      $id: `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`
+    };
+    this.schema.properties.forEach((prop) => {
+      let actualFieldName = propNameTofieldName(prop.name);
+      if (prop.computedFunc) {
+        let func = prop.computedFunc;
+        map[prop.name] = (...args) => getKnexInstance().raw("(" + func(map, ...args).toString() + `) AS ${actualFieldName}`);
+      } else {
+        map[prop.name] = `${randomTblName}.${actualFieldName}`;
+      }
     });
+    return map;
   }
-  static get(func) {
+  static find(func) {
     return __async(this, null, function* () {
       let map = this.produceNameMap();
-      let stmt = getKnexInstance().from(map._);
+      let stmt = getKnexInstance().from(map.$);
       stmt = func(stmt, map);
-      return stmt.toString();
+      console.log("========== FIND ================");
+      console.log(stmt.toString());
+      console.log("================================");
+      return yield stmt;
     });
-  }
-  static getOne() {
   }
   static Array() {
   }
@@ -223,7 +211,6 @@ class Entity {
   More,
   Schema,
   Types,
-  configure,
-  select
+  configure
 });
 //# sourceMappingURL=index.js.map

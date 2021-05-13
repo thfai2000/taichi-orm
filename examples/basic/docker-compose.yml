@@ -10,9 +10,11 @@ services:
             - MYSQL_PASSWORD=example
             - MYSQL_DATABASE=example
         ports:
-            - '3307:3306'
+            - '3306:3306'
         volumes: 
-            - src/db-schema.sql:/docker-entrypoint-initdb.d/db-schema.sql
+            - type: bind
+              source: ./dist/db-schema.sql
+              target: /docker-entrypoint-initdb.d/db-schema.sql
     adminer:
         image: adminer
         ports:

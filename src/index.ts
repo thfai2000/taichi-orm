@@ -45,40 +45,39 @@ export class Schema {
 
     tableName: string
     entityName: string
-    fields: Field[]
-    primaryKey: Field
+    properties: Property[]
+    primaryKey: Property
 
     constructor(entityName: string){
         this.entityName = entityName
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = {
             name: 'id',
-            defination: [Types.AutoIncrement],
-            computed: false
+            definition: [Types.AutoIncrement],
+            computedFunc: null
         }
-        this.fields = [this.primaryKey]
+        this.properties = [this.primaryKey]
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.fields.filter(f => !f.computed).map(f => `\`${f.name}\` ${f.defination.flat().join(' ')}`).join(',\n')}\n)`;
+        return `CREATE TABLE \`${this.tableName}\` (\n${this.properties.filter(f => !f.computedFunc).map(f => `\`${f.name}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
     }
 
 
-    prop(name:string, defination: any, options?: any){
-        this.fields.push({
+    prop(name:string, definition: any, options?: any){
+        this.properties.push({
             name,
-            defination,
+            definition,
             ...options,
-            computed: false
+            computedFunc: null
         })
     }
 
-    computedProp(name:string, defination: any, options?: any){
-        this.fields.push({
+    computedProp(name:string, definition: any, computedFunc: ComputedFunction){
+        this.properties.push({
             name,
-            defination,
-            ...options,
-            computed: true
+            definition,
+            computedFunc
         })
     }
 
@@ -96,12 +95,17 @@ function makeid(length: number) {
    return result.join('');
 }
 
+interface ComputedFunctionResult{
+    toString(): string
+}
 
-type Field = {
+type ComputedFunction = (map: object, ...args: any[]) => ComputedFunctionResult
+
+type Property = {
     name: string,
-    defination: any,
+    definition: any,
     options?: any,
-    computed: boolean
+    computedFunc: ComputedFunction | null
 }
 
 export const configure = async function(newConfig: Config){
@@ -133,36 +137,8 @@ export const configure = async function(newConfig: Config){
 }
 
 
-export const select = function(...args: any[]){
 
-    let alias: string[] = args.map(s => /\[\[(.*)\]\]/g.exec(s)?.[1] || '' ).filter(s => s.length > 0)
-    
-    let info = alias.map(a => {
-        let parts = a.split('|')
-        return {
-            fullName: `[[${a}]]`,
-            tableName: parts[0],
-            aliasName: parts[1],
-            fieldName: parts[2]
-        }
-    })
-
-    let distinctNames: string[] = [...new Set(info.map(i => `${i.tableName} as ${i.aliasName}`))]
-    // let [firstName, ...otherNames] = distinctNames
-
-    let stmt = getKnexInstance().select(...args)
-    if(distinctNames.length === 1){
-        stmt = stmt.from(distinctNames[0])
-    }
-
-    // stmt = distinctNames.reduce((acc, name) => acc.from(name, {only:false}), stmt)
-    console.log(stmt.toSQL())
-    return stmt
-}
-
-select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
-
-type QueryBuilder = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
+type QueryFunction = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
 export class Entity {
     constructor(){
     }
@@ -175,35 +151,53 @@ export class Entity {
         return this.schema.tableName
     }
 
+    // create a basic belongsTo prepared statement (SQL template)
     static belongsTo(entityClass: typeof Entity, propName: string){
         let map = this.produceNameMap()
-        return getKnexInstance().from(`\`${entityClass.tableName}\` AS xxxx`).where(getKnexInstance().raw("?? = ??", [propName, entityClass.schema.primaryKey.name]))
+        return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]))
     }
 
+    // create a basic belongsTo prepared statement (SQL template)
     static hasMany(entityClass: typeof Entity, propName: string){
-
+        let map = entityClass.produceNameMap()
+        return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]))
     }
 
+    /**
+     * NameMap is very important. used for building sql part with actual field name
+     * field pointers
+     * @returns 
+     */
     static produceNameMap(): object {
-        let randomName = makeid(5)
-        return this.schema.fields.reduce( (acc: any, f) => {
-            acc[f.name] = `${randomName}.${f.name}`
-            return acc
-        }, {
-            '_': `${this.schema.tableName} As ${randomName}`,
-            'all': `${randomName}.*`
+        let randomTblName = makeid(5)
+        let propNameTofieldName = config.propNameTofieldName ?? ((name) => name)
+        let map: object = {
+            $: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
+            $all: `${randomTblName}.*`,                          
+            $id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`
+        }
+        this.schema.properties.forEach( (prop) => {
+            //convert the props name into actual field Name
+            let actualFieldName = propNameTofieldName(prop.name)
+            if(prop.computedFunc){
+                let func = prop.computedFunc
+                map[prop.name] = (...args: any[]) => getKnexInstance().raw('(' + func(map, ...args).toString() + `) AS ${actualFieldName}`)
+            } else {
+                map[prop.name] = `${randomTblName}.${actualFieldName}`
+            }
         })
+
+        return map
     }
 
-    static async get(func: QueryBuilder ){
+    static async find(func: QueryFunction ){
         let map: any = this.produceNameMap()
-        let stmt = getKnexInstance().from(map._)
+        let stmt: Knex.QueryBuilder = getKnexInstance().from(map.$)
         stmt = func(stmt, map)
-        return stmt.toString()
-    }
-
-    static getOne(){
-
+        console.log("========== FIND ================")
+        console.log(stmt.toString())
+        console.log("================================")
+        return await stmt
     }
 
     // it is a parser
@@ -211,3 +205,41 @@ export class Entity {
 
     }
 }
+
+
+/**
+ * 
+ * 
+ *  Below is for experiment usage
+ * 
+ * 
+ */
+
+// export const select = function(...args: any[]){
+
+//     let alias: string[] = args.map(s => /\[\[(.*)\]\]/g.exec(s)?.[1] || '' ).filter(s => s.length > 0)
+    
+//     let info = alias.map(a => {
+//         let parts = a.split('|')
+//         return {
+//             fullName: `[[${a}]]`,
+//             tableName: parts[0],
+//             aliasName: parts[1],
+//             fieldName: parts[2]
+//         }
+//     })
+
+//     let distinctNames: string[] = [...new Set(info.map(i => `${i.tableName} as ${i.aliasName}`))]
+//     // let [firstName, ...otherNames] = distinctNames
+
+//     let stmt = getKnexInstance().select(...args)
+//     if(distinctNames.length === 1){
+//         stmt = stmt.from(distinctNames[0])
+//     }
+
+//     // stmt = distinctNames.reduce((acc, name) => acc.from(name, {only:false}), stmt)
+//     console.log(stmt.toSQL())
+//     return stmt
+// }
+
+// select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
