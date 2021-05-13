@@ -67,6 +67,7 @@ __export(exports, {
 });
 var import_knex = __toModule(require("knex"));
 var fs = __toModule(require("fs"));
+const sqlParser = require("js-sql-parser");
 let config = {
   modelsPath: "models/",
   dbSchemaPath: "db-schema.sql",
@@ -184,7 +185,19 @@ class Entity {
       let actualFieldName = propNameTofieldName(prop.name);
       if (prop.computedFunc) {
         let func = prop.computedFunc;
-        map[prop.name] = (...args) => getKnexInstance().raw("(" + func(map, ...args).toString() + `) AS ${actualFieldName}`);
+        map[prop.name] = (...args) => {
+          let subquery = func(map, ...args).toString();
+          let ast = sqlParser.parse(subquery);
+          let columns = ast.value.selectItems.value.map((v) => v.alias ? v.alias : v.value).map((v) => {
+            let p = v.split(".");
+            let name = p[p.length - 1];
+            return name;
+          });
+          if (columns.includes("*")) {
+          }
+          let jsonify = `SELECT JSON_ARRAYAGG(JSON_OBJECT(${columns.map((c) => `'${c.replace(/[`']/g, "")}', ${c}`).join(",")})) FROM (${subquery}) AS ${makeid(5)}`;
+          return getKnexInstance().raw("(" + jsonify + `) AS ${actualFieldName}`);
+        };
       } else {
         map[prop.name] = `${randomTblName}.${actualFieldName}`;
       }

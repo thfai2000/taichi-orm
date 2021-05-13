@@ -1,6 +1,7 @@
 // import { Builder } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs';
+const sqlParser = require('js-sql-parser');
 
 type Config = {
     modelsPath: string,
@@ -181,7 +182,30 @@ export class Entity {
             let actualFieldName = propNameTofieldName(prop.name)
             if(prop.computedFunc){
                 let func = prop.computedFunc
-                map[prop.name] = (...args: any[]) => getKnexInstance().raw('(' + func(map, ...args).toString() + `) AS ${actualFieldName}`)
+                map[prop.name] = (...args: any[]) => {
+                    let subquery = func(map, ...args).toString()
+
+                    // determine the column list
+                    let ast = sqlParser.parse(subquery)
+                    //TODO: there will be bug if the alias contain . inside
+                    let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
+                        let p = v.split('.')
+                        let name = p[p.length - 1]
+                        return name
+                    })
+                    
+                    // FIX: more than one table has *
+                    if(columns.includes('*')){
+                        //replace star into all column names
+                        //TODO:
+                    }
+
+                    let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
+                        columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
+                    })) FROM (${subquery}) AS ${makeid(5)}`
+
+                    return getKnexInstance().raw('(' + jsonify + `) AS ${actualFieldName}`)
+                }
             } else {
                 map[prop.name] = `${randomTblName}.${actualFieldName}`
             }
