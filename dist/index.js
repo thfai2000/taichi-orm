@@ -1,9 +1,26 @@
 var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __defProps = Object.defineProperties;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropDescs = Object.getOwnPropertyDescriptors;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getOwnPropSymbols = Object.getOwnPropertySymbols;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __propIsEnum = Object.prototype.propertyIsEnumerable;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, {enumerable: true, configurable: true, writable: true, value}) : obj[key] = value;
+var __spreadValues = (a, b) => {
+  for (var prop in b || (b = {}))
+    if (__hasOwnProp.call(b, prop))
+      __defNormalProp(a, prop, b[prop]);
+  if (__getOwnPropSymbols)
+    for (var prop of __getOwnPropSymbols(b)) {
+      if (__propIsEnum.call(b, prop))
+        __defNormalProp(a, prop, b[prop]);
+    }
+  return a;
+};
+var __spreadProps = (a, b) => __defProps(a, __getOwnPropDescs(b));
 var __markAsModule = (target) => __defProp(target, "__esModule", {value: true});
 var __export = (target, all) => {
   for (var name in all)
@@ -42,39 +59,102 @@ var __async = (__this, __arguments, generator) => {
 };
 __markAsModule(exports);
 __export(exports, {
+  Entity: () => Entity,
+  More: () => More,
+  Schema: () => Schema,
   Select: () => Select,
   Types: () => Types,
   configure: () => configure
 });
 var import_knex = __toModule(require("knex"));
 var fs = __toModule(require("fs"));
+let knexOption = {client: "mysql2"};
+const getKnexInstance = () => (0, import_knex.default)(knexOption);
 let config = {
-  modelsPath: "models/"
+  modelsPath: "models/",
+  dbSchemaPath: "db-schema.sql"
 };
+const types = {
+  AutoIncrement: ["bigint", "NOT NULL", "AUTO_INCREMENT", "PRIMARY KEY"],
+  String: (length, nullable) => [`varchar(${length})`],
+  Number: ["integer"],
+  Date: ["datetime"],
+  arrayOf: function(entity) {
+  }
+};
+const Types = types;
+const More = {
+  Null: "NULL",
+  NotNull: "NOT NULL"
+};
+let schemas = {};
+class Schema {
+  constructor(entityName) {
+    this.entityName = entityName;
+    this.tableName = config.entityNameToTableName ? config.entityNameToTableName(entityName) : entityName;
+    this.primaryKey = {
+      name: "id",
+      defination: [Types.AutoIncrement],
+      computed: false
+    };
+    this.fields = [this.primaryKey];
+  }
+  createTableStmt() {
+    return `CREATE TABLE \`${this.tableName}\` (
+${this.fields.filter((f) => !f.computed).map((f) => `\`${f.name}\` ${f.defination.flat().join(" ")}`).join(",\n")}
+)`;
+  }
+  prop(name, defination, options) {
+    this.fields.push(__spreadProps(__spreadValues({
+      name,
+      defination
+    }, options), {
+      computed: false
+    }));
+  }
+  computedProp(name, defination, options) {
+    this.fields.push(__spreadProps(__spreadValues({
+      name,
+      defination
+    }, options), {
+      computed: true
+    }));
+  }
+}
+function makeid(length) {
+  var result = [];
+  var characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  var charactersLength = characters.length;
+  for (var i = 0; i < length; i++) {
+    result.push(characters.charAt(Math.floor(Math.random() * charactersLength)));
+  }
+  return result.join("");
+}
 const configure = function(newConfig) {
   return __async(this, null, function* () {
     config = newConfig;
     let files = fs.readdirSync(config.modelsPath);
+    let tables = [];
     yield Promise.all(files.map((file) => __async(this, null, function* () {
       if (file.endsWith(".js")) {
-        let path = config.modelsPath + "/" + file;
-        path = path.replace(/\.js$/, "");
-        console.log("load model file:", path);
-        let entityClass = require(path);
-        entityClass.default.register();
+        let path2 = config.modelsPath + "/" + file;
+        path2 = path2.replace(/\.js$/, "");
+        console.log("load model file:", path2);
+        let p = path2.split("/");
+        let entityName = p[p.length - 1];
+        let entityClass = require(path2);
+        if (entityClass.default.register) {
+          let s = new Schema(entityName);
+          tables.push(s);
+          entityClass.default.register(s);
+          schemas[entityName] = s;
+        }
       }
     })));
+    let path = config.dbSchemaPath;
+    fs.writeFileSync(path, tables.map((t) => t.createTableStmt()).join(";\n") + ";");
+    console.log("schemas:", Object.keys(schemas));
   });
-};
-const Types = {
-  AutoIncrement: ["bigint", "AutoIncrement"],
-  String: (length, nullable) => [`varchar(${length})`, nullable ? "null" : "not null"],
-  StringNull: ["varchar(255)", "null"],
-  StringNotNull: ["varchar(255)", "not null"],
-  Number: [],
-  Date: [],
-  arrayOf: function(entity) {
-  }
 };
 const Select = function(...args) {
   let alias = args.map((s) => {
@@ -91,7 +171,7 @@ const Select = function(...args) {
     };
   });
   let distinctNames = [...new Set(info.map((i) => `${i.tableName} as ${i.aliasName}`))];
-  let stmt = (0, import_knex.default)({client: "mysql2"}).select(...args);
+  let stmt = getKnexInstance().select(...args);
   if (distinctNames.length === 1) {
     stmt = stmt.from(distinctNames[0]);
   }
@@ -99,8 +179,49 @@ const Select = function(...args) {
   return stmt;
 };
 Select("[[SKU|t1|name]].name", "[[SKU|t1|abc]].abc");
+class Entity {
+  constructor() {
+  }
+  static get schema() {
+    return schemas[this.name];
+  }
+  static get tableName() {
+    return this.schema.tableName;
+  }
+  static belongsTo(entityClass, propName) {
+    let map = this.produceNameMap();
+    return getKnexInstance().from(`\`${entityClass.tableName}\` AS xxxx`).where(getKnexInstance().raw("?? = ??", [propName, entityClass.schema.primaryKey.name]));
+  }
+  static hasMany(entityClass, propName) {
+  }
+  static produceNameMap() {
+    let randomName = makeid(5);
+    return this.schema.fields.reduce((acc, f) => {
+      acc[f.name] = `${randomName}.${f.name}`;
+      return acc;
+    }, {
+      "_": `${this.schema.tableName} As ${randomName}`,
+      "all": `${randomName}.*`
+    });
+  }
+  static get(func) {
+    return __async(this, null, function* () {
+      let map = this.produceNameMap();
+      let stmt = getKnexInstance().from(map._);
+      stmt = func(stmt, map);
+      return stmt.toString();
+    });
+  }
+  static getOne() {
+  }
+  static Array() {
+  }
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
+  Entity,
+  More,
+  Schema,
   Select,
   Types,
   configure
