@@ -31,8 +31,8 @@ let run = async() =>{
 
     // find records
     let records = await Shop.find( (stmt, root) => {
-        console.log('xxxxx', root)
-        return stmt.select(root.$all, root.products()).where(root.id, '=', 1)
+        console.log('log nameMap', root)
+        return stmt.select(root.$all, root.$.products()).where(root.id, '=', 1)
     })
     console.log('queried:', records)
 
