@@ -52,11 +52,11 @@ export class Schema {
     constructor(entityName: string){
         this.entityName = entityName
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
-        this.primaryKey = {
-            name: 'id',
-            definition: [Types.AutoIncrement],
-            computedFunc: null
-        }
+        this.primaryKey = new NamedProperty(
+            'id',
+            [Types.AutoIncrement],
+            null
+        )
         this.namedProperties = [this.primaryKey]
     }
 
@@ -110,6 +110,10 @@ export class NamedProperty {
         public definition: any,
         public computedFunc: ComputedFunctionDefinition | null,
         public options?: any){}
+
+    get fieldName(){
+        return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
+    }
 }
 
 export const configure = async function(newConfig: Config){
@@ -209,14 +213,13 @@ export class Entity {
      */
     static produceSelector(): Selector {
         let randomTblName = this.schema.tableName //makeid(5)
-        let propNameTofieldName = config.propNameTofieldName ?? ((name) => name)
         let selector: Selector = {
             schema: this.schema,
             table: `${this.schema.tableName}`,
             tableAlias: `${randomTblName}`,
             source: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
             all: `*`,                          
-            id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`,
+            id : `${randomTblName}.${this.schema.primaryKey.fieldName}`,
             _: {},
             $: {},
             hasMany(entityClass: typeof Entity, propName: string, injectFunc: QueryFunction): Knex.QueryBuilder{
@@ -272,7 +275,7 @@ export class Entity {
 type CompiledNamedProperty = string | compiledComputedFunction
 const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): CompiledNamedProperty => {
     //convert the props name into actual field Name
-    let actualFieldName = config.propNameTofieldName? config.propNameTofieldName(prop.name): prop.name
+    let actualFieldName = prop.fieldName
     if(prop.computedFunc){
         let computedFunc = prop.computedFunc
         return (queryFunction?: QueryFunction, ...args: any[]) => {
