@@ -81,7 +81,6 @@ export class Schema {
             computedFunc
         })
     }
-
 }
 
 
@@ -148,7 +147,7 @@ export type NameMap = {
 
 export type NameMapCall = (queryFunction: QueryFunction) => SQLString
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
+export type QueryFunction = (stmt: Knex.QueryBuilder, map: NameMap) => Knex.QueryBuilder
 
 export class Entity {
     constructor(){
@@ -233,7 +232,7 @@ export class Entity {
     }
 
     static async find(func: QueryFunction ){
-        let map: any = this.produceNameMap()
+        let map = this.produceNameMap()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(map.$)
         stmt = func(stmt, map)
         console.log("========== FIND ================")
