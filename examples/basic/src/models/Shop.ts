@@ -6,6 +6,6 @@ let knex: any = require('knex')
 export default class Shop extends Entity{
 
     static register(schema: Schema){
-        schema.computedProp('products', Product.Array, (shop) => shop.hasMany(Product, 'shopId') )
+        schema.computedProp('products', Product.Array, (shop, injectFunc) => shop.hasMany(Product, 'shopId', injectFunc) )
     }
 }

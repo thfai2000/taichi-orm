@@ -100,7 +100,7 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (selector: Selector, ...args: any[]) => SQLString
+export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => Knex.QueryBuilder
 
 
 export class NamedProperty {
@@ -157,6 +157,7 @@ export type FieldSelector = {
 }
 
 export type Selector = {
+    schema: Schema,
     '_': FieldSelector,
     '$': ComputedSelector,       
     'table': string,            // "table"
@@ -165,14 +166,14 @@ export type Selector = {
     'all': string,              // "abc.*"
     'id': string,                // "abc.id"
     // (SQL template) create a basic belongsTo prepared statement 
-    'hasMany': (entityClass: typeof Entity, propName: string) => SQLString,
+    'hasMany': (entityClass: typeof Entity, propName: string, injectFunc: QueryFunction) => Knex.QueryBuilder,
     // (SQL template) create a basic belongsTo prepared statement 
-    'belongsTo': (entityClass: typeof Entity, propName: string) => SQLString
+    'belongsTo': (entityClass: typeof Entity, propName: string, injectFunc: QueryFunction) => Knex.QueryBuilder
 }
 
-export type compiledComputedFunction = (queryFunction?: QueryFunction) => SQLString
+export type compiledComputedFunction = (queryFunction?: QueryFunction, ...args: any[]) => SQLString
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, map: Selector) => SQLString
+export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => Knex.QueryBuilder
 
 export class Entity {
     constructor(){
@@ -207,23 +208,26 @@ export class Entity {
      * @returns 
      */
     static produceSelector(): Selector {
-        let randomTblName = makeid(5)
+        let randomTblName = this.schema.tableName //makeid(5)
         let propNameTofieldName = config.propNameTofieldName ?? ((name) => name)
         let selector: Selector = {
+            schema: this.schema,
             table: `${this.schema.tableName}`,
             tableAlias: `${randomTblName}`,
             source: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
-            all: `${randomTblName}.*`,                          
+            all: `*`,                          
             id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`,
             _: {},
             $: {},
-            hasMany(entityClass: typeof Entity, propName: string): SQLString{
+            hasMany(entityClass: typeof Entity, propName: string, injectFunc: QueryFunction): Knex.QueryBuilder{
                 let selector = entityClass.produceSelector()
-                return getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
+                let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
+                return injectFunc(stmt, selector)
             },
-            belongsTo(entityClass: typeof Entity, propName: string): SQLString{
+            belongsTo(entityClass: typeof Entity, propName: string, injectFunc: QueryFunction): Knex.QueryBuilder{
                 let selector = entityClass.produceSelector()
-                return getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
+                let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
+                return injectFunc(stmt, selector)
             }
         }
         this.schema.namedProperties.forEach( (prop) => {
@@ -244,11 +248,11 @@ export class Entity {
      * @returns 
      */
     static async find(queryFunction: QueryFunction ): Promise<any>{
-        let map = this.produceSelector()
-        let stmt: Knex.QueryBuilder = getKnexInstance().from(map.table)
-        let r: SQLString = queryFunction(stmt, map)
+        let selector = this.produceSelector()
+        let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
+        stmt = queryFunction(stmt, selector)
         console.log("========== FIND ================")
-        console.log(r.toString())
+        console.log(stmt.toString())
         console.log("================================")
         return [] //await getKnexInstance().raw(r.toString())
     }
@@ -270,12 +274,20 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
     //convert the props name into actual field Name
     let actualFieldName = config.propNameTofieldName? config.propNameTofieldName(prop.name): prop.name
     if(prop.computedFunc){
-        let func = prop.computedFunc
-        return (...args: any[]) => {
-            let subquery = func(rootSelector, ...args).toString()
+        let computedFunc = prop.computedFunc
+        return (queryFunction?: QueryFunction, ...args: any[]) => {
+
+            const injectFunc: QueryFunction = (stmt, selector) =>{
+                const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
+                return x
+            }
+            let subquery = computedFunc(rootSelector, injectFunc, ...args)
+
+            let subqueryString = subquery.toString()
 
             // determine the column list
-            let ast = sqlParser.parse(subquery)
+            let ast = sqlParser.parse(subqueryString)
+
             //TODO: there will be bug if the alias contain . inside
             let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
                 let p = v.split('.')
@@ -284,10 +296,14 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
             })
             
             // FIX: more than one table has *
+            // console.log('xxxxxx before', columns)
             if(columns.includes('*')){
                 //replace star into all column names
-                //TODO:
+                let all = rootSelector.schema.namedProperties.filter(p => !p.computedFunc).map(p => p.name)
+                let fullSet = new Set(columns.filter(n => n !== '*').concat(all))
+                columns = [...fullSet]
             }
+            // console.log('xxxxxx after', columns)
 
             let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
                 columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')

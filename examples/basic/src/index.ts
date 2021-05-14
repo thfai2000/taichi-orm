@@ -36,24 +36,25 @@ let run = async() =>{
     /**
      * find records  in style 1
      */
-    let records1 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
-    })
-    console.log('queried1:', records1)
+    // let records1 = await Shop.find( (stmt, root) => {
+    //     return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+    // })
+    // console.log('queried1:', records1)
 
     /**
      *  find records  in style 2
      */
-    let s = Shop.selector()
-    let records2 = await select(s.all).where(s.id, '=', 1).toString()
-    console.log('queried2:', records2)
+    // let s = Shop.selector()
+    // let records2 = await select(s.all).where(s.id, '=', 1).toString()
+    // console.log('queried2:', records2)
 
     /**
      * find records with multiple level of relations in style 1
      */
     let records3 = await Shop.find( (stmt, root) => {
         return stmt.select(root.all, root.$.products( (stmt2, root2) => {
-            return stmt2.select(root2.$.colors)
+            console.log('mmmmmmmmmmmmmm', root2.all)
+            return stmt2.select(root2.all, root2.$.colors())
         })).where(root.id, '=', 1)
     })
     console.log('queried3:', records3)
