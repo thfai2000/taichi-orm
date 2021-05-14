@@ -106,6 +106,8 @@ But actually we can query the data in only one SQL statement instead:
 The trick is using the SQL server build-in function to construct JSON objects.
 It is more efficient than the traditional way.
 
+More information can be found here:
+https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
 
 # Concepts:
 
