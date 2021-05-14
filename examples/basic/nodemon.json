@@ -2,6 +2,6 @@
     "watch": ["src"],
     "ignore": ["src/**/*.test.ts"],
     "ext": "ts,mjs,js,json,graphql",
-    "exec": "tsc && node ./dist/index.js",
+    "exec": "tsc && node --enable-source-maps ./dist/index.js",
     "legacyWatch": true
 }
