@@ -160,7 +160,7 @@ export type FieldSelector = {
     [key: string] : string
 }
 
-export type Selector = {
+export type SelectorBasic = {
     schema: Schema,
     '_': FieldSelector,
     '$': ComputedSelector,       
@@ -168,11 +168,61 @@ export type Selector = {
     'tableAlias': string,       // "abc"
     'source': string,           // "table AS abc"
     'all': string,              // "abc.*"
-    'id': string,                // "abc.id"
+    'id': string                // "abc.id"
+}
+
+export class Selector {
+    schema: Schema
+    _: FieldSelector
+    $: ComputedSelector    
+    table: string            // "table"
+    tableAlias: string       // "abc"
+    source: string           // "table AS abc"
+    all: string              // "abc.*"
+    id: string                // "abc.id"  primary key
+   
+    constructor({
+        schema,
+        _,
+        $,
+        table,
+        tableAlias,
+        source,
+        all,
+        id 
+    }: SelectorBasic){
+        this.schema = schema
+        this._ = _
+        this.$ = $
+        this.table = table
+        this.tableAlias = tableAlias
+        this.source = source
+        this.all = all
+        this.id = id
+    }
+
+     // (SQL template) create a basic belongsTo prepared statement 
+    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
+        let selector = entityClass.newSelector()
+        let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
+        return applyFilter(stmt, selector)
+    }
+
     // (SQL template) create a basic belongsTo prepared statement 
-    'hasMany': (entityClass: typeof Entity, propName: string, injectFunc: QueryFunction) => Knex.QueryBuilder,
-    // (SQL template) create a basic belongsTo prepared statement 
-    'belongsTo': (entityClass: typeof Entity, propName: string, injectFunc: QueryFunction) => Knex.QueryBuilder
+    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
+        let selector = entityClass.newSelector()
+        let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
+        return applyFilter(stmt, selector)
+    }
+
+    /**
+     * Create Derived Field for Temporary use
+     * @param namedProperty
+     * @returns 
+     */
+    derivedProp(namedProperty: NamedProperty){
+        return compileNamedProperty(this, namedProperty)
+    }
 }
 
 export type compiledComputedFunction = (queryFunction?: QueryFunction, ...args: any[]) => SQLString
@@ -203,7 +253,7 @@ export class Entity {
      * @returns Selector
      */
     static selector(): Selector {
-        return this.produceSelector()
+        return this.newSelector()
     }
 
     /**
@@ -211,9 +261,9 @@ export class Entity {
      * field pointers
      * @returns 
      */
-    static produceSelector(): Selector {
+    static newSelector(): Selector {
         let randomTblName = this.schema.entityName + '_' + makeid(5)
-        let selector: Selector = {
+        let selectorData: SelectorBasic = {
             schema: this.schema,
             table: `${this.schema.tableName}`,
             tableAlias: `${randomTblName}`,
@@ -221,20 +271,11 @@ export class Entity {
             all: `*`,                          
             id : `${randomTblName}.${this.schema.primaryKey.fieldName}`,
             _: {},
-            $: {},
-            hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
-                let selector = entityClass.produceSelector()
-                let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
-                return applyFilter(stmt, selector)
-            },
-            belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
-                let selector = entityClass.produceSelector()
-                let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
-                return applyFilter(stmt, selector)
-            }
+            $: {}
         }
+        let selector = new Selector(selectorData)
         this.schema.namedProperties.forEach( (prop) => {
-            let compiled = compileNameProperty(selector, prop)
+            let compiled = compileNamedProperty(selector, prop)
             if(prop.computedFunc){
                 selector.$[prop.name] = compiled as compiledComputedFunction
             } else {
@@ -251,7 +292,7 @@ export class Entity {
      * @returns 
      */
     static async find(queryFunction?: QueryFunction ): Promise<any>{
-        let selector = this.produceSelector()
+        let selector = this.newSelector()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
         if(queryFunction){
         stmt = queryFunction(stmt, selector)
@@ -275,7 +316,7 @@ export class Entity {
  *  - or translate the field into something like 'tableAlias.fieldName'
  */
 type CompiledNamedProperty = string | compiledComputedFunction
-const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): CompiledNamedProperty => {
+const compileNamedProperty = (rootSelector: Selector, prop: NamedProperty): CompiledNamedProperty => {
     //convert the props name into actual field Name
     let actualFieldName = prop.fieldName
     if(prop.computedFunc){
@@ -320,8 +361,6 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
         return `${rootSelector.tableAlias}.${actualFieldName}`
     }
 }
-
-
 
 /**
  * 
