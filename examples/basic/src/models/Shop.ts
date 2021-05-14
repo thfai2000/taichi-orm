@@ -6,10 +6,6 @@ let knex: any = require('knex')
 export default class Shop extends Entity{
 
     static register(schema: Schema){
-
-        schema.computedProp('products', Product.Array, (map) => {
-            // console.log('aaaaa', map)
-            return Shop.hasMany(Product, map.id) 
-        })
+        schema.computedProp('products', Product.Array, (shop) => shop.hasMany(Product, 'shopId') )
     }
 }

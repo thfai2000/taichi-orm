@@ -14,7 +14,7 @@ export type Config = {
 }
 
 // the new orm config
-let config: Config = {
+const config: Config = {
     modelsPath: 'models/',
     dbSchemaPath: 'db-schema.sql',
     knexConfig: {client: 'mysql2'}
@@ -46,8 +46,8 @@ export class Schema {
 
     tableName: string
     entityName: string
-    properties: ModelProperty[]
-    primaryKey: ModelProperty
+    namedProperties: NamedProperty[]
+    primaryKey: NamedProperty
 
     constructor(entityName: string){
         this.entityName = entityName
@@ -57,29 +57,30 @@ export class Schema {
             definition: [Types.AutoIncrement],
             computedFunc: null
         }
-        this.properties = [this.primaryKey]
+        this.namedProperties = [this.primaryKey]
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.properties.filter(f => !f.computedFunc).map(f => `\`${f.name}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
+        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.name}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
     }
 
 
     prop(name:string, definition: any, options?: any){
-        this.properties.push({
+        this.namedProperties.push(new NamedProperty(
             name,
             definition,
-            ...options,
-            computedFunc: null
-        })
+            null,
+            options
+        ))
     }
 
-    computedProp(name:string, definition: any, computedFunc: ComputedFunctionDefinition){
-        this.properties.push({
+    computedProp(name:string, definition: any, computedFunc: ComputedFunctionDefinition, options?: any){
+        this.namedProperties.push(new NamedProperty(
             name,
             definition,
-            computedFunc
-        })
+            computedFunc,
+            options
+        ))
     }
 }
 
@@ -99,18 +100,20 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (map: NameMap, ...args: any[]) => SQLString
+export type ComputedFunctionDefinition = (selector: Selector, ...args: any[]) => SQLString
 
 
-export type ModelProperty = {
-    name: string,
-    definition: any,
-    options?: any,
-    computedFunc: ComputedFunctionDefinition | null
+export class NamedProperty {
+    
+    constructor(
+        public name: string,
+        public definition: any,
+        public computedFunc: ComputedFunctionDefinition | null,
+        public options?: any){}
 }
 
 export const configure = async function(newConfig: Config){
-    config = newConfig
+    Object.assign(config, newConfig)
 
     let files = fs.readdirSync(config.modelsPath)
     let tables: Schema[] = []
@@ -141,13 +144,35 @@ export const select = function(...args: any[]) : Knex.QueryBuilder {
     return getKnexInstance().select(args)
 }
 
-export type NameMap = {
-    [key: string]: string | NameMapCall | any
+export const raw = function(first: string, ...args: any[]) : any{
+    return getKnexInstance().raw(first, ...args)
 }
 
-export type NameMapCall = (queryFunction: QueryFunction) => SQLString
+export type ComputedSelector = {
+    [key: string] : compiledComputedFunction
+}
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, map: NameMap) => Knex.QueryBuilder
+export type FieldSelector = {
+    [key: string] : string
+}
+
+export type Selector = {
+    '_': FieldSelector,
+    '$': ComputedSelector,       
+    'table': string,            // "table"
+    'tableAlias': string,       // "abc"
+    'source': string,           // "table AS abc"
+    'all': string,              // "abc.*"
+    'id': string,                // "abc.id"
+    // (SQL template) create a basic belongsTo prepared statement 
+    'hasMany': (entityClass: typeof Entity, propName: string) => SQLString,
+    // (SQL template) create a basic belongsTo prepared statement 
+    'belongsTo': (entityClass: typeof Entity, propName: string) => SQLString
+}
+
+export type compiledComputedFunction = (queryFunction?: QueryFunction) => SQLString
+
+export type QueryFunction = (stmt: Knex.QueryBuilder, map: Selector) => SQLString
 
 export class Entity {
     constructor(){
@@ -161,89 +186,117 @@ export class Entity {
         return this.schema.tableName
     }
 
-    // create a basic belongsTo prepared statement (SQL template)
-    static belongsTo(entityClass: typeof Entity, propName: string){
-        let map = this.produceNameMap()
-        return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]))
-    }
-
-    // create a basic belongsTo prepared statement (SQL template)
-    static hasMany(entityClass: typeof Entity, propName: string){
-        let map = entityClass.produceNameMap()
-        return getKnexInstance().from(map.$).where(getKnexInstance().raw("?? = ??", [propName, map.$id]))
-    }
-
     /**
-     * alias 
-     * @returns NameMap
+     * Can be overridden by inheritance Class
+     * @param schema
      */
-    static nameMap(): NameMap {
-        return this.produceNameMap()
+    static register(schema: Schema) : void{
     }
 
     /**
-     * NameMap is very important. used for building sql part with actual field name
+     * alias of produceSelector
+     * @returns Selector
+     */
+    static selector(): Selector {
+        return this.produceSelector()
+    }
+
+    /**
+     * Selector is used for locating the table name / field names / computed functions
      * field pointers
      * @returns 
      */
-    static produceNameMap(): NameMap {
+    static produceSelector(): Selector {
         let randomTblName = makeid(5)
         let propNameTofieldName = config.propNameTofieldName ?? ((name) => name)
-        let map: NameMap = {
-            $: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
-            $all: `${randomTblName}.*`,                          
-            $id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`
+        let selector: Selector = {
+            table: `${this.schema.tableName}`,
+            tableAlias: `${randomTblName}`,
+            source: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
+            all: `${randomTblName}.*`,                          
+            id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`,
+            _: {},
+            $: {},
+            hasMany(entityClass: typeof Entity, propName: string): SQLString{
+                let selector = entityClass.produceSelector()
+                return getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
+            },
+            belongsTo(entityClass: typeof Entity, propName: string): SQLString{
+                let selector = entityClass.produceSelector()
+                return getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
+            }
         }
-        this.schema.properties.forEach( (prop) => {
-            //convert the props name into actual field Name
-            let actualFieldName = propNameTofieldName(prop.name)
+        this.schema.namedProperties.forEach( (prop) => {
+            let compiled = compileNameProperty(selector, prop)
             if(prop.computedFunc){
-                let func = prop.computedFunc
-                map[prop.name] = (...args: any[]) => {
-                    let subquery = func(map, ...args).toString()
-
-                    // determine the column list
-                    let ast = sqlParser.parse(subquery)
-                    //TODO: there will be bug if the alias contain . inside
-                    let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
-                        let p = v.split('.')
-                        let name = p[p.length - 1]
-                        return name
-                    })
-                    
-                    // FIX: more than one table has *
-                    if(columns.includes('*')){
-                        //replace star into all column names
-                        //TODO:
-                    }
-
-                    let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
-                        columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
-                    })) FROM (${subquery}) AS ${makeid(5)}`
-
-                    return getKnexInstance().raw('(' + jsonify + `) AS ${actualFieldName}`)
-                }
+                selector.$[prop.name] = compiled as compiledComputedFunction
             } else {
-                map[prop.name] = `${randomTblName}.${actualFieldName}`
+                selector._[prop.name] = compiled as string
             }
         })
 
-        return map
+        return selector
     }
 
-    static async find(func: QueryFunction ){
-        let map = this.produceNameMap()
-        let stmt: Knex.QueryBuilder = getKnexInstance().from(map.$)
-        stmt = func(stmt, map)
+    /**
+     * find array of records
+     * @param queryFunction 
+     * @returns 
+     */
+    static async find(queryFunction: QueryFunction ): Promise<any>{
+        let map = this.produceSelector()
+        let stmt: Knex.QueryBuilder = getKnexInstance().from(map.table)
+        let r: SQLString = queryFunction(stmt, map)
         console.log("========== FIND ================")
-        console.log(stmt.toString())
+        console.log(r.toString())
         console.log("================================")
-        return await stmt
+        return [] //await getKnexInstance().raw(r.toString())
     }
 
     // it is a parser
     static Array(){
 
+    }
+}
+
+/**
+ *  NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
+ *  The compilation is:
+ *  - embedding a runtime entity's selector into the 'computed function'
+ *  - or translate the field into something like 'tableAlias.fieldName'
+ */
+type CompiledNamedProperty = string | compiledComputedFunction
+const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): CompiledNamedProperty => {
+    //convert the props name into actual field Name
+    let actualFieldName = config.propNameTofieldName? config.propNameTofieldName(prop.name): prop.name
+    if(prop.computedFunc){
+        let func = prop.computedFunc
+        return (...args: any[]) => {
+            let subquery = func(rootSelector, ...args).toString()
+
+            // determine the column list
+            let ast = sqlParser.parse(subquery)
+            //TODO: there will be bug if the alias contain . inside
+            let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
+                let p = v.split('.')
+                let name = p[p.length - 1]
+                return name
+            })
+            
+            // FIX: more than one table has *
+            if(columns.includes('*')){
+                //replace star into all column names
+                //TODO:
+            }
+
+            let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
+                columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
+            })) FROM (${subquery}) AS ${makeid(5)}`
+
+            return getKnexInstance().raw('(' + jsonify + `) AS ${actualFieldName}`)
+        }
+    } else {
+        return `${rootSelector.tableAlias}.${actualFieldName}`
     }
 }
 

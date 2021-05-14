@@ -1,5 +1,6 @@
 import {Entity, Schema, Types, More} from '../../../../dist';
 import Shop from './Shop';
+import Color from './Color';
 let knex: any = require('knex')
 export default class Product extends Entity{
 
@@ -19,7 +20,9 @@ export default class Product extends Entity{
 
 		// computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
 		
-		schema.computedProp('shop', Shop, () => Product.belongsTo(Shop, 'shopId') )
+		schema.computedProp('shop', Shop, (product) => product.belongsTo(Shop, 'shopId') )
+
+		schema.computedProp('colors', Color, (product) => product.hasMany(Color, 'productId') )
 		
 		// schema.computedProp('colors', Types.arrayOf(Color), false, hasMany(Color, SKUColor, 'colorId', 'skuId') )
 		
