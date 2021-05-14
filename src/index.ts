@@ -288,27 +288,61 @@ export class Entity {
 
     /**
      * find array of records
-     * @param queryFunction 
+     * @param applyFilter 
      * @returns 
      */
-    static async find(queryFunction?: QueryFunction ): Promise<any>{
+    static async find(applyFilter?: QueryFunction){
         let selector = this.newSelector()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
         let result: SQLString = stmt
-        if(queryFunction){
-            result = queryFunction(stmt, selector)
+        if(applyFilter){
+            result = applyFilter(stmt, selector)
         }
         console.log("========== FIND ================")
         console.log(result.toString())
         console.log("================================")
-        return await getKnexInstance().raw(result.toString())
+        let resultData: any = await getKnexInstance().raw(result.toString())
+        console.log('aaaa', resultData[0])
+        let rows = (resultData[0] as Array<object>)
+        return this.convertRowToObject(this, rows)
     }
 
-    // it is a parser
-    static Array(){
+    static convertRowToObject(model: typeof Entity, rows: SimpleObject): Array<Entity>{
 
+        // build dictionary
+        let dict = model.schema.namedProperties.reduce( (dict: Map<string, string>, prop) => {
+            dict.set(prop.fieldName, prop.name)
+            return dict
+        }, new Map<string, string>());
+
+        // convert field names
+        return rows.map( (row: SimpleObject ) => {
+            let data = Object.keys(row).reduce( (acc, fieldName) => {
+                let propName = dict.get(fieldName) as string
+                if(propName){
+                    //TODO: if it is object, convert into object
+                    /**
+                     * it can be boolean, string, number, Object, Array of Object (class)
+                     * Depends on the props..
+                     */
+                    acc[propName] = row[fieldName]
+                }
+                return acc
+            }, {} as SimpleObject)
+            return Object.assign( new model(), data)
+        })
+    }
+
+    
+    static Array(){
+        
     }
 }
+
+type SimpleObject = { [key:string]: any}
+
+
+
 
 /**
  *  NamedProperty can be compiled into CompiledNamedProperty for actual SQL query

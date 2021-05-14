@@ -33,6 +33,11 @@ let run = async() =>{
     // })
     // console.log('inserted', record)
 
+//     insert into shop (id) values (null), (null), (null);
+//   insert into product (name, shopId) values 
+//   ('a', 1), ('b', 1), ('c',1),
+//   ('d', 2), ('e', 2), ('f',2);
+
     /**
      * Basic
      */
@@ -71,10 +76,14 @@ let run = async() =>{
      */
     let records4 = await Shop.find( (stmt, shop) => {
         return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
-            return stmt2.select(prd.all, prd.$.colors()).limit(2)
-        })).where(shop.id, '=', 1)
+            return stmt2.select(prd.all, prd.$.colors()).limit(4)
+        }))
     })
     console.log('queried4:', records4)
+    // records4.forEach(r: any => {
+    //     console.log('--------')
+    //     console.log(r)
+    // })
 }
 
 run()
