@@ -1,4 +1,4 @@
-import {configure} from '../../../dist/'
+import {configure, select} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
 
@@ -30,10 +30,16 @@ let run = async() =>{
     // console.log('inserted', record)
 
     // find records
-    let records = await Shop.find( (stmt, map) => {
-        console.log('xxxxx', map)
-        return stmt.select(map.$all, map.products()).where(map.id, '=', 1)
+    let records = await Shop.find( (stmt, root) => {
+        console.log('xxxxx', root)
+        return stmt.select(root.$all, root.products()).where(root.id, '=', 1)
     })
+    console.log('queried:', records)
+
+    
+    let s = Shop.nameMap()
+    await select(s.$all).where(s.$id, '=', 1)
+
     console.log('queried:', records)
 }
 

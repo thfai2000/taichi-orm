@@ -6,7 +6,7 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "nodemon",
+    "dev": "npm i && nodemon",
     "build": "etsc && tsc dist/index.js --declaration --emitDeclarationOnly --allowJs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -21,8 +21,12 @@
   },
   "homepage": "https://github.com/thfai2000/llorm#readme",
   "devDependencies": {
+    "@types/knex": "^0.16.1",
+    "@types/lodash": "^4.14.169",
+    "@types/node": "^15.0.3",
     "esbuild-node-tsc": "^1.4.2",
-    "nodemon": "^2.0.7"
+    "nodemon": "^2.0.7",
+    "typescript": "^4.2.4"
   },
   "dependencies": {
     "js-sql-parser": "^1.4.1",

@@ -3,7 +3,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs';
 const sqlParser = require('js-sql-parser');
 
-type Config = {
+export type Config = {
     modelsPath: string,
     dbSchemaPath: string,
     entityNameToTableName?: (params:string) => string,
@@ -46,8 +46,8 @@ export class Schema {
 
     tableName: string
     entityName: string
-    properties: Property[]
-    primaryKey: Property
+    properties: ModelProperty[]
+    primaryKey: ModelProperty
 
     constructor(entityName: string){
         this.entityName = entityName
@@ -74,7 +74,7 @@ export class Schema {
         })
     }
 
-    computedProp(name:string, definition: any, computedFunc: ComputedFunction){
+    computedProp(name:string, definition: any, computedFunc: ComputedFunctionDefinition){
         this.properties.push({
             name,
             definition,
@@ -96,17 +96,18 @@ function makeid(length: number) {
    return result.join('');
 }
 
-interface ComputedFunctionResult{
+export interface SQLString{
     toString(): string
 }
 
-type ComputedFunction = (map: object, ...args: any[]) => ComputedFunctionResult
+export type ComputedFunctionDefinition = (map: NameMap, ...args: any[]) => SQLString
 
-type Property = {
+
+export type ModelProperty = {
     name: string,
     definition: any,
     options?: any,
-    computedFunc: ComputedFunction | null
+    computedFunc: ComputedFunctionDefinition | null
 }
 
 export const configure = async function(newConfig: Config){
@@ -137,9 +138,18 @@ export const configure = async function(newConfig: Config){
     console.log('schemas:', Object.keys(schemas))
 }
 
+export const select = function(...args: any[]) : Knex.QueryBuilder {
+    return getKnexInstance().select(args)
+}
 
+export type NameMap = {
+    [key: string]: string | NameMapCall | any
+}
 
-type QueryFunction = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
+export type NameMapCall = (queryFunction: QueryFunction) => SQLString
+
+export type QueryFunction = (stmt: Knex.QueryBuilder, map: object) => Knex.QueryBuilder
+
 export class Entity {
     constructor(){
     }
@@ -165,14 +175,22 @@ export class Entity {
     }
 
     /**
+     * alias 
+     * @returns NameMap
+     */
+    static nameMap(): NameMap {
+        return this.produceNameMap()
+    }
+
+    /**
      * NameMap is very important. used for building sql part with actual field name
      * field pointers
      * @returns 
      */
-    static produceNameMap(): object {
+    static produceNameMap(): NameMap {
         let randomTblName = makeid(5)
         let propNameTofieldName = config.propNameTofieldName ?? ((name) => name)
-        let map: object = {
+        let map: NameMap = {
             $: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
             $all: `${randomTblName}.*`,                          
             $id : `${randomTblName}.${propNameTofieldName(this.schema.primaryKey.name)}`
@@ -229,6 +247,7 @@ export class Entity {
 
     }
 }
+
 
 
 /**
