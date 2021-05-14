@@ -34,30 +34,47 @@ let run = async() =>{
     // console.log('inserted', record)
 
     /**
-     * find records  in style 1
+     * Basic
      */
-    // let records1 = await Shop.find( (stmt, root) => {
-    //     return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
-    // })
-    // console.log('queried1:', records1)
+    let records0 = await Shop.find()
+    console.log('queried0:', records0)
 
     /**
-     *  find records  in style 2
+     * find records in coding style 1
      */
-    // let s = Shop.selector()
-    // let records2 = await select(s.all).where(s.id, '=', 1).toString()
-    // console.log('queried2:', records2)
+    let records1 = await Shop.find( (stmt, root) => {
+        return stmt.where(root.id, '>', 1).limit(5)
+    })
+    console.log('queried1:', records1)
 
     /**
-     * find records with multiple level of relations in style 1
+     *  find records in coding style 2
+     */
+    let s = Shop.selector()
+    //FIXME: remove the toString() later
+    let records2 = await select(s.all).where(s.id, '>', 1).toString()
+    console.log('queried2:', records2)
+
+
+    /**
+     * find records with relations (computed field)
+     * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products( (stmt2, root2) => {
-            console.log('mmmmmmmmmmmmmm', root2.all)
-            return stmt2.select(root2.all, root2.$.colors())
-        })).where(root.id, '=', 1)
+        return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
     })
     console.log('queried3:', records3)
+
+    
+    /**
+     * find records with multiple level of relations
+     */
+    let records4 = await Shop.find( (stmt, shop) => {
+        return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
+            return stmt2.select(prd.all, prd.$.colors()).limit(2)
+        })).where(shop.id, '=', 1)
+    })
+    console.log('queried4:', records4)
 }
 
 run()
