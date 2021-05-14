@@ -61,7 +61,7 @@ export class Schema {
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.name}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
+        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
     }
 
 
@@ -100,7 +100,7 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => Knex.QueryBuilder
+export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => SQLString
 
 
 export class NamedProperty {
@@ -202,14 +202,14 @@ export class Selector {
     }
 
      // (SQL template) create a basic belongsTo prepared statement 
-    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
+    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
         return applyFilter(stmt, selector)
     }
 
     // (SQL template) create a basic belongsTo prepared statement 
-    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
+    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
         return applyFilter(stmt, selector)
@@ -227,7 +227,7 @@ export class Selector {
 
 export type compiledComputedFunction = (queryFunction?: QueryFunction, ...args: any[]) => SQLString
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => Knex.QueryBuilder
+export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
 
 export class Entity {
     constructor(){
@@ -294,13 +294,14 @@ export class Entity {
     static async find(queryFunction?: QueryFunction ): Promise<any>{
         let selector = this.newSelector()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
+        let result: SQLString = stmt
         if(queryFunction){
-        stmt = queryFunction(stmt, selector)
+            result = queryFunction(stmt, selector)
         }
         console.log("========== FIND ================")
-        console.log(stmt.toString())
+        console.log(result.toString())
         console.log("================================")
-        return [] //await getKnexInstance().raw(r.toString())
+        return await getKnexInstance().raw(result.toString())
     }
 
     // it is a parser
@@ -345,7 +346,7 @@ const compileNamedProperty = (rootSelector: Selector, prop: NamedProperty): Comp
             // console.log('xxxxxx before', columns)
             if(columns.includes('*')){
                 //replace star into all column names
-                let all = rootSelector.schema.namedProperties.filter(p => !p.computedFunc).map(p => p.name)
+                let all = rootSelector.schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName)
                 let fullSet = new Set(columns.filter(n => n !== '*').concat(all))
                 columns = [...fullSet]
             }
