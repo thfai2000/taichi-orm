@@ -87,7 +87,7 @@ export class Schema {
 
 function makeid(length: number) {
     var result           = [];
-    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     var charactersLength = characters.length;
     for ( var i = 0; i < length; i++ ) {
       result.push(characters.charAt(Math.floor(Math.random() * 
@@ -212,7 +212,7 @@ export class Entity {
      * @returns 
      */
     static produceSelector(): Selector {
-        let randomTblName = this.schema.tableName //makeid(5)
+        let randomTblName = this.schema.entityName + '_' + makeid(5)
         let selector: Selector = {
             schema: this.schema,
             table: `${this.schema.tableName}`,
@@ -222,15 +222,15 @@ export class Entity {
             id : `${randomTblName}.${this.schema.primaryKey.fieldName}`,
             _: {},
             $: {},
-            hasMany(entityClass: typeof Entity, propName: string, injectFunc: QueryFunction): Knex.QueryBuilder{
+            hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
                 let selector = entityClass.produceSelector()
                 let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
-                return injectFunc(stmt, selector)
+                return applyFilter(stmt, selector)
             },
-            belongsTo(entityClass: typeof Entity, propName: string, injectFunc: QueryFunction): Knex.QueryBuilder{
+            belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): Knex.QueryBuilder{
                 let selector = entityClass.produceSelector()
                 let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
-                return injectFunc(stmt, selector)
+                return applyFilter(stmt, selector)
             }
         }
         this.schema.namedProperties.forEach( (prop) => {
@@ -250,10 +250,12 @@ export class Entity {
      * @param queryFunction 
      * @returns 
      */
-    static async find(queryFunction: QueryFunction ): Promise<any>{
+    static async find(queryFunction?: QueryFunction ): Promise<any>{
         let selector = this.produceSelector()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
+        if(queryFunction){
         stmt = queryFunction(stmt, selector)
+        }
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
@@ -280,11 +282,11 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
         let computedFunc = prop.computedFunc
         return (queryFunction?: QueryFunction, ...args: any[]) => {
 
-            const injectFunc: QueryFunction = (stmt, selector) =>{
+            const applyFilterFunc: QueryFunction = (stmt, selector) => {
                 const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
                 return x
             }
-            let subquery = computedFunc(rootSelector, injectFunc, ...args)
+            let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
 
             let subqueryString = subquery.toString()
 
@@ -310,7 +312,7 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
 
             let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
                 columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
-            })) FROM (${subquery}) AS ${makeid(5)}`
+            })) FROM (${subquery}) AS \`${makeid(5)}\``
 
             return getKnexInstance().raw('(' + jsonify + `) AS ${actualFieldName}`)
         }
@@ -324,8 +326,7 @@ const compileNameProperty = (rootSelector: Selector, prop: NamedProperty): Compi
 /**
  * 
  * 
- *  Below is for experiment usage
- * 
+ *  Below is for experiment code... exploring tricks for cache
  * 
  */
 
