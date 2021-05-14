@@ -1,8 +1,8 @@
 
 
 !!!!!!!! Don't Use it !!!!!!!!
-It is a Proof of Concept right now.
-
+It is still understand development. 
+Please feel free to express your ideas.
 
 # Introduction
 
@@ -111,17 +111,17 @@ https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
 
 # Concepts:
 
-## ComputedFunction
-  It is a data selection logics
+- ComputedFunction
+  - It is a data selection logics
 
-## NamedProperty
-  Represent the property of an entity
-  It declared the name and the data type( e.g. entity type or primitive types)
-  It can be a real table field or a virtual field (computedField)
-  If it is a computedField, it embedded ComputedFunction
+- NamedProperty
+  - Represent the property of an entity
+  - It declared the name and the data type( e.g. entity type or primitive types)
+  - It can be a real table field or a virtual field (computedField)
+  - If it is a computedField, it embedded ComputedFunction
   
-## CompiledNamedProperty
-  It is a compiled version of NamedProperty
-  It embedded runtime information such as the alias name of the property's Parent. These information is important for Table Joining
+- CompiledNamedProperty
+  - It is a compiled version of NamedProperty
+  - It embedded runtime information such as the alias name of the property's Parent. These information is important for Table Joining
 
 
