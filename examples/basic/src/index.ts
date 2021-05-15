@@ -1,7 +1,7 @@
 import {configure, select} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
-import { rawListeners } from 'process'
+const util = require('util')
 
 let run = async() =>{
 
@@ -80,10 +80,6 @@ let run = async() =>{
         }))
     })
     console.log('queried4:', records4)
-    // records4.forEach(r: any => {
-    //     console.log('--------')
-    //     console.log(r)
-    // })
 }
 
 run()
