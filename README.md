@@ -20,22 +20,65 @@ Please feel free to express your ideas.
 - (Soon) Data caching
 - (soon) Better Integration with GraphQL and Rest Server
 
+# Why we need it?
+
+Problems of some traditional ORM:
+- It allows applying filter on entity of relation, but cannot apply filters on the pivot table of *ManyToMany* relationship".
+- In the schema, we usually can declare to use some common relation like *hasMany*, *belongsTo* etc. Why don't it allow us to define custom relation of which data logics can be re-use many times in the business logics.
+- Query the relation data is not efficient. If the data query consist of multiple Entity, it query the database tables one by one. Usually, it produce several SQL query. Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
+
+##More explaination:
+
+Let's say we have data models Shop, Product, Color.
+A shop has many products and each product has many colors.
+For traditional ORM, we have to select Entity and its relation like this.
+```javascript
+Shop.find().with('products.colors')
+```
+It generates several SQL statements
+```sql
+   Select id FROM shop;  
+   // result: 1, 2, 3
+
+   Select id FROM Product where shopId IN (1, 2, 3);
+    // result: 1, 2, 3, 4, 5
+
+   Select id FROM Color where productId IN (1, 2, 3, 4, 5);
+   // result: 1, 2
+```
+But actually we can query the data in only one SQL statement instead:
+```
+  SELECT shop.id, 
+    (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', id, 'colors', colors))
+        FROM
+        (
+          SELECT product.id, 
+            (....same way...) AS colors
+          FROM product WHERE product.id = shop.id
+        ) AS t
+    ) AS `products` 
+  FROM shop;
+
+```
+The trick is using the SQL server build-in function to construct JSON objects.
+It is more efficient than the traditional way.
+
+More information can be found here:
+https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
+
+
 # Data Query Examples
 
 ```javascript
 //Basic query
 await Shop.find() // result: [Shop, Shop]
 
-/**
-  * find records in coding Nested Style
-  */
+// find records in coding Nested Style
 let records1 = await Shop.find( (stmt, root) => {
     return stmt.where(root.id, '>', 1).limit(5)
 })
 
-/**
-  * find records in coding Normal Style
-  */
+// find records in coding Normal Style
 let s = Shop.selector()
 let records2 = await select(s.all).where(s.id, '>', 1)
 
@@ -61,48 +104,6 @@ await Shop.find( (stmt, shop) => {
 
 ```
 
-
-# Why we need it?
-
-
-Let's say we have data models Shop, Product, Color.
-A shop has many products and each product has many colors.
-For traditional ORM, we have to select
-```
-  Shop.find().with('products.colors') 
-```
-It generates several SQL statements
-```
-   Select id FROM shop;  
-   // result: 1, 2, 3
-
-   Select id FROM Product where shopId IN (1, 2, 3);
-    // result: 1, 2, 3, 4, 5
-
-   Select id FROM Color where productId IN (1, 2, 3, 4, 5);
-   // result: 1, 2
-```
-
-But actually we can query the data in only one SQL statement instead:
-```
-  SELECT shop.id, 
-    (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', id, 'colors', colors))
-        FROM
-        (
-          SELECT product.id, 
-            (....same way...) AS colors
-          FROM product WHERE product.id = shop.id
-        ) AS t
-    ) AS `products` 
-  FROM shop;
-
-```
-The trick is using the SQL server build-in function to construct JSON objects.
-It is more efficient than the traditional way.
-
-More information can be found here:
-https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
-
 # Concepts:
 
 - ComputedFunction
@@ -117,5 +118,30 @@ https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
 - CompiledNamedProperty
   - It is a compiled version of NamedProperty
   - It embedded runtime information such as the alias name of the property's Parent. These information is important for Table Joining
+
+
+# Development?
+
+We needs some passionate developers. If you are interested and agreed with the ideas, you may join our project. You can talk in the discussion board.
+
+# How to start 
+Currently, I work one the ORM together with the example because the example can proof the concept of the ORM.
+Tests will be added in the future once the specification is confirmed.
+
+```bash
+git clone ...
+
+# Start the project. It is built by typescript
+npm run dev
+
+# Start another terminal.  Work on the example and the ORM at the same time
+cd examples/basic
+npm run dev
+
+# Start one more terminal. It starts a database server
+docker-compose up
+```
+
+
 
 
