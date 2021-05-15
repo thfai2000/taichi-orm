@@ -12,10 +12,10 @@ Please feel free to express your ideas.
 - It relies on the popular package Knex (**SQL builder**). It allows us to build data logics without any limitation. 
 
 # Features
-- For entity schema, we can define **ComputedField** (or called **ComputedProperty**), it is like a sql template/builder. 
+- For entity schema, we can define `ComputedProperty` (or called `ComputedField`), it is like a sql template/builder. 
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
   - During data query, the ComputedField is optionally selected and it even can be extended.
-  - "HasMany", "belongsTo"... logics are pre-defined in term of ComputedField for usage.
+  - Relation logics such as `HasMany` and `belongsTo` are pre-defined in term of `ComputedProperty` for usage.
 - Developed in **Typescript**.
 - (Soon) Data caching
 - (soon) Better Integration with **GraphQL** and **Restful** Server
@@ -23,13 +23,13 @@ Please feel free to express your ideas.
 # Why we need it?
 
 Problems of some traditional ORM:
-- It allows applying filter on entity of relation, but cannot apply filters on the pivot table of *ManyToMany* relationship".
-- In the schema, we usually can declare to use some common relation like *hasMany*, *belongsTo* etc. Why don't it allow us to define custom relation of which data logics can be re-use many times in the business logics.
+- It allows applying filter on entity of relation, but cannot apply filters on the pivot table of `manyToMany` relationship".
+- In the schema, we usually can declare to use some common relation such as `hasMany`, `belongsTo` etc. Why don't it allow us to define custom relation of which data logics can be re-use many times in the business logics.
 - Query the relation data is not efficient. If the data query consist of multiple Entity, it query the database tables one by one. Usually, it produce several SQL query. Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
 
 ##More explaination:
 
-Let's say we have data models Shop, Product, Color.
+Let's say we have data models `Shop`, `Product`, `Color`.
 A shop has many products and each product has many colors.
 For traditional ORM, we have to select Entity and its relation like this.
 ```javascript
@@ -109,19 +109,35 @@ TODO: some examples of schema, applying both filters and arguments on ComputedFi
 
 # Concepts:
 
-- ComputedFunction
-  - It is a data selection logics
+- `ComputedFunction`
+  - It is a data selection logics. A SQL builder.
 
-- NamedProperty
-  - Represent the property of an entity
-  - It declared the name and the data type( e.g. entity type or primitive types)
-  - It can be a real table field or a virtual field (computedField)
-  - If it is a computedField, it embedded ComputedFunction
+- `NamedProperty`
+  - Represent the property of a Data Model
+  - It consists of the name and the data type (can be Entity or primitive types)
+  - It can be a real table field or a virtual field `ComputedProperty`.
   
-- CompiledNamedProperty
-  - It is a compiled version of NamedProperty
-  - It embedded runtime information such as the alias name of the property's Parent. These information is important for Table Joining
+- `ComputedProperty`
+  - It is a subClass of `NamedProperty`. 
+  - It is virtual field.
+  - But it embedded `ComputedFunction`
 
+- `CompiledNamedProperty`
+  - It is a compiled version of `NamedProperty`. A `NamedProperty` is not ready for query before it is compiled.
+  - During the compilation, it embedded the runtime information such as the alias name of the property's Parent. These information is important for Table Joining.
+
+- `Selector`
+  - It is a dictionary that access runtime information and schema of a Entity. 
+  - In below example, `root` is the selector instance of `Shop`
+   - `root.all`: all properties of `Shop`
+   - `root.id`: the primary key of `Shop`
+   - `root.$`: dictionary of `computedProperty` of `Shop`
+   - `root.$.products()` include the `computedProperty` named `products`
+  ```javascript
+  await Shop.find( (stmt, root) => {
+    return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+  })
+  ```
 
 # Development?
 
@@ -144,7 +160,6 @@ npm run dev
 # Start one more terminal. It starts a database server
 docker-compose up
 ```
-
 
 
 
