@@ -9,16 +9,16 @@ Please feel free to express your ideas.
 - Rethink the ORM. 
 - Better maintenance. Reduce duplicated data logics
 - Efficient in data query execution. Reduce Request Response Tme
-- It relies on the popular package Knex (SQL builder). It allows us to build data logics without any limitation. 
+- It relies on the popular package Knex (**SQL builder**). It allows us to build data logics without any limitation. 
 
 # Features
-- For entity schema, we can define "ComputedField" (or called ComputedProperty), it is like a sql template/builder. 
+- For entity schema, we can define **ComputedField** (or called **ComputedProperty**), it is like a sql template/builder. 
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
   - During data query, the ComputedField is optionally selected and it even can be extended.
   - "HasMany", "belongsTo"... logics are pre-defined in term of ComputedField for usage.
-- Developed in typescript.
+- Developed in **Typescript**.
 - (Soon) Data caching
-- (soon) Better Integration with GraphQL and Rest Server
+- (soon) Better Integration with **GraphQL** and **Restful** Server
 
 # Why we need it?
 
@@ -38,13 +38,13 @@ Shop.find().with('products.colors')
 It generates several SQL statements
 ```sql
    Select id FROM shop;  
-   // result: 1, 2, 3
+   # result: 1, 2, 3
 
    Select id FROM Product where shopId IN (1, 2, 3);
-    // result: 1, 2, 3, 4, 5
+   # result: 1, 2, 3, 4, 5
 
    Select id FROM Color where productId IN (1, 2, 3, 4, 5);
-   // result: 1, 2
+   # result: 1, 2
 ```
 But actually we can query the data in only one SQL statement instead:
 ```
@@ -103,6 +103,9 @@ await Shop.find( (stmt, shop) => {
 })
 
 ```
+
+TODO: some examples of schema, applying both filters and arguments on ComputedField
+
 
 # Concepts:
 
