@@ -1,7 +1,7 @@
 
 
 !!!!!!!! Don't Use it !!!!!!!!
-It is still understand development. 
+It is still under heavy development. 
 Please feel free to express your ideas.
 
 # Introduction
@@ -15,55 +15,49 @@ Please feel free to express your ideas.
 - For entity schema, we can define "ComputedField" (or called ComputedProperty), it is like a sql template/builder. 
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
   - During data query, the ComputedField is optionally selected and it even can be extended.
-  - "HasMany", "belongsTo" Logics are pre-defined in term of ComputedField for usage.
+  - "HasMany", "belongsTo"... logics are pre-defined in term of ComputedField for usage.
 - Developed in typescript.
 - (Soon) Data caching
 - (soon) Better Integration with GraphQL and Rest Server
 
 # Data Query Examples
 
-```
-/**
-  * Basic query
-  */
-let records0 = await Shop.find()
-console.log('queried0:', records0)
+```javascript
+//Basic query
+await Shop.find() // result: [Shop, Shop]
 
 /**
-  * find records in coding style 1
+  * find records in coding Nested Style
   */
 let records1 = await Shop.find( (stmt, root) => {
     return stmt.where(root.id, '>', 1).limit(5)
 })
-console.log('queried1:', records1)
 
 /**
-  *  find records in coding style 2
+  * find records in coding Normal Style
   */
 let s = Shop.selector()
 let records2 = await select(s.all).where(s.id, '>', 1)
-console.log('queried2:', records2)
 
 
 /**
   * find records with relations (computed field)
-  * !important: computed field is a function call
+  * 'root' is a selector that access the entity information
+  * 'root.$' can access one computedField named 'products' which are predefined in the entity schema
   */
-let records3 = await Shop.find( (stmt, root) => {
+await Shop.find( (stmt, root) => {
     return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
 })
-console.log('queried3:', records3)
-
 
 /**
   * find records with multiple level of relations
+  * The Shop relates Product and Product relates Color.
   */
-let records4 = await Shop.find( (stmt, shop) => {
+await Shop.find( (stmt, shop) => {
     return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
         return stmt2.select(prd.all, prd.$.colors()).limit(2)
     })).where(shop.id, '=', 1)
 })
-console.log('queried4:', records4)
 
 ```
 
