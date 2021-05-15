@@ -1,6 +1,8 @@
 // import { Builder } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs';
+import { PropertyType, Types } from './PropertyType'
+export { PropertyType, Types }
 const sqlParser = require('js-sql-parser');
 
 export type Config = {
@@ -23,24 +25,6 @@ const config: Config = {
 // a global knex instance
 const getKnexInstance = () => knex(config.knexConfig)
 
-
-const types = {
-    AutoIncrement: ['bigint', 'NOT NULL', 'AUTO_INCREMENT', 'PRIMARY KEY'],
-    String: (length: number, nullable: boolean) => [`varchar(${length})`],
-    Number: ['integer'],
-    Date: ['datetime'],
-    arrayOf: function(entity: { new(): Entity }){
-        //TODO
-    }
-}
-
-export const Types = types
-
-export const More = {
-    Null: 'NULL',
-    NotNull: "NOT NULL"
-}
-
 let schemas: any = {}
 export class Schema {
 
@@ -54,14 +38,14 @@ export class Schema {
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
             'id',
-            [Types.AutoIncrement],
+            Types.PrimaryKey(),
             null
         )
         this.namedProperties = [this.primaryKey]
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
+        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create.join(' ')}`).join(',\n')}\n)`;
     }
 
 
@@ -107,7 +91,7 @@ export class NamedProperty {
     
     constructor(
         public name: string,
-        public definition: any,
+        public definition: PropertyType,
         public computedFunc: ComputedFunctionDefinition | null,
         public options?: any){}
 
@@ -291,7 +275,7 @@ export class Entity {
      * @param applyFilter 
      * @returns 
      */
-    static async find(applyFilter?: QueryFunction){
+    static async find<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<Array<InstanceType<T>>>{
         let selector = this.newSelector()
         let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
         let result: SQLString = stmt
@@ -304,28 +288,29 @@ export class Entity {
         let resultData: any = await getKnexInstance().raw(result.toString())
         console.log('aaaa', resultData[0])
         let rows = (resultData[0] as Array<object>)
-        return this.convertRowToObject(this, rows)
+        return this.convertRowToObject(rows)
     }
 
-    static convertRowToObject(model: typeof Entity, rows: SimpleObject): Array<Entity>{
-
+    static convertRowToObject<T extends typeof Entity>(rows: SimpleObject): Array<InstanceType<T>>{
+        let model = this
         // build dictionary
-        let dict = model.schema.namedProperties.reduce( (dict: Map<string, string>, prop) => {
-            dict.set(prop.fieldName, prop.name)
+        let dict = model.schema.namedProperties.reduce( (dict: Map<string, NamedProperty>, prop) => {
+            dict.set(prop.fieldName, prop)
             return dict
-        }, new Map<string, string>());
+        }, new Map<string, NamedProperty>());
 
         // convert field names
         return rows.map( (row: SimpleObject ) => {
             let data = Object.keys(row).reduce( (acc, fieldName) => {
-                let propName = dict.get(fieldName) as string
-                if(propName){
+                let prop = dict.get(fieldName)
+                if(prop){
                     //TODO: if it is object, convert into object
                     /**
                      * it can be boolean, string, number, Object, Array of Object (class)
                      * Depends on the props..
                      */
-                    acc[propName] = row[fieldName]
+                    prop.definition
+                    acc[prop.name] = row[fieldName]
                 }
                 return acc
             }, {} as SimpleObject)

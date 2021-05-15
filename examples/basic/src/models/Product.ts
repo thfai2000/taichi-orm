@@ -1,30 +1,22 @@
-import {Entity, Schema, Types, More} from '../../../../dist';
+import {Entity, Schema, Types} from '../../../../dist';
 import Shop from './Shop';
 import Color from './Color';
-let knex: any = require('knex')
+
 export default class Product extends Entity{
 
     static register(schema: Schema){
 
-		// model.increments('id').primary();
+		schema.prop('name', Types.String(255, true))
 
-	    // model.primaryKey('id', Types.AutoIncrement);	//t.increments('id').primary();
-			
-		schema.prop('name', [Types.String(255, true), More.NotNull])
+		schema.prop('createdAt', Types.Date())
 
-		// prop('stock', Types.Number)
-		schema.prop('createdAt', [Types.Date, More.Null])
-
-		// prop('shopId', Shop.schema.entity.id.type)
-        schema.prop('shopId', [Types.Number] )
+        schema.prop('shopId', Types.Number() )
 
 		// computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
 		
-		schema.computedProp('shop', Shop, (product, injectFunc) => product.belongsTo(Shop, 'shopId', injectFunc) )
+		schema.computedProp('shop', Types.Object(Shop), (product, applyFilters) => product.belongsTo(Shop, 'shopId', applyFilters) )
 
-		schema.computedProp('colors', Color, (product, injectFunc) => product.hasMany(Color, 'productId', injectFunc) )
-		
-		// schema.computedProp('colors', Types.arrayOf(Color), false, hasMany(Color, SKUColor, 'colorId', 'skuId') )
+		schema.computedProp('colors', Types.Array(Color), (product, applyFilters) => product.hasMany(Color, 'productId', applyFilters) )
 		
 		// model.computedProp('deliveryOptions', Types.arrayOf(DeliveryChannel), false,
 		// 	(args, rootTable) => {
