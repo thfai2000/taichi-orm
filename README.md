@@ -67,8 +67,9 @@ More information can be found here:
 https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
 
 
-# Data Query Examples
+# Our solution
 
+## Basic Usage
 ```javascript
 //Basic query
 await Shop.find() // result: [Shop, Shop]
@@ -104,7 +105,61 @@ await Shop.find( (stmt, shop) => {
 
 ```
 
+## Advanced Usage
+
 TODO: some examples of schema, applying both filters and arguments on ComputedField
+
+You can create an Entity like  Graphql `type Query`. You can select list of `Shop` and `Product` at the same time.
+Let say we define the computedProperty 
+- `myShops`
+- `myShopCount`, 
+- `myProducts`
+- `myProductCount`
+
+You can use the built in Entity called `Dual` to do this. `Dual` is a special entity that is without tableName.
+```javascript
+  await Dual.find( (stmt, s) => {
+    return stmt.select( 
+      s.derivedProp(new NamedProperty('myShops', ..., __computedFunc__) ),
+      s.derivedProp(new NamedProperty('myShopCount', ..., __computedFunc__) ),
+      s.derivedProp(new NamedProperty('myProducts', ..., __computedFunc__) ),
+      s.derivedProp(new NamedProperty('myProductCount', ..., __computedFunc__) ),
+    )
+  
+  })
+
+```
+Explain:
+- Usually the database can optimize the query. The `shop` and `shopCount` actually shared the same base of data.
+- Besides, you query all you want in one go. More efficient
+
+In good practice, you should defined these logic into a schema, so that the query can be reusable
+
+```javascript
+class Query extends Dual {
+  static register(schema) {
+    schema.computedProp('myShops', ..., __computedFunc__)
+    schema.computedProp('myShopCount', ..., __computedFunc__)
+    ...
+  }
+}
+
+class Shop extends Entity {
+  static register(schema) {
+    ...
+  }
+}
+
+class Product extends Entity {
+  static register(schema) {
+    ...
+  }
+}
+
+//query the data
+let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCount(),....))
+
+```
 
 
 # Concepts:
