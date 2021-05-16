@@ -229,7 +229,7 @@ export class Selector<T extends typeof Entity> {
      // (SQL template) create a basic belongsTo prepared statement 
     hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        console.log('xxxxxxx', this.id, selector._[propName])
+        // console.log('xxxxxxx', this.id, selector._[propName])
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
         return applyFilter(stmt, selector)
     }
@@ -237,7 +237,7 @@ export class Selector<T extends typeof Entity> {
     // (SQL template) create a basic belongsTo prepared statement 
     belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        console.log('xxxxxxx', selector._[propName])
+        // console.log('xxxxxxx', selector._[propName])
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
         return applyFilter(stmt, selector)
     }
@@ -297,7 +297,7 @@ export class Selector<T extends typeof Entity> {
 
                 let subqueryString = subquery.toString()
 
-                console.log('RRRRRR', subqueryString)
+                // console.log('SubQuery', subqueryString)
 
                 // determine the column list
                 let ast = sqlParser.parse(subqueryString)
@@ -326,9 +326,9 @@ export class Selector<T extends typeof Entity> {
                     return getKnexInstance().raw(`(${columns[0]}) AS ${actualFieldNameAlias}`)
                     
                 } else {
-                    let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
+                    let jsonify =  `SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT(${
                         columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
-                    })) FROM (${subquery}) AS \`${makeid(5)}\``
+                    })), JSON_ARRAY()) FROM (${subquery}) AS \`${makeid(5)}\``
                     return getKnexInstance().raw(`(${jsonify}) AS ${actualFieldNameAlias}`)
                 }
             }
@@ -341,7 +341,7 @@ export class Selector<T extends typeof Entity> {
             compiledNamedProperty = {
                 namedProperty: prop,
                 runtimeId,
-                compiled: `${rootSelector.tableAlias}.${actualFieldName} AS ${actualFieldNameAlias}`
+                compiled: `${rootSelector.tableAlias}.${actualFieldName}`
             }
         }
 

@@ -1,8 +1,6 @@
 import {configure, select} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
-const util = require('util')
-
 let run = async() =>{
 
     // configure the orm
@@ -34,7 +32,7 @@ let run = async() =>{
     // console.log('inserted', record)
 
 //     insert into shop (id) values (null), (null), (null);
-//   insert into product (name, shopId) values 
+//   insert into product (name, shop_id) values 
 //   ('a', 1), ('b', 1), ('c',1),
 //   ('d', 2), ('e', 2), ('f',2);
 
@@ -48,7 +46,7 @@ let run = async() =>{
      * find records in coding style 1
      */
     let records1 = await Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 1).limit(5)
+        return stmt.where(root.id, '>', 2).limit(3)
     })
     console.log('queried1:', records1)
 
@@ -57,16 +55,15 @@ let run = async() =>{
      */
     let s = Shop.selector()
     //FIXME: remove the toString() later
-    let records2 = await select(s.all).where(s.id, '>', 1).toString()
+    let records2 = await select(s.all).from(s.source).where(s.id, '>', 3)
     console.log('queried2:', records2)
-
 
     /**
      * find records with relations (computed field)
      * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+        return stmt.select(root.all, root.$.products()).where(root.id, '=', 2)
     })
     console.log('queried3:', records3)
 
