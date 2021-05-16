@@ -1,8 +1,7 @@
 import {configure, select} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
-import { rawListeners } from 'process'
-
+import Product from './models/Product'
 let run = async() =>{
 
     // configure the orm
@@ -25,14 +24,6 @@ let run = async() =>{
         }
     })
 
-    
-    /**
-     * insert records
-     */  
-    // let record_inserted = await Shop.create({
-    // })
-    // console.log('inserted', record)
-
     /**
      * Basic
      */
@@ -43,7 +34,7 @@ let run = async() =>{
      * find records in coding style 1
      */
     let records1 = await Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 1).limit(5)
+        return stmt.where(root.id, '>', 2).limit(3)
     })
     console.log('queried1:', records1)
 
@@ -52,16 +43,15 @@ let run = async() =>{
      */
     let s = Shop.selector()
     //FIXME: remove the toString() later
-    let records2 = await select(s.all).where(s.id, '>', 1).toString()
+    let records2 = await select(s.all).from(s.source).where(s.id, '>', 3)
     console.log('queried2:', records2)
-
 
     /**
      * find records with relations (computed field)
      * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+        return stmt.select(root.all, root.$.products()).where(root.id, '=', 2)
     })
     console.log('queried3:', records3)
 
@@ -71,12 +61,24 @@ let run = async() =>{
      */
     let records4 = await Shop.find( (stmt, shop) => {
         return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
-            return stmt2.select(prd.all, prd.$.colors()).limit(2)
-        })).where(shop.id, '=', 1)
+            return stmt2.select(prd.all, prd.$.colors()).limit(4)
+        }))
     })
     console.log('queried4:', records4)
+
+    let records5 = await Product.find( (stmt, prd) => {
+        return stmt.select(prd.all, prd.$.shop())
+    })
+    console.log('queried5:', records5)
+
+        
+    /**
+     * insert records
+     */  
+    // let record_inserted = await Shop.create({
+    // })
+    // console.log('inserted', record)
+
 }
 
 run()
-
-

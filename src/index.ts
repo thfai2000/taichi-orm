@@ -1,6 +1,9 @@
 // import { Builder } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs';
+import { PropertyType, Types } from './PropertyType'
+import { values } from 'lodash';
+export { PropertyType, Types }
 const sqlParser = require('js-sql-parser');
 
 export type Config = {
@@ -10,6 +13,7 @@ export type Config = {
     tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
     fieldNameToPropName?: (params:string) => string,
+    suppressErrorOnPropertyNotFound?: string,
     knexConfig: object
 }
 
@@ -23,25 +27,10 @@ const config: Config = {
 // a global knex instance
 const getKnexInstance = () => knex(config.knexConfig)
 
+let schemas: {
+    [key: string]: Schema
+} = {}
 
-const types = {
-    AutoIncrement: ['bigint', 'NOT NULL', 'AUTO_INCREMENT', 'PRIMARY KEY'],
-    String: (length: number, nullable: boolean) => [`varchar(${length})`],
-    Number: ['integer'],
-    Date: ['datetime'],
-    arrayOf: function(entity: { new(): Entity }){
-        //TODO
-    }
-}
-
-export const Types = types
-
-export const More = {
-    Null: 'NULL',
-    NotNull: "NOT NULL"
-}
-
-let schemas: any = {}
 export class Schema {
 
     tableName: string
@@ -54,16 +43,18 @@ export class Schema {
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
             'id',
-            [Types.AutoIncrement],
+            Types.PrimaryKey(),
             null
         )
         this.namedProperties = [this.primaryKey]
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.flat().join(' ')}`).join(',\n')}\n)`;
+        if(this.tableName.length > 0){
+            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
+        }
+        return ''
     }
-
 
     prop(name:string, definition: any, options?: any){
         this.namedProperties.push(new NamedProperty(
@@ -84,8 +75,7 @@ export class Schema {
     }
 }
 
-
-function makeid(length: number) {
+export function makeid(length: number) {
     var result           = [];
     var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     var charactersLength = characters.length;
@@ -100,16 +90,25 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => SQLString
+export type ComputedFunctionDefinition = (selector: Selector<any>, queryFunction: QueryFunction, ...args: any[]) => SQLString
 
 
 export class NamedProperty {
     
     constructor(
         public name: string,
-        public definition: any,
+        public definition: PropertyType,
         public computedFunc: ComputedFunctionDefinition | null,
-        public options?: any){}
+        public options?: any){
+            this.name = name
+            this.definition = definition
+            this.computedFunc = computedFunc
+            this.options = options
+
+            if( /[\.`' ]/.test(name) || name.includes('___')){
+                throw new Error('The name of the NamedProperty is invalid')
+            }
+        }
 
     get fieldName(){
         return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
@@ -121,7 +120,22 @@ export const configure = async function(newConfig: Config){
 
     let files = fs.readdirSync(config.modelsPath)
     let tables: Schema[] = []
-    
+
+    const register = (entityName: string, entityClass: any) => {
+        let s = new Schema(entityName);
+        if(entityClass.register){
+            tables.push(s)
+            entityClass.register(s)
+            schemas[entityName] = s
+        }
+        if(entityClass.postRegister){
+            entityClass.postRegister(s)
+        }
+    }
+
+    //register special Entity Dual
+    register(Dual.name, Dual)
+
     await Promise.all(files.map( async(file) => {
         if(file.endsWith('.js')){
             let path = config.modelsPath + '/' + file
@@ -130,17 +144,13 @@ export const configure = async function(newConfig: Config){
             let p = path.split('/')
             let entityName = p[p.length - 1]
             let entityClass = require(path)
-            if(entityClass.default.register){
-                let s = new Schema(entityName)
-                tables.push(s)
-                entityClass.default.register(s)
-                schemas[entityName] = s
-            }
+            register(entityName, entityClass.default);
+            
         }
     }))
     // let schemaFilename = new Date().getTime() + '.sql'
     let path = config.dbSchemaPath //+ '/' + schemaFilename
-    fs.writeFileSync(path, tables.map(t => t.createTableStmt()).join(";\n") + ';' )
+    fs.writeFileSync(path, tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';' )
     console.log('schemas:', Object.keys(schemas))
 }
 
@@ -160,45 +170,115 @@ export type FieldSelector = {
     [key: string] : string
 }
 
-export type SelectorBasic = {
-    schema: Schema,
-    '_': FieldSelector,
-    '$': ComputedSelector,       
-    'table': string,            // "table"
-    'tableAlias': string,       // "abc"
-    'source': string,           // "table AS abc"
-    'all': string,              // "abc.*"
-    'id': string                // "abc.id"
+type CompiledNamedProperty = {
+    namedProperty: NamedProperty,
+    // runtimeId: string,
+    compiled: SQLString | compiledComputedFunction
 }
 
-export class Selector {
+export type SimpleObject = { [key:string]: any}
+
+
+// export type SelectorBasic<T extends typeof Entity> = {
+//     entityClass: T,
+//     schema: Schema,
+//     '_': FieldSelector,
+//     '$': ComputedSelector,       
+//     'table': string,            // "table"
+//     'tableAlias': string,       // "abc"
+//     'source': string,           // "table AS abc"
+//     'all': string,              // "abc.*"
+//     'id': string                // "abc.id"
+// }
+
+const map1 = new Map<PropertyType, string>()
+const map2 = new Map<string, PropertyType>()
+const registerPropertyType = function(d: PropertyType): string{
+    let r = map1.get(d)
+    if(!r){
+        let key = makeid(5)
+        map1.set(d, key)
+        map2.set(key, d)
+        r = key
+    }
+    return r
+}
+
+const findPropertyType = function(typeAlias: string): PropertyType{
+    let r = map2.get(typeAlias)
+    if(!r){
+        throw new Error('Cannot find the PropertyType. Make sure it is registered before.')
+    }
+    return r
+}
+
+const metaAlias = function(p: NamedProperty): string{
+    let typeAlias = registerPropertyType(p.definition)
+    return `${p.name}___${typeAlias}`
+}
+
+const breakdownMetaAlias = function(metaAlias: string){
+    if(metaAlias.includes('___')){
+        let [propName, typeAlias] = metaAlias.split('___')
+        let definition = findPropertyType(typeAlias)
+        return {propName, definition}
+    } else {
+        return null
+    }
+}
+
+type ASTObject = {
+    type: string,
+    value: any
+}
+
+export class Selector<T extends typeof Entity> {
+    
+    entityClass: T
     schema: Schema
-    _: FieldSelector
-    $: ComputedSelector    
-    table: string            // "table"
-    tableAlias: string       // "abc"
-    source: string           // "table AS abc"
-    all: string              // "abc.*"
-    id: string                // "abc.id"  primary key
+    _: FieldSelector = {}
+    $: ComputedSelector = {}  
+    // table: string            // "table"
+    private tableAlias: string       // "abc"
+
+    // stored any compiled property
+    // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
    
-    constructor({
-        schema,
-        _,
-        $,
-        table,
-        tableAlias,
-        source,
-        all,
-        id 
-    }: SelectorBasic){
+    constructor(entityClass: T, schema: Schema){
         this.schema = schema
-        this._ = _
-        this.$ = $
-        this.table = table
-        this.tableAlias = tableAlias
-        this.source = source
-        this.all = all
-        this.id = id
+        this.tableAlias = schema.entityName + '_' + makeid(5)
+        this.entityClass = entityClass
+    }
+
+    // "table AS abc"
+    get source(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
+        }
+        return `${this.schema.tableName} AS ${this.tableAlias}`
+    }
+
+    // "abc.*"
+    get all(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+        }
+        return `*`
+    }
+
+    // "abc.id"  primary key
+    get id(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [id] for selection.`)
+        }
+        return `${this.tableAlias}.${this.schema.primaryKey.fieldName}`
+    }
+
+    init(){
+        // the lifecycle should be 
+        this.schema.namedProperties.forEach( (prop) => {
+            this.compileNamedProperty(prop)
+        })
     }
 
      // (SQL template) create a basic belongsTo prepared statement 
@@ -216,18 +296,178 @@ export class Selector {
     }
 
     /**
-     * Create Derived Field for Temporary use
-     * @param namedProperty
-     * @returns 
+     * Create and compile a new ComputedProperty
+     * It is similar to compileNamedProperty but it return the selector of this new property
+     * @param namedProperty A `NamedProperty` instance
+     * @returns the selector of this new property
      */
     derivedProp(namedProperty: NamedProperty){
-        return compileNamedProperty(this, namedProperty)
+        if(!namedProperty.computedFunc){
+            throw new Error('derivedProp only allows ComputedProperty.')
+        }
+        return this.compileNamedProperty(namedProperty).compiled as compiledComputedFunction
+    }
+
+    /**
+     * Create and compile a new NamedProperty
+     * NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
+     * The compilation is:
+     *  - embedding a runtime entity's selector into the 'computed function'
+     *  - or translate the field into something like 'tableAlias.fieldName'
+     * @param namedProperty A `NamedProperty` instance
+     * @returns CompiledNamedProperty 
+     */
+    compileNamedProperty(prop: NamedProperty): CompiledNamedProperty{
+        let rootSelector = this
+        // must be unique, use to reference the compiledNamedProperty latter
+        // let runtimeId = makeid(5)
+        let compiledNamedProperty: CompiledNamedProperty
+        //convert the props name into actual field Name
+        // let actualFieldName = prop.fieldName
+        // let actualFieldNameAlias = this.constructRawFieldName(prop.fieldName, runtimeId)
+        if(prop.computedFunc){
+            let computedFunc = prop.computedFunc
+            let compiledFunc = (queryFunction?: QueryFunction, ...args: any[]) => {
+                
+                const applyFilterFunc: QueryFunction = (stmt, selector) => {
+                    if(queryFunction && !(queryFunction instanceof Function)){
+                        console.log(queryFunction)
+                        throw new Error('Likely that your ComputedProperty are not called in the select query.')
+                    }
+                    const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
+                    return x
+                }
+                let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
+                let subqueryString = subquery.toString()
+                console.log('SubQuery', subqueryString)
+
+                // determine the column list
+                let ast = sqlParser.parse(subqueryString)
+
+                const santilize = (item: any): string => {
+                    let v = item.alias ?? item.value
+                    v = v.replace(/[`']/g, '')
+                    let p = v.split('.')
+                    let name = p[p.length - 1]
+                    return name
+                }
+
+                let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
+                
+                // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
+
+                // Important: more than one table has *
+                if(columns.includes('*')){
+
+                    if(ast.value.from.type !== 'TableReferences'){
+                        throw new Error('Unexpected flow is reached.')
+                    }
+                    let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
+                        if(obj.type === 'TableReference'){
+                            if(obj.value.type === 'TableFactor'){
+                                // determine the from table
+                                if( obj.value.value.type === 'Identifier'){
+                                    return {type: 'table', value: santilize(obj.value.value) }
+                                }
+                            } else if( obj.value.value.type === 'SubQuery'){
+                                let selectItems = obj.value.value.value.selectItems
+                                if(selectItems.type === 'SelectExpr'){
+                                    // determine any fields from derived table
+                                    return selectItems.value.map( (item: any) => {
+                                        if( item.type === 'Identifier'){
+                                            return {type: 'field', value: santilize(item) }
+                                        }
+                                    })
+                                } else throw new Error('Unexpected flow is reached.')
+                            } else throw new Error('Unexpected flow is reached.')
+                        } else throw new Error('Unexpected flow is reached.')
+                    })
+                    
+                    
+                    let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
+                    if(tables.length > 0){
+                        let schemaArr = Object.keys(schemas).map(k => schemas[k])
+                        let selectedSchemas = tables.map(t => {
+                            let s = schemaArr.find(s => s.tableName === t) 
+                                if(!s)
+                                throw new Error(`Table [${t}] is not found.`)
+                            return s
+                        })
+                        let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
+                        columns = columns.concat(all)
+                    }
+                    
+                    columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
+                    
+                    //determine the distinct set of columns
+                    columns = columns.filter(n => n !== '*')
+                    let fullSet = new Set(columns)
+                    columns = [...fullSet]
+                
+                    
+                    // going to replace star into all column names
+                    if( ast.value.selectItems.type !== 'SelectExpr'){
+                        throw new Error('Unexpected flow is reached.')
+                    } else {
+                        //remove * element
+                        let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
+                        
+                        let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
+
+                        //add columns element
+                        ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
+                            return {
+                                type: "Identifier",
+                                value: name,
+                                alias: null,
+                                hasAs: null
+                            }
+                        })]
+                    }
+
+                    subqueryString = sqlParser.stringify(ast)
+                }
+
+                if(!prop.definition.readTransform){
+                    if(columns.length > 1){
+                        throw new Error('PropertyType doesn\'t allow multiple column values.')
+                    }
+                    return getKnexInstance().raw(`(${subqueryString}) AS ${metaAlias(prop)}`)
+                } else {
+                    let transformed = prop.definition.readTransform(subqueryString, columns)
+                    return getKnexInstance().raw(`(${transformed.toString()}) AS ${metaAlias(prop)}`)
+                }
+            }
+            compiledNamedProperty = {
+                namedProperty: prop,
+                // runtimeId,
+                compiled: compiledFunc
+            }
+        } else {
+            compiledNamedProperty = {
+                namedProperty: prop,
+                // runtimeId,
+                compiled: `${rootSelector.tableAlias}.${prop.fieldName}`
+            }
+        }
+
+        if(prop.computedFunc){
+            this.$[prop.name] = compiledNamedProperty.compiled as compiledComputedFunction
+        } else {
+            this._[prop.name] = compiledNamedProperty.compiled as string
+        }
+        //register the runtimeId for later data parsing
+        // this.compiledNamedPropertyMap.set(actualFieldNameAlias, compiledNamedProperty)
+        //register the fieldName, because it is fallback solution if user add the field using * or by hardcode sql
+        // this.compiledNamedPropertyMap.set(actualFieldName, compiledNamedProperty)
+
+        return compiledNamedProperty
     }
 }
 
 export type compiledComputedFunction = (queryFunction?: QueryFunction, ...args: any[]) => SQLString
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
+export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector<any>) => SQLString
 
 export class Entity {
     constructor(){
@@ -252,7 +492,7 @@ export class Entity {
      * alias of produceSelector
      * @returns Selector
      */
-    static selector(): Selector {
+    static selector<T extends typeof Entity>(): Selector<T> {
         return this.newSelector()
     }
 
@@ -261,107 +501,96 @@ export class Entity {
      * field pointers
      * @returns 
      */
-    static newSelector(): Selector {
-        let randomTblName = this.schema.entityName + '_' + makeid(5)
-        let selectorData: SelectorBasic = {
-            schema: this.schema,
-            table: `${this.schema.tableName}`,
-            tableAlias: `${randomTblName}`,
-            source: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
-            all: `*`,                          
-            id : `${randomTblName}.${this.schema.primaryKey.fieldName}`,
-            _: {},
-            $: {}
-        }
-        let selector = new Selector(selectorData)
-        this.schema.namedProperties.forEach( (prop) => {
-            let compiled = compileNamedProperty(selector, prop)
-            if(prop.computedFunc){
-                selector.$[prop.name] = compiled as compiledComputedFunction
-            } else {
-                selector._[prop.name] = compiled as string
-            }
-        })
-
+    static newSelector<T extends typeof Entity>(): Selector<T> {
+        let entityClass = this as T
+        let selector = new Selector<T>(entityClass, this.schema)
+        selector.init()
         return selector
     }
 
     /**
      * find array of records
-     * @param queryFunction 
+     * @param applyFilter 
      * @returns 
      */
-    static async find(queryFunction?: QueryFunction ): Promise<any>{
-        let selector = this.newSelector()
-        let stmt: Knex.QueryBuilder = getKnexInstance().from(selector.source)
-        let result: SQLString = stmt
-        if(queryFunction){
-            result = queryFunction(stmt, selector)
-        }
+    static async find<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<Array<InstanceType<T>>>{
+        let dualSelector = Dual.newSelector()
+        let func = dualSelector.derivedProp(new NamedProperty(
+            'data',
+            Types.Array(this),
+            (dualSelector): SQLString => {
+                let currentEntitySelector = this.selector()
+                let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.source)
+                let result: SQLString = stmt
+                if(applyFilter){
+                    result = applyFilter(stmt, currentEntitySelector)
+                }
+                return result
+            }
+        ))
+        let stmt = getKnexInstance().select(func())
         console.log("========== FIND ================")
-        console.log(result.toString())
+        console.log(stmt.toString())
         console.log("================================")
-        return await getKnexInstance().raw(result.toString())
+        let resultData: any = await stmt
+        let dualInstance = Dual.parseRaw(resultData[0] as SimpleObject)
+        let str = "data" as keyof Dual;
+        return dualInstance[str]
     }
 
-    // it is a parser
-    static Array(){
+    static parseRaw<T extends typeof Entity>(row: SimpleObject): InstanceType<T>{
+        let entityClass = this
+        let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
+            // let prop = this.compiledNamedPropertyMap.get(fieldName)
 
-    }
-}
+            let metaInfo = breakdownMetaAlias(fieldName)
+            let propName = null
+            let definition = null
+            if(metaInfo){
+                propName = metaInfo.propName
+                definition = metaInfo.definition
+            } else{
+                let prop = entityClass.schema.namedProperties.find(p => {
+                    return p.fieldName === fieldName
+                })
 
-/**
- *  NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
- *  The compilation is:
- *  - embedding a runtime entity's selector into the 'computed function'
- *  - or translate the field into something like 'tableAlias.fieldName'
- */
-type CompiledNamedProperty = string | compiledComputedFunction
-const compileNamedProperty = (rootSelector: Selector, prop: NamedProperty): CompiledNamedProperty => {
-    //convert the props name into actual field Name
-    let actualFieldName = prop.fieldName
-    if(prop.computedFunc){
-        let computedFunc = prop.computedFunc
-        return (queryFunction?: QueryFunction, ...args: any[]) => {
-
-            const applyFilterFunc: QueryFunction = (stmt, selector) => {
-                const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
-                return x
+                if(!prop){
+                    if(!config.suppressErrorOnPropertyNotFound){
+                        throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
+                    }
+                }else{
+                    propName = prop.name
+                    definition = prop.definition
+                }
             }
-            let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
-
-            let subqueryString = subquery.toString()
-
-            // determine the column list
-            let ast = sqlParser.parse(subqueryString)
-
-            //TODO: there will be bug if the alias contain . inside
-            let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
-                let p = v.split('.')
-                let name = p[p.length - 1]
-                return name
-            })
+            /**
+             * it can be boolean, string, number, Object, Array of Object (class)
+             * Depends on the props..
+             */
+            let propValue = definition!.parseRaw(row[fieldName])
             
-            // FIX: more than one table has *
-            // console.log('xxxxxx before', columns)
-            if(columns.includes('*')){
-                //replace star into all column names
-                let all = rootSelector.schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName)
-                let fullSet = new Set(columns.filter(n => n !== '*').concat(all))
-                columns = [...fullSet]
-            }
-            // console.log('xxxxxx after', columns)
-
-            let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
-                columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
-            })) FROM (${subquery}) AS \`${makeid(5)}\``
-
-            return getKnexInstance().raw('(' + jsonify + `) AS ${actualFieldName}`)
-        }
-    } else {
-        return `${rootSelector.tableAlias}.${actualFieldName}`
+            Object.defineProperty(entityInstance, propName!, {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: propValue
+            })
+            return entityInstance
+        }, new entityClass() as InstanceType<T>)
+        return entityInstance
     }
 }
+
+
+// it is a special Entity or table. Just like the Dual in SQL Server
+export class Dual extends Entity {
+
+    static postRegister(schema: Schema) : void{
+        //override the tableName into empty
+        schema.tableName = ''
+    }
+}
+
 
 /**
  * 
