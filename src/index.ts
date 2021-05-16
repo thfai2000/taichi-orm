@@ -46,7 +46,7 @@ export class Schema {
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create.join(' ')}`).join(',\n')}\n)`;
+            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
         }
         return ''
     }
@@ -70,7 +70,7 @@ export class Schema {
     }
 }
 
-function makeid(length: number) {
+export function makeid(length: number) {
     var result           = [];
     var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
     var charactersLength = characters.length;
@@ -295,12 +295,10 @@ export class Selector<T extends typeof Entity> {
                 }
                 let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
 
-                let subqueryString = subquery.toString()
-
                 // console.log('SubQuery', subqueryString)
 
                 // determine the column list
-                let ast = sqlParser.parse(subqueryString)
+                let ast = sqlParser.parse(subquery.toString())
 
                 //TODO: there will be bug if the alias contain . inside
                 let columns: string[] = ast.value.selectItems.value.map( (v:any) => (v.alias? v.alias: v.value) ).map( (v:string) => {
@@ -326,10 +324,10 @@ export class Selector<T extends typeof Entity> {
                     return getKnexInstance().raw(`(${columns[0]}) AS ${actualFieldNameAlias}`)
                     
                 } else {
-                    let jsonify =  `SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT(${
-                        columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
-                    })), JSON_ARRAY()) FROM (${subquery}) AS \`${makeid(5)}\``
-                    return getKnexInstance().raw(`(${jsonify}) AS ${actualFieldNameAlias}`)
+
+                    let transformed = prop.definition.transform(subquery, columns)
+
+                    return getKnexInstance().raw(`(${transformed.toString()}) AS ${actualFieldNameAlias}`)
                 }
             }
             compiledNamedProperty = {
