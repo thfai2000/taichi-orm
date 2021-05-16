@@ -45,9 +45,11 @@ export class Schema {
     }
 
     createTableStmt(){
-        return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create.join(' ')}`).join(',\n')}\n)`;
+        if(this.tableName.length > 0){
+            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create.join(' ')}`).join(',\n')}\n)`;
+        }
+        return ''
     }
-
 
     prop(name:string, definition: any, options?: any){
         this.namedProperties.push(new NamedProperty(
@@ -67,7 +69,6 @@ export class Schema {
         ))
     }
 }
-
 
 function makeid(length: number) {
     var result           = [];
@@ -135,7 +136,7 @@ export const configure = async function(newConfig: Config){
     }))
     // let schemaFilename = new Date().getTime() + '.sql'
     let path = config.dbSchemaPath //+ '/' + schemaFilename
-    fs.writeFileSync(path, tables.map(t => t.createTableStmt()).join(";\n") + ';' )
+    fs.writeFileSync(path, tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';' )
     console.log('schemas:', Object.keys(schemas))
 }
 
@@ -155,7 +156,6 @@ export type FieldSelector = {
     [key: string] : string
 }
 
-
 type CompiledNamedProperty = {
     namedProperty: NamedProperty,
     runtimeId: string,
@@ -165,53 +165,58 @@ type CompiledNamedProperty = {
 export type SimpleObject = { [key:string]: any}
 
 
-export type SelectorBasic<T extends typeof Entity> = {
-    entityClass: T,
-    schema: Schema,
-    '_': FieldSelector,
-    '$': ComputedSelector,       
-    'table': string,            // "table"
-    'tableAlias': string,       // "abc"
-    'source': string,           // "table AS abc"
-    'all': string,              // "abc.*"
-    'id': string                // "abc.id"
-}
+// export type SelectorBasic<T extends typeof Entity> = {
+//     entityClass: T,
+//     schema: Schema,
+//     '_': FieldSelector,
+//     '$': ComputedSelector,       
+//     'table': string,            // "table"
+//     'tableAlias': string,       // "abc"
+//     'source': string,           // "table AS abc"
+//     'all': string,              // "abc.*"
+//     'id': string                // "abc.id"
+// }
 
 export class Selector<T extends typeof Entity> {
     
     entityClass: T
     schema: Schema
-    _: FieldSelector
-    $: ComputedSelector    
+    _: FieldSelector = {}
+    $: ComputedSelector = {}  
     // table: string            // "table"
-    tableAlias: string       // "abc"
-    source: string           // "table AS abc"
-    all: string              // "abc.*"
-    id: string                // "abc.id"  primary key
+    private tableAlias: string       // "abc"
 
     // stored any compiled property
     compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
    
-    constructor({
-        entityClass,
-        schema,
-        _,
-        $,
-        // table,
-        tableAlias,
-        source,
-        all,
-        id 
-    }: SelectorBasic<T>){
-        this.entityClass = entityClass
+    constructor(entityClass: T, schema: Schema){
         this.schema = schema
-        this._ = _
-        this.$ = $
-        // this.table = table
-        this.tableAlias = tableAlias
-        this.source = source
-        this.all = all
-        this.id = id
+        this.tableAlias = schema.entityName + '_' + makeid(5)
+        this.entityClass = entityClass
+    }
+
+    // "table AS abc"
+    get source(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
+        }
+        return `${this.schema.tableName} AS ${this.tableAlias}`
+    }
+
+    // "abc.*"
+    get all(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+        }
+        return `*`
+    }
+
+    // "abc.id"  primary key
+    get id(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [id] for selection.`)
+        }
+        return `${this.tableAlias}.${this.schema.primaryKey.fieldName}`
     }
 
     init(){
@@ -418,19 +423,8 @@ export class Entity {
      * @returns 
      */
     static newSelector<T extends typeof Entity>(): Selector<T> {
-        let randomTblName = this.schema.entityName + '_' + makeid(5)
-        let selectorData: SelectorBasic<T> = {
-            entityClass: this as T,
-            schema: this.schema,
-            table: `${this.schema.tableName}`,
-            tableAlias: `${randomTblName}`,
-            source: `${this.schema.tableName} AS ${randomTblName}`,   // used as table name
-            all: `*`,                          
-            id : `${randomTblName}.${this.schema.primaryKey.fieldName}`,
-            _: {},
-            $: {}
-        }
-        let selector = new Selector(selectorData)
+        let entityClass = this as T
+        let selector = new Selector<T>(entityClass, this.schema)
         selector.init()
         return selector
     }
