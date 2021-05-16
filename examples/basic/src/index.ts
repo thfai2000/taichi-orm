@@ -1,6 +1,7 @@
 import {configure, select} from '../../../dist/'
 import {camelCase, snakeCase} from 'lodash'
 import Shop from './models/Shop'
+import Product from './models/Product'
 let run = async() =>{
 
     // configure the orm
@@ -22,19 +23,6 @@ let run = async() =>{
             }
         }
     })
-
-    
-    /**
-     * insert records
-     */  
-    // let record_inserted = await Shop.create({
-    // })
-    // console.log('inserted', record)
-
-//     insert into shop (id) values (null), (null), (null);
-//   insert into product (name, shop_id) values 
-//   ('a', 1), ('b', 1), ('c',1),
-//   ('d', 2), ('e', 2), ('f',2);
 
     /**
      * Basic
@@ -77,8 +65,20 @@ let run = async() =>{
         }))
     })
     console.log('queried4:', records4)
+
+    let records5 = await Product.find( (stmt, prd) => {
+        return stmt.select(prd.all, prd.$.shop())
+    })
+    console.log('queried5:', records5)
+
+        
+    /**
+     * insert records
+     */  
+    // let record_inserted = await Shop.create({
+    // })
+    // console.log('inserted', record)
+
 }
 
 run()
-
-

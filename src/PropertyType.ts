@@ -1,27 +1,30 @@
 import { Entity, Selector, SimpleObject, makeid, SQLString } from "."
 
 export interface PropertyType {
-    isPrimitive: boolean
+    // isPrimitive: boolean
     create: () => Array<string>
-    transform: (query: SQLString, columns: Array<string>) => SQLString
-    parseRaw: (selector: Selector<any>, rawValue: any) => any
-    parseProperty: (selector: Selector<any>, propertyvalue: any) => any
+    readTransform?: (query: SQLString, columns: Array<string>) => SQLString
+    writeTransform?: (query: SQLString, columns: Array<string>) => SQLString
+    parseRaw: (rawValue: any) => any
+    parseProperty: (propertyvalue: any) => any
 }
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
 
+// export type ColumnInfo = {
+//     keyName: string,
+//     valueName: string
+// }
+
 export const Types = {
     PrimaryKey(): PropertyType{
         return {
-            isPrimitive: true,
+            // isPrimitive: true,
             create: () => ['BIGINT', nullableText(false), 'AUTO_INCREMENT', 'PRIMARY KEY'],
-            transform: () => {
-                throw new Error('Field Transformation is not allowed.')
-            },
-            parseRaw(selector: Selector<any>, rawValue): any{
+            parseRaw(rawValue): any{
                 return parseInt(rawValue)
             },
-            parseProperty(selector: Selector<any>, propertyvalue): any {
+            parseProperty(propertyvalue): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -29,15 +32,12 @@ export const Types = {
     },
     Number(nullable: boolean = true): PropertyType{
         return {
-            isPrimitive: true,
+            // isPrimitive: true,
             create: () => ['INTEGER', nullableText(nullable)],
-            transform: () => {
-                throw new Error('Field Transformation is not allowed.')
-            },
-            parseRaw(selector: Selector<any>, rawValue): any{
+            parseRaw(rawValue): any{
                 return parseInt(rawValue)
             },
-            parseProperty(selector: Selector<any>, propertyvalue): any {
+            parseProperty(propertyvalue): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -45,15 +45,15 @@ export const Types = {
     },
     String(length: number, nullable: boolean = true): PropertyType{
         return {
-            isPrimitive: true,
+            // isPrimitive: true,
             create: () => [`VARCHAR(${length})`, nullableText(nullable) ],
-            transform: () => {
-                throw new Error('Field Transformation is not allowed.')
-            },
-            parseRaw(selector: Selector<any>, rawValue): any{
+            // transform: () => {
+            //     throw new Error('Field Transformation is not allowed.')
+            // },
+            parseRaw(rawValue): any{
                 return `${rawValue}`
             },
-            parseProperty(selector: Selector<any>, propertyvalue): any {
+            parseProperty(propertyvalue): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -61,16 +61,13 @@ export const Types = {
     },
     Date(nullable: boolean = true): PropertyType{
         return {
-            isPrimitive: true,
+            // isPrimitive: true,
             create: () => ['DATETIME', nullableText(nullable)],
-            transform: () => {
-                throw new Error('Field Transformation is not allowed.')
-            },
-            parseRaw(selector: Selector<any>, rawValue): any{
+            parseRaw(rawValue): any{
                 //FIXME: has to check if it is valid in locale
                 return new Date(rawValue)
             },
-            parseProperty(selector: Selector<any>, propertyvalue): any {
+            parseProperty(propertyvalue): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -78,16 +75,16 @@ export const Types = {
     },
     NativeJSON(nullable: boolean = true): PropertyType {
         return {
-            isPrimitive: true,
+            // isPrimitive: true,
             create: () => ['JSON', nullableText(nullable)],
-            transform: () => {
+            readTransform: () => {
                 throw new Error('Field Transformation is not allowed.')
             },
-            parseRaw(selector: Selector<any>, rawValue): any{
+            parseRaw(rawValue): any{
                 //FIXME: has to check if it is valid in locale
                 return new Date(rawValue)
             },
-            parseProperty(selector: Selector<any>, propertyvalue): any {
+            parseProperty(propertyvalue): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -95,20 +92,20 @@ export const Types = {
     },
     Object<T extends typeof Entity>(entityClass: T, nullable: boolean = true): PropertyType{
         return {
-            isPrimitive: false,
+            // isPrimitive: false,
             create: () => {
                 throw new Error('Field creation is not allowed.')
             },
-            transform: (query: SQLString, columns: Array<string>) => {
+            readTransform: (query: SQLString, columns: Array<string>) => {
                 let jsonify =  `SELECT JSON_OBJECT(${
-                        columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
+                        columns.map(c => `'${c}', ${c}`).join(',')
                     }) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(selector: Selector<T>, rawValue: SimpleObject): InstanceType<T>{
-                return selector.parseRaw(entityClass, rawValue)
+            parseRaw(rawValue: SimpleObject): InstanceType<T>{
+                return entityClass.parseRaw(rawValue)
             },
-            parseProperty(selector: Selector<T>, propertyvalue: InstanceType<T>): any {
+            parseProperty(propertyvalue: InstanceType<T>): any {
                 //TODO: implement
                 return propertyvalue
             }
@@ -116,22 +113,22 @@ export const Types = {
     },
     Array<T extends typeof Entity>(entityClass: T, nullable: boolean = true): PropertyType{
         return {
-            isPrimitive: false,
+            // isPrimitive: false,
             create: () => {
                 throw new Error('Field creation is not allowed.')
             },
-            transform: (query: SQLString, columns: Array<string>) => {
+            readTransform: (query: SQLString, columns: Array<string>) => {
                 let jsonify =  `SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT(${
-                        columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
+                        columns.map(c => `'${c}', ${c}`).join(',')
                     })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(selector: Selector<T>, rawValue: Array<SimpleObject>): Array<InstanceType<T>>{
+            parseRaw(rawValue: Array<SimpleObject>): Array<InstanceType<T>>{
                 return rawValue.map( raw => {
-                    return selector.parseRaw(entityClass, raw)
+                    return entityClass.parseRaw(raw)
                 })
             },
-            parseProperty(selector: Selector<T>, propertyvalue: Array<InstanceType<T>>): any {
+            parseProperty(propertyvalue: Array<InstanceType<T>>): any {
                 //TODO: implement
                 return propertyvalue
             }

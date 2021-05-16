@@ -14,7 +14,10 @@ services:
         volumes: 
             - type: bind
               source: ./dist/db-schema.sql
-              target: /docker-entrypoint-initdb.d/db-schema.sql
+              target: /docker-entrypoint-initdb.d/1-db-schema.sql
+            - type: bind
+              source: ./db-sample-data.sql
+              target: /docker-entrypoint-initdb.d/2-db-sample-data.sql
     adminer:
         image: adminer
         ports:
