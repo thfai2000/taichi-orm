@@ -183,7 +183,7 @@ export class Selector<T extends typeof Entity> {
     schema: Schema
     _: FieldSelector
     $: ComputedSelector    
-    table: string            // "table"
+    // table: string            // "table"
     tableAlias: string       // "abc"
     source: string           // "table AS abc"
     all: string              // "abc.*"
@@ -197,7 +197,7 @@ export class Selector<T extends typeof Entity> {
         schema,
         _,
         $,
-        table,
+        // table,
         tableAlias,
         source,
         all,
@@ -207,7 +207,7 @@ export class Selector<T extends typeof Entity> {
         this.schema = schema
         this._ = _
         this.$ = $
-        this.table = table
+        // this.table = table
         this.tableAlias = tableAlias
         this.source = source
         this.all = all
@@ -224,6 +224,7 @@ export class Selector<T extends typeof Entity> {
      // (SQL template) create a basic belongsTo prepared statement 
     hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
+        console.log('xxxxxxx', this.id, selector._[propName])
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
         return applyFilter(stmt, selector)
     }
@@ -231,33 +232,41 @@ export class Selector<T extends typeof Entity> {
     // (SQL template) create a basic belongsTo prepared statement 
     belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
+        console.log('xxxxxxx', selector._[propName])
         let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
         return applyFilter(stmt, selector)
     }
 
     constructRawFieldName(fieldName: string, runtimeId: string): string{
-        return `${fieldName}|${runtimeId}`
+        return `${fieldName}___${runtimeId}`
     }
 
     destructFieldName(rawFieldName: string){
-        let [fieldName, runtimeId] = rawFieldName.split('|')
+        let [fieldName, runtimeId] = rawFieldName.split('___')
         return {fieldName, runtimeId}
     }
 
     /**
-     * Create Derived Field for Temporary use
-     * @param namedProperty
-     * @returns 
+     * Create and compile a new ComputedProperty
+     * It is similar to compileNamedProperty but it return the selector of this new property
+     * @param namedProperty A `NamedProperty` instance
+     * @returns the selector of this new property
      */
     derivedProp(namedProperty: NamedProperty){
-        return this.compileNamedProperty(namedProperty)
+        if(!namedProperty.computedFunc){
+            throw new Error('derivedProp only allows ComputedProperty.')
+        }
+        return this.compileNamedProperty(namedProperty).compiled as compiledComputedFunction
     }
 
     /**
-     *  NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
-     *  The compilation is:
+     * Create and compile a new NamedProperty
+     * NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
+     * The compilation is:
      *  - embedding a runtime entity's selector into the 'computed function'
      *  - or translate the field into something like 'tableAlias.fieldName'
+     * @param namedProperty A `NamedProperty` instance
+     * @returns CompiledNamedProperty 
      */
     compileNamedProperty(prop: NamedProperty): CompiledNamedProperty{
         let rootSelector = this
@@ -265,7 +274,8 @@ export class Selector<T extends typeof Entity> {
         let runtimeId = makeid(5)
         let compiledNamedProperty: CompiledNamedProperty
         //convert the props name into actual field Name
-        let actualFieldName = this.constructRawFieldName(prop.fieldName, runtimeId)
+        let actualFieldName = prop.fieldName
+        let actualFieldNameAlias = this.constructRawFieldName(prop.fieldName, runtimeId)
         if(prop.computedFunc){
             let computedFunc = prop.computedFunc
             let compiledFunc = (queryFunction?: QueryFunction, ...args: any[]) => {
@@ -281,6 +291,8 @@ export class Selector<T extends typeof Entity> {
                 let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
 
                 let subqueryString = subquery.toString()
+
+                console.log('RRRRRR', subqueryString)
 
                 // determine the column list
                 let ast = sqlParser.parse(subqueryString)
@@ -306,13 +318,13 @@ export class Selector<T extends typeof Entity> {
                     if(columns.length > 1){
                         throw new Error('Non-object PropertyType doesn\'t allow multiple column values.')
                     }
-                    return getKnexInstance().raw(`(${columns[0]}) AS \`${actualFieldName}\``)
+                    return getKnexInstance().raw(`(${columns[0]}) AS ${actualFieldNameAlias}`)
                     
                 } else {
                     let jsonify =  `SELECT JSON_ARRAYAGG(JSON_OBJECT(${
                         columns.map(c => `'${c.replace(/[`']/g,'')}', ${c}`).join(',')
                     })) FROM (${subquery}) AS \`${makeid(5)}\``
-                    return getKnexInstance().raw(`(${jsonify}) AS \`${actualFieldName}\``)
+                    return getKnexInstance().raw(`(${jsonify}) AS ${actualFieldNameAlias}`)
                 }
             }
             compiledNamedProperty = {
@@ -324,7 +336,7 @@ export class Selector<T extends typeof Entity> {
             compiledNamedProperty = {
                 namedProperty: prop,
                 runtimeId,
-                compiled: `\`${rootSelector.tableAlias}\`.\`${actualFieldName}\``
+                compiled: `${rootSelector.tableAlias}.${actualFieldName} AS ${actualFieldNameAlias}`
             }
         }
 
@@ -334,9 +346,9 @@ export class Selector<T extends typeof Entity> {
             this._[prop.name] = compiledNamedProperty.compiled as string
         }
         //register the runtimeId for later data parsing
-        this.compiledNamedPropertyMap.set(actualFieldName, compiledNamedProperty)
+        this.compiledNamedPropertyMap.set(actualFieldNameAlias, compiledNamedProperty)
         //register the fieldName, because it is fallback solution if user add the field using * or by hardcode sql
-        this.compiledNamedPropertyMap.set(prop.fieldName, compiledNamedProperty)
+        this.compiledNamedPropertyMap.set(actualFieldName, compiledNamedProperty)
 
         return compiledNamedProperty
     }
@@ -430,16 +442,20 @@ export class Entity {
      */
     static async find<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<Array<InstanceType<T>>>{
         let dualSelector = Dual.newSelector()
-        dualSelector.derivedProp(new NamedProperty(
+        let func = dualSelector.derivedProp(new NamedProperty(
             'data',
             Types.Array(this),
-            (dualSelector, applyFilter): SQLString => {
+            (dualSelector): SQLString => {
                 let currentEntitySelector = this.selector()
-                let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.table)
-                return applyFilter(stmt, currentEntitySelector)
+                let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.source)
+                let result: SQLString = stmt
+                if(applyFilter){
+                    result = applyFilter(stmt, currentEntitySelector)
+                }
+                return result
             }
         ))
-        let stmt = getKnexInstance().select(dualSelector.$.data())
+        let stmt = getKnexInstance().select(func())
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
