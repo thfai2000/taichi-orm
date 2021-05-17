@@ -1,4 +1,4 @@
-// import { Builder } from './Builder'
+import { QueryBuilder, QueryBuilderAccessableField } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { PropertyType, Types } from './PropertyType'
@@ -238,181 +238,72 @@ export const configure = async function(newConfig: Config){
     }
 }
 
-export const select = function(...args: any[]) : Knex.QueryBuilder {
-    return getKnexInstance().select(args)
-}
+// export const select = function(...args: any[]) : Knex.QueryBuilder {
+//     return getKnexInstance().select(args)
+// }
 
 export const raw = function(first: string, ...args: any[]) : any{
     return getKnexInstance().raw(first, ...args)
 }
 
-export type ComputedSelector = {
-    [key: string] : compiledComputedFunction
+export type PropSelector = {
+    [key: string] : CompiledNamedPropertyFunction
 }
 
-export type FieldSelector = {
-    [key: string] : string
-}
-
-type CompiledNamedProperty = {
-    namedProperty: NamedProperty,
-    // runtimeId: string,
-    compiled: SQLString | compiledComputedFunction
-}
-
-export type SimpleObject = { [key:string]: any}
-
-
-// export type SelectorBasic<T extends typeof Entity> = {
-//     entityClass: T,
-//     schema: Schema,
-//     '_': FieldSelector,
-//     '$': ComputedSelector,       
-//     'table': string,            // "table"
-//     'tableAlias': string,       // "abc"
-//     'source': string,           // "table AS abc"
-//     'all': string,              // "abc.*"
-//     'id': string                // "abc.id"
+// export type FieldSelector = {
+//     [key: string] : string
 // }
-
-const map1 = new Map<PropertyType, string>()
-const map2 = new Map<string, PropertyType>()
-const registerPropertyType = function(d: PropertyType): string{
-    let r = map1.get(d)
-    if(!r){
-        let key = makeid(5)
-        map1.set(d, key)
-        map2.set(key, d)
-        r = key
-    }
-    return r
-}
-
-const findPropertyType = function(typeAlias: string): PropertyType{
-    let r = map2.get(typeAlias)
-    if(!r){
-        throw new Error('Cannot find the PropertyType. Make sure it is registered before.')
-    }
-    return r
-}
-
-const metaAlias = function(p: NamedProperty): string{
-    let typeAlias = registerPropertyType(p.definition)
-    return `${p.name}___${typeAlias}`
-}
-
-const breakdownMetaAlias = function(metaAlias: string){
-    if(metaAlias.includes('___')){
-        let [propName, typeAlias] = metaAlias.split('___')
-        let definition = findPropertyType(typeAlias)
-        return {propName, definition}
-    } else {
-        return null
+export class CompiledNamedPropertyWithSubQuery{
+    compiledNamedProperty: CompiledNamedProperty
+    subquery: string
+    constructor(compiledNamedProperty: CompiledNamedProperty, subquery: string){
+        this.compiledNamedProperty = compiledNamedProperty
+        this.subquery = subquery
     }
 }
 
-type ASTObject = {
-    type: string,
-    value: any
-}
+export class CompiledNamedProperty{
+    namedProperty: NamedProperty
+    tableAlias: string | null
+    fieldName: string | null
+    fieldAlias: string | null
+    compiled: CompiledNamedPropertyFunction
+    // compiled: SQLString | compiledNamedPropertyFunction
 
-export class Selector<T extends typeof Entity> {
-    
-    entityClass: T
-    schema: Schema
-    _: FieldSelector = {}
-    $: ComputedSelector = {}  
-    // table: string            // "table"
-    private tableAlias: string       // "abc"
+    // constructor({namedProperty, tableAlias, fieldName, fieldAlias, compiled}: {
+    //                 namedProperty: NamedProperty
+    //                 tableAlias?: string
+    //                 fieldName?: string
+    //                 fieldAlias?: string
+    //                 compiled?: Function
+    //             }){
+    //     this.namedProperty =  namedProperty
+    //     this.tableAlias = tableAlias
+    //     this.fieldName = fieldName
+    //     this.fieldAlias = fieldAlias
+    //     this.compiled = compiled
+    // }
 
-    // stored any compiled property
-    // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
-   
-    constructor(entityClass: T, schema: Schema){
-        this.schema = schema
-        this.tableAlias = schema.entityName + '_' + makeid(5)
-        this.entityClass = entityClass
-    }
-
-    // "table AS abc"
-    get source(): string{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
-        }
-        return `${this.schema.tableName} AS ${this.tableAlias}`
-    }
-
-    // "abc.*"
-    get all(): string{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
-        }
-        return `*`
-    }
-
-    // "abc.id"  primary key
-    get id(): string{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [id] for selection.`)
-        }
-        return `${this.tableAlias}.${this.schema.primaryKey.fieldName}`
-    }
-
-    init(){
-        // the lifecycle should be 
-        this.schema.namedProperties.forEach( (prop) => {
-            this.compileNamedProperty(prop)
-        })
-    }
-
-     // (SQL template) create a basic belongsTo prepared statement 
-    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
-        let selector = entityClass.newSelector()
-        let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [this.id, selector._[propName]]))
-        return applyFilter(stmt, selector)
-    }
-
-    // (SQL template) create a basic belongsTo prepared statement 
-    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
-        let selector = entityClass.newSelector()
-        let stmt = getKnexInstance().from(selector.source).where(getKnexInstance().raw("?? = ??", [selector.id, this._[propName]]))
-        return applyFilter(stmt, selector)
-    }
-
-    /**
-     * Create and compile a new ComputedProperty
-     * It is similar to compileNamedProperty but it return the selector of this new property
-     * @param namedProperty A `NamedProperty` instance
-     * @returns the selector of this new property
-     */
-    derivedProp(namedProperty: NamedProperty){
-        if(!namedProperty.computedFunc){
-            throw new Error('derivedProp only allows ComputedProperty.')
-        }
-        return this.compileNamedProperty(namedProperty).compiled as compiledComputedFunction
-    }
-
-    /**
-     * Create and compile a new NamedProperty
-     * NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
-     * The compilation is:
-     *  - embedding a runtime entity's selector into the 'computed function'
-     *  - or translate the field into something like 'tableAlias.fieldName'
-     * @param namedProperty A `NamedProperty` instance
-     * @returns CompiledNamedProperty 
-     */
-    compileNamedProperty(prop: NamedProperty): CompiledNamedProperty{
-        let rootSelector = this
-        // must be unique, use to reference the compiledNamedProperty latter
-        // let runtimeId = makeid(5)
-        let compiledNamedProperty: CompiledNamedProperty
-        //convert the props name into actual field Name
-        // let actualFieldName = prop.fieldName
-        // let actualFieldNameAlias = this.constructRawFieldName(prop.fieldName, runtimeId)
-        if(prop.computedFunc){
+    constructor(rootSelector: Selector<typeof Entity>, prop: NamedProperty) {
+        let itself = this
+        if(!prop.computedFunc){
+            
+            this.namedProperty = prop,
+            this.tableAlias = rootSelector.tableAlias
+            this.fieldName = prop.fieldName
+            this.fieldAlias = null
+            this.compiled = () => {
+                return itself
+            }
+            
+        } else {
             let computedFunc = prop.computedFunc
-            let compiledFunc = (queryFunction?: QueryFunction, ...args: any[]) => {
-                
+            
+            this.namedProperty = prop
+            this.tableAlias = null
+            this.fieldName = null
+            this.fieldAlias = metaAlias(prop)
+            this.compiled = (queryFunction?: QueryFunction, ...args: any[]) => {
                 const applyFilterFunc: QueryFunction = (stmt, selector) => {
                     if(queryFunction && !(queryFunction instanceof Function)){
                         console.log(queryFunction)
@@ -516,42 +407,185 @@ export class Selector<T extends typeof Entity> {
                     if(columns.length > 1){
                         throw new Error('PropertyType doesn\'t allow multiple column values.')
                     }
-                    return getKnexInstance().raw(`(${subqueryString}) AS ${metaAlias(prop)}`)
+                    return new CompiledNamedPropertyWithSubQuery( itself, `(${subqueryString})`)
+                    // return new SelectorEdge(`(${subqueryString})`, `${metaAlias(prop)}`)
                 } else {
                     let transformed = prop.definition.readTransform(subqueryString, columns)
-                    return getKnexInstance().raw(`(${transformed.toString()}) AS ${metaAlias(prop)}`)
+                    return new CompiledNamedPropertyWithSubQuery(itself, `(${transformed.toString()})`)
+                    // return new SelectorEdge(`(${transformed.toString()})`, `${metaAlias(prop)}`)
                 }
             }
-            compiledNamedProperty = {
-                namedProperty: prop,
-                // runtimeId,
-                compiled: compiledFunc
-            }
-        } else {
-            compiledNamedProperty = {
-                namedProperty: prop,
-                // runtimeId,
-                compiled: `${rootSelector.tableAlias}.${prop.fieldName}`
-            }
+            
         }
+    }
+}
 
-        if(prop.computedFunc){
-            this.$[prop.name] = compiledNamedProperty.compiled as compiledComputedFunction
-        } else {
-            this._[prop.name] = compiledNamedProperty.compiled as string
+export type SimpleObject = { [key:string]: any}
+
+
+// export type SelectorBasic<T extends typeof Entity> = {
+//     entityClass: T,
+//     schema: Schema,
+//     '_': FieldSelector,
+//     '$': ComputedSelector,       
+//     'table': string,            // "table"
+//     'tableAlias': string,       // "abc"
+//     'source': string,           // "table AS abc"
+//     'all': string,              // "abc.*"
+//     'id': string                // "abc.id"
+// }
+
+const map1 = new Map<PropertyType, string>()
+const map2 = new Map<string, PropertyType>()
+const registerPropertyType = function(d: PropertyType): string{
+    let r = map1.get(d)
+    if(!r){
+        let key = makeid(5)
+        map1.set(d, key)
+        map2.set(key, d)
+        r = key
+    }
+    return r
+}
+
+const findPropertyType = function(typeAlias: string): PropertyType{
+    let r = map2.get(typeAlias)
+    if(!r){
+        throw new Error('Cannot find the PropertyType. Make sure it is registered before.')
+    }
+    return r
+}
+
+const metaAlias = function(p: NamedProperty): string{
+    let typeAlias = registerPropertyType(p.definition)
+    return `${p.name}___${typeAlias}`
+}
+
+const breakdownMetaAlias = function(metaAlias: string){
+    if(metaAlias.includes('___')){
+        let [propName, typeAlias] = metaAlias.split('___')
+        let definition = findPropertyType(typeAlias)
+        return {propName, definition}
+    } else {
+        return null
+    }
+}
+
+type ASTObject = {
+    type: string,
+    value: any
+}
+
+export class Selector<T extends typeof Entity> {
+    
+    entityClass: T
+    schema: Schema
+    // _: FieldSelector = {}
+    $: PropSelector = {}  
+    // table: string            // "table"
+    tableAlias: string       // "abc"
+
+    // stored any compiled property
+    // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
+   
+    constructor(entityClass: T, schema: Schema){
+        this.schema = schema
+        this.tableAlias = schema.entityName + '_' + makeid(5)
+        this.entityClass = entityClass
+    }
+
+    // "table AS abc"
+    get source(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
         }
-        //register the runtimeId for later data parsing
-        // this.compiledNamedPropertyMap.set(actualFieldNameAlias, compiledNamedProperty)
-        //register the fieldName, because it is fallback solution if user add the field using * or by hardcode sql
-        // this.compiledNamedPropertyMap.set(actualFieldName, compiledNamedProperty)
+        return `${this.schema.tableName} AS ${this.tableAlias}`
+    }
+
+    // "abc.*"
+    get all(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+        }
+        return `*`
+    }
+
+    // "abc.id"  primary key
+    get id(): Function{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [id] for selection.`)
+        }
+        return this.$.id
+    }
+
+    init(){
+        // the lifecycle should be 
+        this.schema.namedProperties.forEach( (prop) => {
+            this.compileNamedProperty(prop)
+        })
+    }
+
+     // (SQL template) create a basic belongsTo prepared statement 
+    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
+        let selector = entityClass.newSelector()
+        let stmt = new QueryBuilder().from(selector.source).where(raw("?? = ??", [this.id, selector.$[propName]]))
+        return applyFilter(stmt, selector)
+    }
+
+    // (SQL template) create a basic belongsTo prepared statement 
+    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
+        let selector = entityClass.newSelector()
+        let stmt = new QueryBuilder().from(selector.source).where(raw("?? = ??", [selector.id, this.$[propName]]))
+        return applyFilter(stmt, selector)
+    }
+
+    /**
+     * Create and compile a new ComputedProperty
+     * It is similar to compileNamedProperty but it return the selector of this new property
+     * @param namedProperty A `NamedProperty` instance
+     * @returns the selector of this new property
+     */
+    derivedProp(namedProperty: NamedProperty){
+        if(!namedProperty.computedFunc){
+            throw new Error('derivedProp only allows ComputedProperty.')
+        }
+        return this.compileNamedProperty(namedProperty).compiled
+    }
+
+    /**
+     * Create and compile a new NamedProperty
+     * NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
+     * The compilation is:
+     *  - embedding a runtime entity's selector into the 'computed function'
+     *  - or translate the field into something like 'tableAlias.fieldName'
+     * @param namedProperty A `NamedProperty` instance
+     * @returns CompiledNamedProperty 
+     */
+    compileNamedProperty(prop: NamedProperty): CompiledNamedProperty{
+        let rootSelector = this
+        // must be unique, use to reference the compiledNamedProperty latter
+        // let runtimeId = makeid(5)
+        let compiledNamedProperty: CompiledNamedProperty = new CompiledNamedProperty(rootSelector, prop)
+        //convert the props name into actual field Name
+        // let actualFieldName = prop.fieldName
+        // let actualFieldNameAlias = this.constructRawFieldName(prop.fieldName, runtimeId)
+        
+
+        // if(prop.computedFunc){
+        //     this.$[prop.name] = compiledNamedProperty.compiled as compiledComputedFunction
+        // } else {
+        //     this._[prop.name] = compiledNamedProperty.compiled as string
+        // }
+
+        this.$[prop.name] = compiledNamedProperty.compiled
 
         return compiledNamedProperty
     }
 }
 
-export type compiledComputedFunction = (queryFunction?: QueryFunction, ...args: any[]) => SQLString
+export type CompiledNamedPropertyFunction = (queryFunction?: QueryFunction, ...args: any[]) => QueryBuilderAccessableField
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector<any>) => SQLString
+export type QueryFunction = (stmt: QueryBuilder, selector: Selector<any>) => SQLString
 
 export class Entity {
     constructor(){
@@ -629,7 +663,7 @@ export class Entity {
             Types.Array(this),
             (dualSelector): SQLString => {
                 let currentEntitySelector = this.selector()
-                let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.source)
+                let stmt: QueryBuilder = new QueryBuilder().from(currentEntitySelector.source)
                 let result: SQLString = stmt
                 if(applyFilter){
                     result = applyFilter(stmt, currentEntitySelector)
@@ -637,12 +671,12 @@ export class Entity {
                 return result
             }
         ))
-        let stmt = getKnexInstance().select(func())
+        let stmt = new QueryBuilder().select(func())
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
-        let resultData: any = await stmt
-        let dualInstance = Dual.parseRaw(resultData[0] as SimpleObject)
+        let resultData: any = await getKnexInstance().raw(stmt.toString())
+        let dualInstance = Dual.parseRaw(resultData[0][0] as SimpleObject)
         let str = "data" as keyof Dual;
         return dualInstance[str]
     }

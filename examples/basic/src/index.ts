@@ -1,4 +1,4 @@
-import {configure, select} from '../../../dist/'
+import {configure} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
@@ -41,10 +41,10 @@ let run = async() =>{
     /**
      *  find records in coding style 2
      */
-    let s = Shop.selector()
-    //FIXME: remove the toString() later
-    let records2 = await select(s.all).from(s.source).where(s.id, '>', 3)
-    console.log('queried2:', records2)
+    // let s = Shop.selector()
+    // //FIXME: remove the toString() later
+    // let records2 = await select(s.all).from(s.source).where(s.id, '>', 3)
+    // console.log('queried2:', records2)
 
     /**
      * find records with relations (computed field)
