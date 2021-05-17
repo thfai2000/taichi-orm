@@ -6,10 +6,11 @@ export { PropertyType, Types }
 const sqlParser = require('js-sql-parser');
 
 export type Config = {
-    knexConfig: object,
+    knexConfig: Knex.Config,
     models?: {[key:string]: typeof Entity}
+    createModels?: boolean,
     modelsPath?: string,
-    dbSchemaPath?: string,
+    outputSchemaPath?: string,
     entityNameToTableName?: (params:string) => string,
     tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
@@ -18,7 +19,8 @@ export type Config = {
 }
 
 // the new orm config
-const config: Config = {
+export const config: Config = {
+    createModels: false,
     knexConfig: {client: 'mysql2'}
 }
 
@@ -49,7 +51,7 @@ export class Schema {
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
+            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
         }
         return ''
     }
@@ -117,7 +119,7 @@ export const configure = async function(newConfig: Config){
     Object.assign(config, newConfig)
     let tables: Schema[] = []
 
-    const register = (entityName: string, entityClass: any) => {
+    const registerEntity = (entityName: string, entityClass: any) => {
         let s = new Schema(entityName);
         if(entityClass.register){
             tables.push(s)
@@ -130,7 +132,7 @@ export const configure = async function(newConfig: Config){
     }
     
     //register special Entity Dual
-    register(Dual.name, Dual)
+    registerEntity(Dual.name, Dual)
     //register models by path
     if(config.modelsPath){
         let files = fs.readdirSync(config.modelsPath)
@@ -142,7 +144,7 @@ export const configure = async function(newConfig: Config){
                 let p = path.split('/')
                 let entityName = p[p.length - 1]
                 let entityClass = require(path)
-                register(entityName, entityClass.default);
+                registerEntity(entityName, entityClass.default);
             }
         }))
     }
@@ -150,14 +152,22 @@ export const configure = async function(newConfig: Config){
     if(config.models){
         let models = config.models
         Object.keys(models).forEach(key => {
-            register(key, models[key]);
+            registerEntity(key, models[key]);
         })
     }
+
+    let sqlStmt = tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';'
+
     //write schemas into sql file
-    if(config.dbSchemaPath){
-        let path = config.dbSchemaPath
-        fs.writeFileSync(path, tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';' )
+    if(config.outputSchemaPath){
+        let path = config.outputSchemaPath
+        fs.writeFileSync(path, sqlStmt )
         // console.log('schemas', Object.keys(schemas))
+    }
+
+    //create tables
+    if(config.createModels){
+        await getKnexInstance().raw(sqlStmt)
     }
 }
 
