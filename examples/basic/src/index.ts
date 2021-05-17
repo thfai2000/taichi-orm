@@ -1,5 +1,5 @@
 import {configure, select} from '../../../dist/'
-import {camelCase, snakeCase} from 'lodash'
+import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
 let run = async() =>{
@@ -7,11 +7,11 @@ let run = async() =>{
     // configure the orm
     await configure({
         modelsPath: process.cwd() + '/dist/models/',
-        dbSchemaPath: process.cwd() + '/dist/db-schema.sql',
+        outputSchemaPath: process.cwd() + '/dist/db-schema.sql',
         entityNameToTableName: (className: string) => snakeCase(className),
-        tableNameToEntityName: (tableName: string) => camelCase(tableName),
+        // tableNameToEntityName: (tableName: string) => camelCase(tableName),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        fieldNameToPropName: (attributeName: string) => camelCase(attributeName),
+        // fieldNameToPropName: (attributeName: string) => camelCase(attributeName),
         knexConfig: {
             client: 'mysql2',
             connection: {
@@ -51,7 +51,7 @@ let run = async() =>{
      * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products()).where(root.id, '=', 2)
+        return stmt.select(root.all, root.$.products()).where(root.id, '=', 'aaaa')
     })
     console.log('queried3:', records3)
 
@@ -75,9 +75,48 @@ let run = async() =>{
     /**
      * insert records
      */  
-    // let record_inserted = await Shop.create({
+    let record_inserted = await Shop.createOne({
+        location: 'Malaysia'
+    })
+    console.log('inserted', record_inserted)
+
+
+    // let shops = [
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //         ]
+    //     },
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //             {colors: []}
+    //         ]
+    //     }
+    // ]
+
+    // shops.forEach(s => {
+
+    //     await Shop.create(s, (stmt, selector) => {
+    //         stmt.where(selector.id, '=', )
+    //     })
+
+    //     await Shop.update(s, (stmt, selector) => {
+    //         return stmt.where(selector.id, '=', )
+    //     }, ({products}) => {
+    //         products(5).colors(10)
+    //     })
     // })
-    // console.log('inserted', record)
+
+    // Shop.mutate(data, (stmt, $) => {
+    //     stmt.update($.all, $.products( data.products, (stmt, $) => {
+    //         stmt.update($.all, $.colors() )
+    //     })).where( )
+    // })
+
+    // shop.save()       // create or update
 
 }
 

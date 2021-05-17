@@ -1,9 +1,10 @@
 // import { Builder } from './Builder'
 import knex, { Knex } from 'knex'
-import * as fs from 'fs';
+import * as fs from 'fs'
 import { PropertyType, Types } from './PropertyType'
 export { PropertyType, Types }
-const sqlParser = require('js-sql-parser');
+import { v4 as uuidv4 } from 'uuid'
+const sqlParser = require('js-sql-parser')
 
 export type Config = {
     knexConfig: Knex.Config,
@@ -12,20 +13,64 @@ export type Config = {
     modelsPath?: string,
     outputSchemaPath?: string,
     entityNameToTableName?: (params:string) => string,
-    tableNameToEntityName?: (params:string) => string,
+    // tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
-    fieldNameToPropName?: (params:string) => string,
-    suppressErrorOnPropertyNotFound?: string
+    // fieldNameToPropName?: (params:string) => string,
+    suppressErrorOnPropertyNotFound?: string,
+    guidColumnName?: string
 }
 
 // the new orm config
 export const config: Config = {
     createModels: false,
-    knexConfig: {client: 'mysql2'}
+    knexConfig: {client: 'mysql2'},
 }
+
+const guidColumnName = () => config.guidColumnName ?? '__guid__'
+
 
 // a global knex instance
 const getKnexInstance = () => knex(config.knexConfig)
+
+const startTransaction = async(func: (trx: Knex.Transaction) => any, existingTrx?: Knex.Transaction ): Promise<any> => {
+    let knex = getKnexInstance()
+    return await new Promise((resolve, reject)=> {
+        const useTrx = (trx: Knex.Transaction) => {
+            try{
+                const AsyncFunction = (async () => {}).constructor;
+                if(func instanceof AsyncFunction){
+                    func(trx).then(
+                        (result: any) => {
+                            trx.commit()
+                            resolve(result)
+                        },
+                        (error: any) => {
+                            trx.rollback()
+                            reject(error)
+                        }
+                    )
+                }else{
+                    let result = func(trx)
+                    trx.commit()
+                    resolve(result)
+                }
+            }catch(error){
+                trx.rollback()
+                reject(error)
+            }
+        }
+
+        if(existingTrx){
+            // use existing
+            useTrx(existingTrx)
+        } else {
+            // use new 
+            knex.transaction( (trx) => {
+                useTrx(trx)
+            })
+        }
+    })
+}
 
 let schemas: {
     [key: string]: Schema
@@ -37,6 +82,7 @@ export class Schema {
     entityName: string
     namedProperties: NamedProperty[]
     primaryKey: NamedProperty
+    guid: NamedProperty
 
     constructor(entityName: string){
         this.entityName = entityName
@@ -46,7 +92,21 @@ export class Schema {
             Types.PrimaryKey(),
             null
         )
-        this.namedProperties = [this.primaryKey]
+        this.guid = new NamedProperty(
+            guidColumnName(),
+            {
+                create(){
+                    return ['VARCHAR(100)', 'NULL', 'UNIQUE']
+                },
+                parseRaw: x => x,
+                parseProperty: x => x
+            },
+            null,
+            {
+                skipFieldNameConvertion: true
+            }
+        )
+        this.namedProperties = [this.primaryKey, this.guid]
     }
 
     createTableStmt(){
@@ -92,6 +152,9 @@ export interface SQLString{
 
 export type ComputedFunctionDefinition = (selector: Selector<any>, queryFunction: QueryFunction, ...args: any[]) => SQLString
 
+export type NamedPropertyOptions = {
+    skipFieldNameConvertion?: boolean
+}
 
 export class NamedProperty {
     
@@ -99,7 +162,7 @@ export class NamedProperty {
         public name: string,
         public definition: PropertyType,
         public computedFunc: ComputedFunctionDefinition | null,
-        public options?: any){
+        public options?: NamedPropertyOptions){
             this.name = name
             this.definition = definition
             this.computedFunc = computedFunc
@@ -111,7 +174,11 @@ export class NamedProperty {
         }
 
     get fieldName(){
-        return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
+        if(this.options?.skipFieldNameConvertion){
+            return this.name
+        } else {
+            return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
+        }
     }
 }
 
@@ -525,10 +592,35 @@ export class Entity {
         return selector
     }
 
+    static async createOne<T extends typeof Entity>(data: SimpleObject, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
+        return await startTransaction( async (trx) => {
+            const knex = getKnexInstance()
+            let guid = uuidv4()
+            let stmt = knex(this.schema.tableName).transacting(trx).insert(
+                Object.assign({},data,{[guidColumnName()]: guid})
+            )
+            console.log('======== INSERT =======')
+            console.log(stmt.toString())
+            console.log('========================')
+            await stmt
+            return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid}))
+        }, existingTrx)
+    }
+
+    /**
+     * find one record
+     * @param applyFilter 
+     * @returns the found record
+     */
+    static async findOne<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<InstanceType<T>>{
+        let records = await this.find<T>(applyFilter)
+        return records[0]
+    }
+
     /**
      * find array of records
      * @param applyFilter 
-     * @returns 
+     * @returns the found record
      */
     static async find<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<Array<InstanceType<T>>>{
         let dualSelector = Dual.newSelector()
