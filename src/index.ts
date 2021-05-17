@@ -2,25 +2,25 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs';
 import { PropertyType, Types } from './PropertyType'
-import { values } from 'lodash';
 export { PropertyType, Types }
 const sqlParser = require('js-sql-parser');
 
 export type Config = {
-    modelsPath: string,
-    dbSchemaPath: string,
+    knexConfig: Knex.Config,
+    models?: {[key:string]: typeof Entity}
+    createModels?: boolean,
+    modelsPath?: string,
+    outputSchemaPath?: string,
     entityNameToTableName?: (params:string) => string,
     tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
     fieldNameToPropName?: (params:string) => string,
-    suppressErrorOnPropertyNotFound?: string,
-    knexConfig: object
+    suppressErrorOnPropertyNotFound?: string
 }
 
 // the new orm config
-const config: Config = {
-    modelsPath: 'models/',
-    dbSchemaPath: 'db-schema.sql',
+export const config: Config = {
+    createModels: false,
     knexConfig: {client: 'mysql2'}
 }
 
@@ -51,7 +51,7 @@ export class Schema {
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
+            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
         }
         return ''
     }
@@ -117,11 +117,9 @@ export class NamedProperty {
 
 export const configure = async function(newConfig: Config){
     Object.assign(config, newConfig)
-
-    let files = fs.readdirSync(config.modelsPath)
     let tables: Schema[] = []
 
-    const register = (entityName: string, entityClass: any) => {
+    const registerEntity = (entityName: string, entityClass: any) => {
         let s = new Schema(entityName);
         if(entityClass.register){
             tables.push(s)
@@ -132,26 +130,45 @@ export const configure = async function(newConfig: Config){
             entityClass.postRegister(s)
         }
     }
-
+    
     //register special Entity Dual
-    register(Dual.name, Dual)
+    registerEntity(Dual.name, Dual)
+    //register models by path
+    if(config.modelsPath){
+        let files = fs.readdirSync(config.modelsPath)
+        await Promise.all(files.map( async(file) => {
+            if(file.endsWith('.js')){
+                let path = config.modelsPath + '/' + file
+                path = path.replace(/\.js$/,'')
+                console.log('load model file:', path)
+                let p = path.split('/')
+                let entityName = p[p.length - 1]
+                let entityClass = require(path)
+                registerEntity(entityName, entityClass.default);
+            }
+        }))
+    }
+    //register models 
+    if(config.models){
+        let models = config.models
+        Object.keys(models).forEach(key => {
+            registerEntity(key, models[key]);
+        })
+    }
 
-    await Promise.all(files.map( async(file) => {
-        if(file.endsWith('.js')){
-            let path = config.modelsPath + '/' + file
-            path = path.replace(/\.js$/,'')
-            console.log('load model file:', path)
-            let p = path.split('/')
-            let entityName = p[p.length - 1]
-            let entityClass = require(path)
-            register(entityName, entityClass.default);
-            
-        }
-    }))
-    // let schemaFilename = new Date().getTime() + '.sql'
-    let path = config.dbSchemaPath //+ '/' + schemaFilename
-    fs.writeFileSync(path, tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';' )
-    console.log('schemas:', Object.keys(schemas))
+    let sqlStmt = tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';'
+
+    //write schemas into sql file
+    if(config.outputSchemaPath){
+        let path = config.outputSchemaPath
+        fs.writeFileSync(path, sqlStmt )
+        // console.log('schemas', Object.keys(schemas))
+    }
+
+    //create tables
+    if(config.createModels){
+        await getKnexInstance().raw(sqlStmt)
+    }
 }
 
 export const select = function(...args: any[]) : Knex.QueryBuilder {

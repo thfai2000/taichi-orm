@@ -1,4 +1,4 @@
-import { Entity, Selector, SimpleObject, makeid, SQLString } from "."
+import { Entity, config, SimpleObject, makeid, SQLString } from "."
 
 export interface PropertyType {
     // isPrimitive: boolean
@@ -9,18 +9,17 @@ export interface PropertyType {
     parseProperty: (propertyvalue: any) => any
 }
 
+const client = () => config.knexConfig.client!.toString()
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
+const autoIncrement = () => client().startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
+const jsonArrayAgg = () => client().startsWith('sqlite')? 'json_group_array': 'JSON_ARRAYAGG'
 
-// export type ColumnInfo = {
-//     keyName: string,
-//     valueName: string
-// }
 
 export const Types = {
     PrimaryKey(): PropertyType{
         return {
             // isPrimitive: true,
-            create: () => ['BIGINT', nullableText(false), 'AUTO_INCREMENT', 'PRIMARY KEY'],
+            create: () => ['INTEGER', nullableText(false), 'PRIMARY KEY', autoIncrement()],
             parseRaw(rawValue): any{
                 return parseInt(rawValue)
             },
@@ -102,7 +101,15 @@ export const Types = {
                     }) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(rawValue: SimpleObject): InstanceType<T>{
+            parseRaw(rawValue: any): InstanceType<T>{
+                let parsed: SimpleObject
+                if(typeof rawValue === 'string'){
+                    parsed = JSON.parse(rawValue)
+                } else if(typeof rawValue === 'object'){
+                    parsed = rawValue
+                } else {
+                    throw new Error('It is not supported.')
+                }
                 return entityClass.parseRaw(rawValue)
             },
             parseProperty(propertyvalue: InstanceType<T>): any {
@@ -118,13 +125,21 @@ export const Types = {
                 throw new Error('Field creation is not allowed.')
             },
             readTransform: (query: SQLString, columns: Array<string>) => {
-                let jsonify =  `SELECT IFNULL(JSON_ARRAYAGG(JSON_OBJECT(${
+                let jsonify =  `SELECT IFNULL(${jsonArrayAgg()}(JSON_OBJECT(${
                         columns.map(c => `'${c}', ${c}`).join(',')
                     })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(rawValue: Array<SimpleObject>): Array<InstanceType<T>>{
-                return rawValue.map( raw => {
+            parseRaw(rawValue: any): Array<InstanceType<T>>{
+                let parsed: Array<SimpleObject>
+                if(typeof rawValue === 'string'){
+                    parsed = JSON.parse(rawValue)
+                } else if(Array.isArray(rawValue)){
+                    parsed = rawValue
+                } else {
+                    throw new Error('It is not supported.')
+                }
+                return parsed.map( raw => {
                     return entityClass.parseRaw(raw)
                 })
             },
