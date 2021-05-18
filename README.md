@@ -1,12 +1,15 @@
 
 
+A new way to deal with your Data Logic.
+
+
 !!!!!!!! Don't Use it !!!!!!!!
 It is still under heavy development. 
 Please feel free to express your ideas.
 
 # Introduction
 
-- Introduce a concept `ComputedProperty`
+- Introduce a concept `ComputedProperty`for Data Model
   - It is a Entity's property. It consist of data logics defined using SQL builder
   - Once you orgazine your data logics in form of `ComputedProp` that is highly resuable and extensible
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
@@ -34,7 +37,7 @@ class Shop extends Entity{
     // Define a Computed Property
     schema.computedProp('productCount', Types.Number(), (shop) => {
         let p = Product.selector()
-        return p.count().where(shop.id, '=', p.shopId)
+        return select('COUNT(*)').from(p.source).where(shop.id, '=', p.shopId)
     })
   }
 
