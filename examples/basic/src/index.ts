@@ -51,7 +51,7 @@ let run = async() =>{
      * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products()).where(root.id, '=', 'aaaa')
+        return stmt.select(root.all, root.$.products())
     })
     console.log('queried3:', records3)
 

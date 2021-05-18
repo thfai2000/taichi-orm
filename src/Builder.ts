@@ -1,8 +1,11 @@
 import knex, { Knex } from "knex"
-import { SQLString, CompiledNamedProperty, CompiledNamedPropertyWithSubQuery } from "."
+import { getKnexInstance, SQLString, CompiledNamedProperty, CompiledNamedPropertyWithSubQuery } from "."
 
 export type QueryBuilderAccessableField = string | Function | CompiledNamedProperty | CompiledNamedPropertyWithSubQuery
 
+// export const raw = (rawSql: string, args: any[]) => {
+    
+// }
 
 const resolveItem = (a: any, withoutAs: boolean = false) => {
     if(a instanceof CompiledNamedPropertyWithSubQuery){
@@ -57,21 +60,30 @@ export class QueryBuilder implements SQLString{
         return this
     }
 
+    whereRaw(rawSql: string, args: any[]){
+        let r = getKnexInstance().raw(rawSql, args.map(a => resolveItem(a, true)))
+        this.whereItems = this.whereItems.concat([r.toString()])
+        return this
+    }
+
     where(...args: any[]){
         args = args.map(a => resolveItem(a, true))
         if(args.length === 1 && args[0] instanceof Object){
-            if(args[0].toString){
-                //knex raw object
-                this.whereItems = this.whereItems.concat(args[0].toString())
-            } else {
-                let map = args[0]
-                let items = Object.keys(map).map( (key) => `${key} = ${map[key]}`)
-                this.whereItems = this.whereItems.concat(items)
-            }
+            let map = args[0] as {[key:string]:any}
+            let items = Object.keys(map).map( (key) => `?? = ?`)
+            let values = Object.keys(map).reduce( (params, key) => {
+                let arr = [key, map[key]]
+                return params.concat(arr)
+            }, [] as any[])
+
+            let raw = getKnexInstance().raw( items.join(' AND '), values)
+
+            this.whereItems = this.whereItems.concat([raw.toString()])
+
         } else if(args.length === 1 && typeof args[0] === 'string'){
-            this.whereItems = this.whereItems.concat(args[0])
+            this.whereItems = this.whereItems.concat([args[0]])
         } else {
-            this.whereItems = this.whereItems.concat(args.join(' '))
+            this.whereItems = this.whereItems.concat([args.join(' ')])
         }
         return this
     }

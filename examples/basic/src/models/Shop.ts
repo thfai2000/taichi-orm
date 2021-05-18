@@ -1,13 +1,18 @@
-import { update } from 'lodash';
-import {Entity, Types, Schema, Dual} from '../../../../dist';
+import {Entity, Types, Schema, select} from '../../../../dist';
 import Product from './Product';
 
 export default class Shop extends Entity{
 
     static register(schema: Schema){
         schema.prop('location', Types.String(255))
-        schema.computedProp('products', Types.Array(Product), (shop, injectFunc) => shop.hasMany(Product, 'shopId', injectFunc) )
+
+        schema.computedProp('products', Types.Array(Product), (shop, applyFilters) => shop.hasMany(Product, 'shopId', applyFilters) )
         
+        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+            let p = Product.selector()
+            return select('COUNT(*)').from(p.source).where(shop.$.id, '=', p.$.shopId)
+        })
+
         // When Entity.create, Entity.update, Entity.delete is called
         // the ORM will evalute the property (or computedProp)
         // `UPDATE FROM products p SET name = newName WHERE id = ?`

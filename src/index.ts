@@ -30,7 +30,7 @@ const guidColumnName = () => config.guidColumnName ?? '__guid__'
 
 
 // a global knex instance
-const getKnexInstance = () => knex(config.knexConfig)
+export const getKnexInstance = () => knex(config.knexConfig)
 
 const startTransaction = async(func: (trx: Knex.Transaction) => any, existingTrx?: Knex.Transaction ): Promise<any> => {
     let knex = getKnexInstance()
@@ -238,12 +238,8 @@ export const configure = async function(newConfig: Config){
     }
 }
 
-// export const select = function(...args: any[]) : Knex.QueryBuilder {
-//     return getKnexInstance().select(args)
-// }
-
-export const raw = function(first: string, ...args: any[]) : any{
-    return getKnexInstance().raw(first, ...args)
+export const select = function(...args: Array<QueryBuilderAccessableField>) : QueryBuilder {
+    return new QueryBuilder().select(...args)
 }
 
 export type PropSelector = {
@@ -528,14 +524,14 @@ export class Selector<T extends typeof Entity> {
      // (SQL template) create a basic belongsTo prepared statement 
     hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        let stmt = new QueryBuilder().from(selector.source).where(raw("?? = ??", [this.id, selector.$[propName]]))
+        let stmt = new QueryBuilder().from(selector.source).whereRaw("?? = ??", [this.id, selector.$[propName]])
         return applyFilter(stmt, selector)
     }
 
     // (SQL template) create a basic belongsTo prepared statement 
     belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        let stmt = new QueryBuilder().from(selector.source).where(raw("?? = ??", [selector.id, this.$[propName]]))
+        let stmt = new QueryBuilder().from(selector.source).whereRaw("?? = ??", [selector.id, this.$[propName]])
         return applyFilter(stmt, selector)
     }
 
@@ -631,13 +627,21 @@ export class Entity {
             const knex = getKnexInstance()
             let guid = uuidv4()
             let stmt = knex(this.schema.tableName).transacting(trx).insert(
-                Object.assign({},data,{[guidColumnName()]: guid})
+                // Object.assign({},data,{[guidColumnName()]: guid})
+                data
             )
             console.log('======== INSERT =======')
             console.log(stmt.toString())
             console.log('========================')
             await stmt
-            return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid}))
+            // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
+            
+            knex(this.schema.tableName).transacting(trx).insert(
+                // Object.assign({},data,{[guidColumnName()]: guid})
+                data
+            )
+            select('LAST_INSERT_ID()')
+
         }, existingTrx)
     }
 
