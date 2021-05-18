@@ -3,7 +3,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { PropertyType, Types } from './PropertyType'
 export { PropertyType, Types }
-import { v4 as uuidv4 } from 'uuid'
+// import { v4 as uuidv4 } from 'uuid'
 const sqlParser = require('js-sql-parser')
 
 export type Config = {
@@ -17,7 +17,7 @@ export type Config = {
     propNameTofieldName?: (params:string) => string,
     // fieldNameToPropName?: (params:string) => string,
     suppressErrorOnPropertyNotFound?: string,
-    guidColumnName?: string
+    // guidColumnName?: string
 }
 
 // the new orm config
@@ -26,7 +26,7 @@ export const config: Config = {
     knexConfig: {client: 'mysql2'},
 }
 
-const guidColumnName = () => config.guidColumnName ?? '__guid__'
+// const guidColumnName = () => config.guidColumnName ?? '__guid__'
 
 
 // a global knex instance
@@ -82,7 +82,7 @@ export class Schema {
     entityName: string
     namedProperties: NamedProperty[]
     primaryKey: NamedProperty
-    guid: NamedProperty
+    // guid: NamedProperty
 
     constructor(entityName: string){
         this.entityName = entityName
@@ -92,21 +92,21 @@ export class Schema {
             Types.PrimaryKey(),
             null
         )
-        this.guid = new NamedProperty(
-            guidColumnName(),
-            {
-                create(){
-                    return ['VARCHAR(100)', 'NULL', 'UNIQUE']
-                },
-                parseRaw: x => x,
-                parseProperty: x => x
-            },
-            null,
-            {
-                skipFieldNameConvertion: true
-            }
-        )
-        this.namedProperties = [this.primaryKey, this.guid]
+        // this.guid = new NamedProperty(
+        //     guidColumnName(),
+        //     {
+        //         create(){
+        //             return ['VARCHAR(100)', 'NULL', 'UNIQUE']
+        //         },
+        //         parseRaw: x => x,
+        //         parseProperty: x => x
+        //     },
+        //     null,
+        //     {
+        //         skipFieldNameConvertion: true
+        //     }
+        // )
+        this.namedProperties = [this.primaryKey]
     }
 
     createTableStmt(){
@@ -625,7 +625,7 @@ export class Entity {
     static async createOne<T extends typeof Entity>(data: SimpleObject, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
         return await startTransaction( async (trx) => {
             const knex = getKnexInstance()
-            let guid = uuidv4()
+            // let guid = uuidv4()
             let stmt = knex(this.schema.tableName).transacting(trx).insert(
                 // Object.assign({},data,{[guidColumnName()]: guid})
                 data
@@ -633,15 +633,11 @@ export class Entity {
             console.log('======== INSERT =======')
             console.log(stmt.toString())
             console.log('========================')
-            await stmt
+            await stmt //execute sql
             // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
-            
-            knex(this.schema.tableName).transacting(trx).insert(
-                // Object.assign({},data,{[guidColumnName()]: guid})
-                data
-            )
-            select('LAST_INSERT_ID()')
-
+            let insertedId = await knex.raw('SELECT LAST_INSERT_ID() AS id ').transacting(trx)
+            let actualId = insertedId[0][0].id
+            return this.findOne( (stmt, t) => stmt.where(t.id, '=', actualId), trx)
         }, existingTrx)
     }
 
@@ -650,8 +646,8 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static async findOne<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<InstanceType<T>>{
-        let records = await this.find<T>(applyFilter)
+    static async findOne<T extends typeof Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
+        let records = await this.find<T>(applyFilter, existingTrx)
         return records[0]
     }
 
@@ -660,7 +656,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static async find<T extends typeof Entity>(applyFilter?: QueryFunction): Promise<Array<InstanceType<T>>>{
+    static async find<T extends typeof Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<InstanceType<T>>>{
         let dualSelector = Dual.newSelector()
         let func = dualSelector.derivedProp(new NamedProperty(
             'data',
@@ -679,7 +675,11 @@ export class Entity {
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
-        let resultData: any = await getKnexInstance().raw(stmt.toString())
+        let KnexStmt = getKnexInstance().raw(stmt.toString())
+        if(existingTrx){
+            KnexStmt.transacting(existingTrx)
+        }
+        let resultData: any = await KnexStmt
         let dualInstance = Dual.parseRaw(resultData[0][0] as SimpleObject)
         let str = "data" as keyof Dual;
         return dualInstance[str]

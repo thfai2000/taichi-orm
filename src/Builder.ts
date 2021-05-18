@@ -104,14 +104,14 @@ export class QueryBuilder implements SQLString{
             selectItem = selectItem.concat('*')
         }
         // throw new Error('NYI')
-        return `SELECT ${selectItem.join(', ')}
-        ${this.fromItems.length > 0?'FROM':''}
-        ${this.fromItems.join(', ')}
-        ${this.whereItems.length > 0?'WHERE':''}
-        ${this.whereItems.join(', ')}
-        ${this.offsetValue === null?'':`OFFSET ${this.offsetValue}`}
-        ${this.limitValue === null?'':`LIMIT ${this.limitValue}`}
-        `
+        return `SELECT ${selectItem.join(', ')}${
+            this.fromItems.length > 0?' FROM ':''}${
+            this.fromItems.join(', ')}${
+            this.whereItems.length > 0?' WHERE ':''}${
+            this.whereItems.join(', ')}${
+            this.offsetValue === null?'':` OFFSET ${this.offsetValue} `}${
+            this.limitValue === null?'':` LIMIT ${this.limitValue} `
+        }`
     }
 }
 
