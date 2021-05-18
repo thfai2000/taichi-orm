@@ -54,15 +54,17 @@ await Shop.find( (stmt, root) => {
            .where(root.id, '=', 1)
 })
 // Output: [ Shop:{products:[...], productCount:5}, Shop:{products:[...], productCount:3} ...]
-
-
 ```
+Explain: 
+`root.$` is the dictionary of `computedProperty` of `Shop`. 
+`root.$.products` locate the computedProperty
 
-**Extensible**. The Computed Property accept filters and argurment. Lets change the ComputedPRop in above example.
+
+The data logics of Computed Property is **extensible**. Let's change the ComputedPRop in above example.
 ```javascript
 # file: models/Shop.js
 ...
-// Define a Computed Property which accept "applyFilters" that exposes the instance of the QueryBuilder
+// Define a Computed Property which accept "applyFilters"
 schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
     let p = Product.selector()
     return applyFilters(p.count().where(shop.id, '=', p.shopId))
@@ -78,11 +80,13 @@ await Shop.find( (stmt, root) => {
 })
 
 ```
+Explain:
+`applyFilters` can exposes the instance of the QueryBuilder
 
 
 Note:
 Inspired by **GraphQL**: `ComputedProperty` is similar to `GraphTypeResolver`.
-Inspired by Knex (**SQL builder**). SQL builder allows us to build data logics without any limitation.
+Inspired by **Knex** (SQL builder). SQL builder allows us to build data logics without any limitation.
 
 
 # Why we need it?
