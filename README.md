@@ -17,8 +17,73 @@ Please feel free to express your ideas.
 - (Soon) Data caching
 - (soon) Better Integration with **GraphQL** and **Restful** Server
 
+**Example**:
+```javascript
+//define a Data Model
+class Shop extends Entity{
+
+  static register(schema: Schema){
+
+    // Normal Property that map to real table field
+    schema.prop('location', Types.String(255))
+
+    // Define a Computed Property using common relation template
+    schema.computedProp('products', Types.Array(Product), 
+      (shop, applyFilters) => shop.hasMany(Product, 'shopId', applyFilters) )
+
+    // Define a Computed Property
+    schema.computedProp('productCount', Types.Number(), (shop) => {
+        let p = Product.selector()
+        return p.count().where(shop.id, '=', p.shopId)
+    })
+  }
+
+}
+
+class Product extends Entity{
+  static register(schema: Schema){
+    ...
+  }
+}
+
+// Query. Find a Shop with id=1 and its Products and total number of Products. 
+await Shop.find( (stmt, root) => {
+    // stmt is an instance of QueryBuilder. 
+    // Now, we query both properties 'product' and 'productCount'
+    return stmt.select(root.all, root.$.products(), root.$.productCount())
+           .where(root.id, '=', 1)
+})
+// Output: [ Shop:{products:[...], productCount:5}, Shop:{products:[...], productCount:3} ...]
+
+
+```
+
+**Extensible**. The Computed Property accept filters and argurment. Lets change the ComputedPRop in above example.
+```javascript
+# file: models/Shop.js
+...
+// Define a Computed Property which accept "applyFilters" that exposes the instance of the QueryBuilder
+schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+    let p = Product.selector()
+    return applyFilters(p.count().where(shop.id, '=', p.shopId))
+})
+...
+
+//Let's query Shops with productCount of which the products in specific category
+await Shop.find( (stmt, root) => {
+    // stmt is an instance of QueryBuilder
+    return stmt.select(root.$.productCount( (pStmt, pRoot) => {
+      pStmt.where(pRoot.category, '=', 'Food') 
+    })).where(root.id, '=', 1)
+})
+
+```
+
+
+Note:
 Inspired by **GraphQL**: `ComputedProperty` is similar to `GraphTypeResolver`.
 Inspired by Knex (**SQL builder**). SQL builder allows us to build data logics without any limitation.
+
 
 # Why we need it?
 
@@ -165,7 +230,8 @@ let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCo
 # Concepts:
 
 - `ComputedFunction`
-  - It is a data selection logics. A SQL builder.
+  - It is a data selection logics
+  - defined by SQL builder
 
 - `NamedProperty`
   - Represent the property of a Data Model
