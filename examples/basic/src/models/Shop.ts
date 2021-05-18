@@ -1,4 +1,4 @@
-import {Entity, Types, Schema, select} from '../../../../dist';
+import {Entity, Types, Schema, select, raw} from '../../../../dist';
 import Product from './Product';
 
 export default class Shop extends Entity{
@@ -10,7 +10,7 @@ export default class Shop extends Entity{
         
         schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return select('COUNT(*)').from(p.source).where(shop.$.id, '=', p.$.shopId)
+            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
         })
 
         // When Entity.create, Entity.update, Entity.delete is called
