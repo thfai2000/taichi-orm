@@ -85,7 +85,6 @@ let run = async() =>{
 
     let record_inserted1 = await Product.createOne({
         name: 'hello',
-        // @ts-ignore
         shopId: record_inserted.id
     })
     console.log('inserted', record_inserted1)

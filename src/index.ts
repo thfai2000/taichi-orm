@@ -581,6 +581,8 @@ export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) =
 export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector<any>) => SQLString
 
 export class Entity {
+    [key: string]: any
+
     constructor(){
     }
 
@@ -619,7 +621,7 @@ export class Entity {
         return selector
     }
 
-    static async createOne<T extends typeof Entity>(data: SimpleObject, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
+    static async createOne<T extends Entity>(data: SimpleObject, existingTrx?: Knex.Transaction): Promise<T>{
         return await startTransaction( async (trx) => {
             const schema = this.schema
             const knex = getKnexInstance()
@@ -652,7 +654,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static async findOne<T extends typeof Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
+    static async findOne<T extends Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<T>{
         let records = await this.find<T>(applyFilter, existingTrx)
         return records[0]
     }
@@ -662,7 +664,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static async find<T extends typeof Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<InstanceType<T>>>{
+    static async find<T extends Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<T>>{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -784,3 +786,9 @@ export class Dual extends Entity {
 // }
 
 // select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
+
+
+
+// type d<Type> = {
+//     [key in keyof Type as `$${string}`] : boolean
+// }
