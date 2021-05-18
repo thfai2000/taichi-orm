@@ -1,4 +1,4 @@
-import {configure} from '../../../dist/'
+import {configure, getKnexInstance} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
@@ -23,7 +23,6 @@ let run = async() =>{
             }
         }
     })
-
     /**
      * Basic
      */

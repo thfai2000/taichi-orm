@@ -28,9 +28,16 @@ export const config: Config = {
 
 // const guidColumnName = () => config.guidColumnName ?? '__guid__'
 
-
 // a global knex instance
-export const getKnexInstance = () => knex(config.knexConfig)
+export const getKnexInstance = () => {
+    // multipleStatements must be true
+    let newKnexConfig = Object.assign( {}, config.knexConfig)
+    if(newKnexConfig.connection){
+        newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
+    }
+    
+    return knex(newKnexConfig)
+}
 
 const startTransaction = async(func: (trx: Knex.Transaction) => any, existingTrx?: Knex.Transaction ): Promise<any> => {
     let knex = getKnexInstance()
@@ -626,17 +633,16 @@ export class Entity {
         return await startTransaction( async (trx) => {
             const knex = getKnexInstance()
             // let guid = uuidv4()
-            let stmt = knex(this.schema.tableName).transacting(trx).insert(
-                // Object.assign({},data,{[guidColumnName()]: guid})
-                data
-            )
+
+            // Object.assign({},data,{[guidColumnName()]: guid})
+            let stmt = knex(this.schema.tableName).insert(data)
             console.log('======== INSERT =======')
             console.log(stmt.toString())
             console.log('========================')
             await stmt //execute sql
             // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
-            let insertedId = await knex.raw('SELECT LAST_INSERT_ID() AS id ').transacting(trx)
-            let actualId = insertedId[0][0].id
+            let insertedId = await knex.raw( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ').transacting(trx)
+            let actualId = insertedId[0][1][0].id
             return this.findOne( (stmt, t) => stmt.where(t.id, '=', actualId), trx)
         }, existingTrx)
     }
