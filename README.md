@@ -19,7 +19,7 @@ Please feel free to express your ideas.
 
 **Example**:
 ```javascript
-//define a Data Model
+// define a Data Model
 class Shop extends Entity{
 
   static register(schema: Schema){
@@ -62,7 +62,7 @@ Explain:
 
 The data logics of Computed Property is **extensible**. Let's change the ComputedPRop in above example.
 ```javascript
-# file: models/Shop.js
+// #models/Shop.js
 ...
 // Define a Computed Property which accept "applyFilters"
 schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
@@ -116,7 +116,7 @@ It generates several SQL statements
    # result: 1, 2
 ```
 But actually we can query the data in only one SQL statement instead:
-```
+```sql
   SELECT shop.id, 
     (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', id, 'colors', colors))
         FROM
@@ -136,7 +136,68 @@ More information can be found here:
 https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
 
 
-# Our solution
+# Installation
+
+!!!!!!!! Don't Use it !!!!!!!!
+It is still under heavy development.
+The npm package doesn't work now. It is out-dated. **The release target is Q4 of year 2021.**
+
+1. Install the package
+```bash
+npm install --save llorm
+```
+
+2. define your Data Models (or in separates files)
+3. call `configure` to use the setup the resposity and database connection
+
+```javascript
+// #index.js
+import {configure, Entity, Schema, Types} from 'llorm'
+
+class Shop extends Entity{
+    static register(schema: Schema){
+        schema.prop('location', Types.String(255))
+        schema.computedProp('products', Types.Array(Product), (shop, injectFunc) => shop.hasMany(Product, 'shopId', injectFunc) )
+    }
+}
+
+class Product extends Entity{
+    static register(schema: Schema){
+		schema.prop('name', Types.String(255, true))
+		schema.prop('createdAt', Types.Date())
+        schema.prop('shopId', Types.Number() )
+		schema.computedProp('shop', Types.Object(Shop), (product, applyFilters) => product.belongsTo(Shop, 'shopId', applyFilters) )
+	}
+}
+
+(async() =>{
+
+    // configure the orm
+    await configure({
+        models: { Shop, Product },
+        createModels: true,
+        knexConfig: {
+            client: 'sqlite3',
+            connection: {
+                filename: "file:memDb1?mode=memory&cache=shared",
+                flags: ['OPEN_URI', 'OPEN_SHAREDCACHE']
+            }
+        }
+    })
+
+    /**
+     * Basic
+     */
+    let myShops = await Shop.find()
+    console.log('HERE:', myShops)
+
+})()
+```
+
+4. Start your program
+```bash
+node index.js
+```
 
 ## Basic Usage
 ```javascript
@@ -268,7 +329,6 @@ let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCo
 
 We needs some passionate developers. If you are interested and agreed with the ideas, you may join our project. You can talk in the discussion board.
 
-# How to start 
 Currently, I work one the ORM together with the example because the example can proof the concept of the ORM.
 Tests will be added in the future once the specification is confirmed.
 
