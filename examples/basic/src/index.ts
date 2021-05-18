@@ -60,7 +60,7 @@ let run = async() =>{
      * find records with multiple level of relations
      */
     let records4 = await Shop.find( (stmt, shop) => {
-        return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
+        return stmt.select(shop.all, shop.$.productCount(), shop.$.products( (stmt2, prd) => {
             return stmt2.select(prd.all, prd.$.colors()).limit(4)
         }))
     })

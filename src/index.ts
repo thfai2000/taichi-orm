@@ -316,7 +316,7 @@ export class CompiledNamedProperty{
                 let ast = sqlParser.parse(subqueryString)
 
                 const santilize = (item: any): string => {
-                    let v = item.alias ?? item.value
+                    let v = item.alias ?? item.value ?? makeid(5)
                     v = v.replace(/[`']/g, '')
                     let p = v.split('.')
                     let name = p[p.length - 1]
