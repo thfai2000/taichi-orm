@@ -6,19 +6,19 @@ Please feel free to express your ideas.
 
 # Introduction
 
-- Rethink the ORM. 
-- Better maintenance. Reduce duplicated data logics
-- Efficient in data query execution. Reduce Request Response Tme
-- It relies on the popular package Knex (**SQL builder**). It allows us to build data logics without any limitation. 
-
-# Features
-- For entity schema, we can define `ComputedProperty` (or called `ComputedField`), it is like a sql template/builder. 
+- Introduce a concept `ComputedProperty`
+  - It is a Entity's property. It consist of data logics defined using SQL builder
+  - Once you orgazine your data logics in form of `ComputedProp` that is highly resuable and extensible
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
-  - During data query, the ComputedField is optionally selected and it even can be extended.
-  - Relation logics such as `HasMany` and `belongsTo` are pre-defined in term of `ComputedProperty` for usage.
+  - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`.
+- Efficient in data query execution. 
+  - Query all Entity and its relation data in one single SQL call.
 - Developed in **Typescript**.
 - (Soon) Data caching
 - (soon) Better Integration with **GraphQL** and **Restful** Server
+
+Inspired by **GraphQL**: `ComputedProperty` is similar to `GraphTypeResolver`.
+Inspired by Knex (**SQL builder**). SQL builder allows us to build data logics without any limitation.
 
 # Why we need it?
 
