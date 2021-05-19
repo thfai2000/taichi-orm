@@ -72,9 +72,11 @@ let run = async() =>{
     console.log('queried5:', records5)
 
 
-    let records6 = await Shop.find( (stmt, s) => stmt.where( raw('?? > ?', [s.$$.productCount(), 2]) )) 
+    let records6 = await Shop.find( (stmt, {all, $, $$}) => {
+        return stmt.select(all, $.products()).where( raw('?? > ?', [$$.productCount(), 2]))
+    })
     console.log('query6', records6)
-        
+    
     /**
      * insert records
      */  

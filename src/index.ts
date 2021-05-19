@@ -138,7 +138,7 @@ export class Schema {
         ))
     }
 
-    computedProp(name:string, definition: any, computedFunc: ComputedFunctionDefinition, options?: any){
+    computedProp(name:string, definition: any, computedFunc: ComputedFunction, options?: any){
         this.namedProperties.push(new NamedProperty(
             name,
             definition,
@@ -163,7 +163,7 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => SQLString
+export type ComputedFunction = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => SQLString
 
 export type NamedPropertyOptions = {
     skipFieldNameConvertion?: boolean
@@ -174,7 +174,7 @@ export class NamedProperty {
     constructor(
         public name: string,
         public definition: PropertyType,
-        public computedFunc: ComputedFunctionDefinition | null,
+        public computedFunc: ComputedFunction | null,
         public options?: NamedPropertyOptions){
             this.name = name
             this.definition = definition
