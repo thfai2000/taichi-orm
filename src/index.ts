@@ -209,105 +209,123 @@ export class NamedProperty {
                 const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
                 return x
             }
-            let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
-            let subqueryString = subquery.toString()
-            console.log('SubQuery', subqueryString)
+            let subquery: SQLString | Promise<SQLString> = computedFunc(rootSelector, applyFilterFunc, ...args)
 
-            // determine the column list
-            let ast = sqlParser.parse(subqueryString)
 
-            const santilize = (item: any): string => {
-                let v = item.alias ?? item.value ?? makeid(5)
-                v = v.replace(/[`']/g, '')
-                let p = v.split('.')
-                let name = p[p.length - 1]
-                return name
-            }
+            let process = (subquery: SQLString): Knex.Raw => {
+                let subqueryString = subquery.toString()
+                console.log('SubQuery', subqueryString)
 
-            let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
-            
-            // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
+                // determine the column list
+                let ast = sqlParser.parse(subqueryString)
 
-            // Important: more than one table has *
-            if(columns.includes('*')){
-
-                if(ast.value.from.type !== 'TableReferences'){
-                    throw new Error('Unexpected flow is reached.')
+                const santilize = (item: any): string => {
+                    let v = item.alias ?? item.value ?? makeid(5)
+                    v = v.replace(/[`']/g, '')
+                    let p = v.split('.')
+                    let name = p[p.length - 1]
+                    return name
                 }
-                let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
-                    if(obj.type === 'TableReference'){
-                        if(obj.value.type === 'TableFactor'){
-                            // determine the from table
-                            if( obj.value.value.type === 'Identifier'){
-                                return {type: 'table', value: santilize(obj.value.value) }
-                            }
-                        } else if( obj.value.value.type === 'SubQuery'){
-                            let selectItems = obj.value.value.value.selectItems
-                            if(selectItems.type === 'SelectExpr'){
-                                // determine any fields from derived table
-                                return selectItems.value.map( (item: any) => {
-                                    if( item.type === 'Identifier'){
-                                        return {type: 'field', value: santilize(item) }
-                                    }
-                                })
+
+                let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
+                
+                // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
+
+                // Important: more than one table has *
+                if(columns.includes('*')){
+
+                    if(ast.value.from.type !== 'TableReferences'){
+                        throw new Error('Unexpected flow is reached.')
+                    }
+                    let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
+                        if(obj.type === 'TableReference'){
+                            if(obj.value.type === 'TableFactor'){
+                                // determine the from table
+                                if( obj.value.value.type === 'Identifier'){
+                                    return {type: 'table', value: santilize(obj.value.value) }
+                                }
+                            } else if( obj.value.value.type === 'SubQuery'){
+                                let selectItems = obj.value.value.value.selectItems
+                                if(selectItems.type === 'SelectExpr'){
+                                    // determine any fields from derived table
+                                    return selectItems.value.map( (item: any) => {
+                                        if( item.type === 'Identifier'){
+                                            return {type: 'field', value: santilize(item) }
+                                        }
+                                    })
+                                } else throw new Error('Unexpected flow is reached.')
                             } else throw new Error('Unexpected flow is reached.')
                         } else throw new Error('Unexpected flow is reached.')
-                    } else throw new Error('Unexpected flow is reached.')
-                })
-                
-                
-                let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
-                if(tables.length > 0){
-                    let schemaArr = Object.keys(schemas).map(k => schemas[k])
-                    let selectedSchemas = tables.map(t => {
-                        let s = schemaArr.find(s => s.tableName === t) 
-                            if(!s)
-                            throw new Error(`Table [${t}] is not found.`)
-                        return s
                     })
-                    let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
-                    columns = columns.concat(all)
-                }
-                
-                columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
-                
-                //determine the distinct set of columns
-                columns = columns.filter(n => n !== '*')
-                let fullSet = new Set(columns)
-                columns = [...fullSet]
-            
-                
-                // going to replace star into all column names
-                if( ast.value.selectItems.type !== 'SelectExpr'){
-                    throw new Error('Unexpected flow is reached.')
-                } else {
-                    //remove * element
-                    let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
                     
-                    let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
+                    
+                    let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
+                    if(tables.length > 0){
+                        let schemaArr = Object.keys(schemas).map(k => schemas[k])
+                        let selectedSchemas = tables.map(t => {
+                            let s = schemaArr.find(s => s.tableName === t) 
+                                if(!s)
+                                throw new Error(`Table [${t}] is not found.`)
+                            return s
+                        })
+                        let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
+                        columns = columns.concat(all)
+                    }
+                    
+                    columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
+                    
+                    //determine the distinct set of columns
+                    columns = columns.filter(n => n !== '*')
+                    let fullSet = new Set(columns)
+                    columns = [...fullSet]
+                
+                    
+                    // going to replace star into all column names
+                    if( ast.value.selectItems.type !== 'SelectExpr'){
+                        throw new Error('Unexpected flow is reached.')
+                    } else {
+                        //remove * element
+                        let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
+                        
+                        let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
 
-                    //add columns element
-                    ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
-                        return {
-                            type: "Identifier",
-                            value: name,
-                            alias: null,
-                            hasAs: null
-                        }
-                    })]
+                        //add columns element
+                        ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
+                            return {
+                                type: "Identifier",
+                                value: name,
+                                alias: null,
+                                hasAs: null
+                            }
+                        })]
+                    }
+
+                    subqueryString = sqlParser.stringify(ast)
                 }
 
-                subqueryString = sqlParser.stringify(ast)
+                if(!namedProperty.definition.readTransform){
+                    if(columns.length > 1){
+                        throw new Error('PropertyType doesn\'t allow multiple column values.')
+                    }
+                    return getKnexInstance().raw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
+                } else {
+                    let transformed = namedProperty.definition.readTransform(subqueryString, columns)
+                    return getKnexInstance().raw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
+                }
             }
 
-            if(!namedProperty.definition.readTransform){
-                if(columns.length > 1){
-                    throw new Error('PropertyType doesn\'t allow multiple column values.')
-                }
-                return getKnexInstance().raw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
+            if(subquery instanceof Promise){
+                return new Promise<Knex.Raw>( (resolve, reject)=> {
+                    if(subquery instanceof Promise){
+                        subquery.then((query: SQLString)=>{
+                            resolve(process(query))
+                        },reject)
+                    } else {
+                        throw new Error('Unexpected flow. Subquery is updated.')
+                    }
+                })
             } else {
-                let transformed = namedProperty.definition.readTransform(subqueryString, columns)
-                return getKnexInstance().raw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
+                return process(subquery)
             }
         }
 
@@ -612,7 +630,7 @@ export class Selector{
     // }
 }
 
-export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw
+export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw | Promise<Knex.Raw>
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
 
@@ -671,7 +689,7 @@ export class Database{
         dualSelector.register(prop)
         // console.log('aaaaaaaaaaa', dualSelector.$.data())
 
-        let stmt = getKnexInstance().select( dualSelector.$.data() )
+        let stmt = getKnexInstance().select( await dualSelector.$.data() )
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
