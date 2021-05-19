@@ -105,20 +105,6 @@ export class Schema {
             Types.PrimaryKey(),
             null
         )
-        // this.guid = new NamedProperty(
-        //     guidColumnName(),
-        //     {
-        //         create(){
-        //             return ['VARCHAR(100)', 'NULL', 'UNIQUE']
-        //         },
-        //         parseRaw: x => x,
-        //         parseProperty: x => x
-        //     },
-        //     null,
-        //     {
-        //         skipFieldNameConvertion: true
-        //     }
-        // )
         this.namedProperties = [this.primaryKey]
     }
 
@@ -150,7 +136,7 @@ export class Schema {
 
 export function makeid(length: number) {
     var result           = [];
-    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
     var charactersLength = characters.length;
     for ( var i = 0; i < length; i++ ) {
       result.push(characters.charAt(Math.floor(Math.random() * 
@@ -194,134 +180,138 @@ export class NamedProperty {
         }
     }
 
+    compileAs_(rootSelector: Selector){
+        let itself = this
+        if(this.computedFunc){
+            throw new Error('Computed Property cannot be compiled as normal field.')
+        } 
+        let tableAlias = rootSelector.tableAlias
+        let fieldName = this.fieldName
+        
+        return `${tableAlias}.${fieldName}`
+    }
 
-    compile(rootSelector: Selector){
+    compileAs$(rootSelector: Selector, withAlias: boolean){
         let itself = this
         if(!this.computedFunc){
-            let tableAlias = rootSelector.tableAlias
-            let fieldName = this.fieldName
-            
-            rootSelector._[itself.name] =  `${tableAlias}.${fieldName}`
-            
-        } else {
-            let computedFunc = this.computedFunc
-            let namedProperty = this
-            let fieldAlias = metaAlias(namedProperty)
+            throw new Error('Normal Property cannot be compiled as computed field.')
+        }
+        let computedFunc = this.computedFunc
+        let namedProperty = this
+        let fieldAlias = metaAlias(namedProperty)
 
-            const makeFn = (withAlias: boolean) => (queryFunction?: QueryFunction, ...args: any[]) => {
-                const applyFilterFunc: QueryFunction = (stmt, selector) => {
-                    if(queryFunction && !(queryFunction instanceof Function)){
-                        console.log(queryFunction)
-                        throw new Error('Likely that your ComputedProperty are not called in the select query.')
-                    }
-                    const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
-                    return x
+        const makeFn = (withAlias: boolean) => (queryFunction?: QueryFunction, ...args: any[]) => {
+            const applyFilterFunc: QueryFunction = (stmt, selector) => {
+                if(queryFunction && !(queryFunction instanceof Function)){
+                    console.log(queryFunction)
+                    throw new Error('Likely that your ComputedProperty are not called in the select query.')
                 }
-                let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
-                let subqueryString = subquery.toString()
-                console.log('SubQuery', subqueryString)
+                const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
+                return x
+            }
+            let subquery = computedFunc(rootSelector, applyFilterFunc, ...args)
+            let subqueryString = subquery.toString()
+            console.log('SubQuery', subqueryString)
 
-                // determine the column list
-                let ast = sqlParser.parse(subqueryString)
+            // determine the column list
+            let ast = sqlParser.parse(subqueryString)
 
-                const santilize = (item: any): string => {
-                    let v = item.alias ?? item.value ?? makeid(5)
-                    v = v.replace(/[`']/g, '')
-                    let p = v.split('.')
-                    let name = p[p.length - 1]
-                    return name
-                }
-
-                let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
-                
-                // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
-
-                // Important: more than one table has *
-                if(columns.includes('*')){
-
-                    if(ast.value.from.type !== 'TableReferences'){
-                        throw new Error('Unexpected flow is reached.')
-                    }
-                    let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
-                        if(obj.type === 'TableReference'){
-                            if(obj.value.type === 'TableFactor'){
-                                // determine the from table
-                                if( obj.value.value.type === 'Identifier'){
-                                    return {type: 'table', value: santilize(obj.value.value) }
-                                }
-                            } else if( obj.value.value.type === 'SubQuery'){
-                                let selectItems = obj.value.value.value.selectItems
-                                if(selectItems.type === 'SelectExpr'){
-                                    // determine any fields from derived table
-                                    return selectItems.value.map( (item: any) => {
-                                        if( item.type === 'Identifier'){
-                                            return {type: 'field', value: santilize(item) }
-                                        }
-                                    })
-                                } else throw new Error('Unexpected flow is reached.')
-                            } else throw new Error('Unexpected flow is reached.')
-                        } else throw new Error('Unexpected flow is reached.')
-                    })
-                    
-                    
-                    let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
-                    if(tables.length > 0){
-                        let schemaArr = Object.keys(schemas).map(k => schemas[k])
-                        let selectedSchemas = tables.map(t => {
-                            let s = schemaArr.find(s => s.tableName === t) 
-                                if(!s)
-                                throw new Error(`Table [${t}] is not found.`)
-                            return s
-                        })
-                        let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
-                        columns = columns.concat(all)
-                    }
-                    
-                    columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
-                    
-                    //determine the distinct set of columns
-                    columns = columns.filter(n => n !== '*')
-                    let fullSet = new Set(columns)
-                    columns = [...fullSet]
-                
-                    
-                    // going to replace star into all column names
-                    if( ast.value.selectItems.type !== 'SelectExpr'){
-                        throw new Error('Unexpected flow is reached.')
-                    } else {
-                        //remove * element
-                        let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
-                        
-                        let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
-
-                        //add columns element
-                        ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
-                            return {
-                                type: "Identifier",
-                                value: name,
-                                alias: null,
-                                hasAs: null
-                            }
-                        })]
-                    }
-
-                    subqueryString = sqlParser.stringify(ast)
-                }
-
-                if(!namedProperty.definition.readTransform){
-                    if(columns.length > 1){
-                        throw new Error('PropertyType doesn\'t allow multiple column values.')
-                    }
-                    return getKnexInstance().raw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
-                } else {
-                    let transformed = namedProperty.definition.readTransform(subqueryString, columns)
-                    return getKnexInstance().raw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
-                }
+            const santilize = (item: any): string => {
+                let v = item.alias ?? item.value ?? makeid(5)
+                v = v.replace(/[`']/g, '')
+                let p = v.split('.')
+                let name = p[p.length - 1]
+                return name
             }
 
-            rootSelector.$[itself.name] =  makeFn(true)
-            rootSelector.$$[itself.name] =  makeFn(false)
+            let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
+            
+            // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
+
+            // Important: more than one table has *
+            if(columns.includes('*')){
+
+                if(ast.value.from.type !== 'TableReferences'){
+                    throw new Error('Unexpected flow is reached.')
+                }
+                let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
+                    if(obj.type === 'TableReference'){
+                        if(obj.value.type === 'TableFactor'){
+                            // determine the from table
+                            if( obj.value.value.type === 'Identifier'){
+                                return {type: 'table', value: santilize(obj.value.value) }
+                            }
+                        } else if( obj.value.value.type === 'SubQuery'){
+                            let selectItems = obj.value.value.value.selectItems
+                            if(selectItems.type === 'SelectExpr'){
+                                // determine any fields from derived table
+                                return selectItems.value.map( (item: any) => {
+                                    if( item.type === 'Identifier'){
+                                        return {type: 'field', value: santilize(item) }
+                                    }
+                                })
+                            } else throw new Error('Unexpected flow is reached.')
+                        } else throw new Error('Unexpected flow is reached.')
+                    } else throw new Error('Unexpected flow is reached.')
+                })
+                
+                
+                let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
+                if(tables.length > 0){
+                    let schemaArr = Object.keys(schemas).map(k => schemas[k])
+                    let selectedSchemas = tables.map(t => {
+                        let s = schemaArr.find(s => s.tableName === t) 
+                            if(!s)
+                            throw new Error(`Table [${t}] is not found.`)
+                        return s
+                    })
+                    let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
+                    columns = columns.concat(all)
+                }
+                
+                columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
+                
+                //determine the distinct set of columns
+                columns = columns.filter(n => n !== '*')
+                let fullSet = new Set(columns)
+                columns = [...fullSet]
+            
+                
+                // going to replace star into all column names
+                if( ast.value.selectItems.type !== 'SelectExpr'){
+                    throw new Error('Unexpected flow is reached.')
+                } else {
+                    //remove * element
+                    let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
+                    
+                    let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
+
+                    //add columns element
+                    ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
+                        return {
+                            type: "Identifier",
+                            value: name,
+                            alias: null,
+                            hasAs: null
+                        }
+                    })]
+                }
+
+                subqueryString = sqlParser.stringify(ast)
+            }
+
+            if(!namedProperty.definition.readTransform){
+                if(columns.length > 1){
+                    throw new Error('PropertyType doesn\'t allow multiple column values.')
+                }
+                return getKnexInstance().raw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
+            } else {
+                let transformed = namedProperty.definition.readTransform(subqueryString, columns)
+                return getKnexInstance().raw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
+            }
         }
+
+        return makeFn(withAlias)
     }
     
 
@@ -388,13 +378,13 @@ export const select = function(...args: Array<any>) : Knex.QueryBuilder {
     return getKnexInstance().select(...args)
 }
 
-export type FunctionSelector = {
-    [key: string] : CompiledFunction
-}
+// export type FunctionSelector = {
+//     [key: string] : CompiledFunction
+// }
 
-export type FieldSelector = {
-    [key: string] : string
-}
+// export type FieldSelector = {
+//     [key: string] : string
+// }
 
 // export class CompiledNamedPropertyWithSubQuery{
 //     compiledNamedProperty: CompiledNamedProperty
@@ -489,9 +479,11 @@ export class Selector{
     
     entityClass: typeof Entity
     schema: Schema
-    _: FieldSelector = {}
-    $: FunctionSelector = {}
-    $$: FunctionSelector = {}
+    derivedProps: Array<NamedProperty> = []
+    _: {[key: string] : string}
+    $: {[key: string] : CompiledFunction}
+    $$: {[key: string] : CompiledFunction}
+
     // table: string            // "table"
     tableAlias: string       // "abc"
 
@@ -502,6 +494,42 @@ export class Selector{
         this.schema = schema
         this.tableAlias = schema.entityName + '_' + makeid(5)
         this.entityClass = entityClass
+        let selector = this
+        this._ = new Proxy( {} ,{
+            get: (oTarget, sKey: string): string => {
+                let prop = this.getProperties().find( (prop) => prop.name === sKey)
+                if(!prop){
+                    throw new Error(`Cannot find property ${sKey}`)
+                }else if(prop.computedFunc){
+                    throw new Error(`Property ${sKey} is ComputedProperty. Accessing through _ is not allowed.`)
+                }
+                return prop.compileAs_(selector)
+            }
+        }) as {[key: string] : string}
+
+        this.$ = new Proxy( {} ,{
+            get: (oTarget, sKey: string): CompiledFunction => {
+                let prop = this.getProperties().find( (prop) => prop.name === sKey)
+                if(!prop){
+                    throw new Error(`Cannot find property ${sKey}`)
+                }else if(!prop.computedFunc){
+                    throw new Error(`Property ${sKey} is NormalProperty. Accessing through $ is not allowed.`)
+                }
+                return prop.compileAs$(selector, true)
+            }
+        }) as {[key: string] : CompiledFunction}
+
+        this.$$ = new Proxy( {} ,{
+            get: (oTarget, sKey: string): CompiledFunction => {
+                let prop = this.getProperties().find( (prop) => prop.name === sKey)
+                if(!prop){
+                    throw new Error(`Cannot find property ${sKey}`)
+                }else if(!prop.computedFunc){
+                    throw new Error(`Property ${sKey} is NormalProperty. Accessing through $$ is not allowed.`)
+                }
+                return prop.compileAs$(selector, false)
+            }
+        }) as {[key: string] : CompiledFunction}
     }
 
     // "table AS abc"
@@ -527,12 +555,20 @@ export class Selector{
         return this._.id
     }
 
-    init(){
-        // the lifecycle should be 
-        this.schema.namedProperties.forEach( (prop) => {
-            this.compileNamedProperty(prop)
-        })
+    getProperties(){
+        // derived Props has higher priority. I can override the schema property
+        return [...this.derivedProps, ...this.schema.namedProperties]
     }
+
+    register(namedProperty: NamedProperty){
+        this.derivedProps.push(namedProperty)
+    }
+    // init(){
+    //     // the lifecycle should be 
+    //     this.schema.namedProperties.forEach( (prop) => {
+    //         this.compileNamedProperty(prop)
+    //     })
+    // }
 
      // (SQL template) create a basic belongsTo prepared statement 
     hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
@@ -570,13 +606,10 @@ export class Selector{
      * @param namedProperty A `NamedProperty` instance
      * @returns CompiledNamedProperty 
      */
-    compileNamedProperty(prop: NamedProperty) {
-        let rootSelector = this
-        prop.compile(rootSelector)
-        // this._[prop.name] = prop.compileForSelect(rootSelector)
-        // this._[prop.name] = prop.compileForSelect(rootSelector)
-        // this.$[prop.name] = prop.compileForWhere(rootSelector)
-    }
+    // compileNamedProperty(prop: NamedProperty) {
+    //     let rootSelector = this
+    //     prop.compile(rootSelector)
+    // }
 }
 
 export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw
@@ -622,8 +655,6 @@ export class Database{
      */
     static async find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<InstanceType<T>>>{
         let dualSelector = Dual.newSelector()
-
-        console.log('xxxxxxx', entityClass)
         let prop = new NamedProperty(
             'data',
             Types.Array(entityClass),
@@ -637,8 +668,7 @@ export class Database{
                 return result
             }
         )
-        prop.compile(dualSelector)
-
+        dualSelector.register(prop)
         // console.log('aaaaaaaaaaa', dualSelector.$.data())
 
         let stmt = getKnexInstance().select( dualSelector.$.data() )
@@ -736,7 +766,7 @@ export class Entity {
      */
     static newSelector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Selector{
         let selector = new Selector(this, schemas[this.name])
-        selector.init()
+        // selector.init()
         return selector
     }
 
