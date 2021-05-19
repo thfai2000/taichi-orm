@@ -24,6 +24,16 @@ let run = async() =>{
             }
         }
     })
+    
+    await basic()
+
+    // await insert()
+
+    // await advanced()
+    
+}
+
+async function basic(){
     /**
      * Basic
      */
@@ -76,8 +86,21 @@ let run = async() =>{
         return stmt.select(all, $.products()).where( raw('?? > ?', [$$.productCount(), 2]))
     })
     console.log('query6', records6)
-    
-    /**
+}
+
+async function advanced(){
+
+    let records0 = await Shop.find( async (stmt) => {
+        return await new Promise( (resolve, reject) =>{
+            stmt.where({id: 1})
+        })
+    })
+    console.log('queried0:', records0)
+
+}
+
+async function insert(){
+     /**
      * insert records
      */  
     let record_inserted = await Shop.createOne({
@@ -92,43 +115,7 @@ let run = async() =>{
     })
     console.log('inserted', record_inserted1)
 
-    // let shops = [
-    //     {
-    //         products: [
-    //             {colors: []},
-    //             {colors: []},
-    //         ]
-    //     },
-    //     {
-    //         products: [
-    //             {colors: []},
-    //             {colors: []},
-    //             {colors: []}
-    //         ]
-    //     }
-    // ]
-
-    // shops.forEach(s => {
-
-    //     await Shop.create(s, (stmt, selector) => {
-    //         stmt.where(selector.id, '=', )
-    //     })
-
-    //     await Shop.update(s, (stmt, selector) => {
-    //         return stmt.where(selector.id, '=', )
-    //     }, ({products}) => {
-    //         products(5).colors(10)
-    //     })
-    // })
-
-    // Shop.mutate(data, (stmt, $) => {
-    //     stmt.update($.all, $.products( data.products, (stmt, $) => {
-    //         stmt.update($.all, $.colors() )
-    //     })).where( )
-    // })
-
-    // shop.save()       // create or update
-
 }
+
 
 run()

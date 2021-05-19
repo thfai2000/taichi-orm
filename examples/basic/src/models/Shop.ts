@@ -57,3 +57,42 @@ export default class Shop extends Entity{
 
 // console.log('xxxx', Shop.test() )
 
+
+
+
+    // let shops = [
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //         ]
+    //     },
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //             {colors: []}
+    //         ]
+    //     }
+    // ]
+
+    // shops.forEach(s => {
+
+    //     await Shop.create(s, (stmt, selector) => {
+    //         stmt.where(selector.id, '=', )
+    //     })
+
+    //     await Shop.update(s, (stmt, selector) => {
+    //         return stmt.where(selector.id, '=', )
+    //     }, ({products}) => {
+    //         products(5).colors(10)
+    //     })
+    // })
+
+    // Shop.mutate(data, (stmt, $) => {
+    //     stmt.update($.all, $.products( data.products, (stmt, $) => {
+    //         stmt.update($.all, $.colors() )
+    //     })).where( )
+    // })
+
+    // shop.save()       // create or update
