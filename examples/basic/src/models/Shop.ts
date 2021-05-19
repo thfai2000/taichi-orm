@@ -1,5 +1,7 @@
-import {Entity, Types, Schema, select, raw} from '../../../../dist';
+// import { Knex } from 'knex';
+import {Entity, Types, Schema, select, raw, QueryFunction} from '../../../../dist';
 import Product from './Product';
+// import 'reflect-metadata'
 
 export default class Shop extends Entity{
 
@@ -49,3 +51,9 @@ export default class Shop extends Entity{
     }
 
 }
+
+
+// Reflect.defineMetadata('design:type', '55444', Shop, "method");
+
+// console.log('xxxx', Shop.test() )
+

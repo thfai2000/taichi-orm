@@ -2,6 +2,7 @@ import {configure, raw} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
+
 let run = async() =>{
 
     // configure the orm
@@ -88,8 +89,6 @@ let run = async() =>{
         shopId: record_inserted.id
     })
     console.log('inserted', record_inserted1)
-
-
 
     // let shops = [
     //     {

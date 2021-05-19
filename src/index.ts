@@ -6,9 +6,10 @@ export { PropertyType, Types }
 // import { v4 as uuidv4 } from 'uuid'
 const sqlParser = require('js-sql-parser')
 
+
 export type Config = {
     knexConfig: Knex.Config,
-    models?: {[key:string]: typeof Entity}
+    models: {[key:string]: typeof Entity}
     createModels?: boolean,
     modelsPath?: string,
     outputSchemaPath?: string,
@@ -23,6 +24,7 @@ export type Config = {
 // the new orm config
 export const config: Config = {
     createModels: false,
+    models: {},
     knexConfig: {client: 'mysql2'},
 }
 
@@ -161,7 +163,7 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunctionDefinition = (selector: Selector<any>, queryFunction: QueryFunction, ...args: any[]) => SQLString
+export type ComputedFunctionDefinition = (selector: Selector, queryFunction: QueryFunction, ...args: any[]) => SQLString
 
 export type NamedPropertyOptions = {
     skipFieldNameConvertion?: boolean
@@ -193,7 +195,7 @@ export class NamedProperty {
     }
 
 
-    compile(rootSelector: Selector<typeof Entity>){
+    compile(rootSelector: Selector){
         let itself = this
         if(!this.computedFunc){
             let tableAlias = rootSelector.tableAlias
@@ -325,7 +327,7 @@ export class NamedProperty {
 
 }
 
-export const configure = async function(newConfig: Config){
+export const configure = async function(newConfig: Partial<Config>){
     Object.assign(config, newConfig)
     let tables: Schema[] = []
 
@@ -339,6 +341,7 @@ export const configure = async function(newConfig: Config){
         if(entityClass.postRegister){
             entityClass.postRegister(s)
         }
+        config.models[entityName] = entityClass
     }
     
     //register special Entity Dual
@@ -482,9 +485,9 @@ type ASTObject = {
     value: any
 }
 
-export class Selector<T extends typeof Entity> {
+export class Selector{
     
-    entityClass: T
+    entityClass: typeof Entity
     schema: Schema
     _: FieldSelector = {}
     $: FunctionSelector = {}
@@ -495,7 +498,7 @@ export class Selector<T extends typeof Entity> {
     // stored any compiled property
     // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
    
-    constructor(entityClass: T, schema: Schema){
+    constructor(entityClass: typeof Entity, schema: Schema){
         this.schema = schema
         this.tableAlias = schema.entityName + '_' + makeid(5)
         this.entityClass = entityClass
@@ -578,52 +581,14 @@ export class Selector<T extends typeof Entity> {
 
 export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector<any>) => SQLString
+export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
 
-export class Entity {
-    [key: string]: any
 
-    constructor(){
-    }
+export class Database{
 
-    static get schema(): Schema{
-        return schemas[this.name]
-    }
-
-    static get tableName() {
-        return this.schema.tableName
-    }
-
-    /**
-     * Can be overridden by inheritance Class
-     * @param schema
-     */
-    static register(schema: Schema) : void{
-    }
-
-    /**
-     * alias of produceSelector
-     * @returns Selector
-     */
-    static selector<T extends typeof Entity>(): Selector<T> {
-        return this.newSelector()
-    }
-
-    /**
-     * Selector is used for locating the table name / field names / computed functions
-     * field pointers
-     * @returns 
-     */
-    static newSelector<T extends typeof Entity>(): Selector<T> {
-        let entityClass = this as T
-        let selector = new Selector<T>(entityClass, this.schema)
-        selector.init()
-        return selector
-    }
-
-    static async createOne<T extends Entity>(data: SimpleObject, existingTrx?: Knex.Transaction): Promise<T>{
+    static async createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject, existingTrx?: Knex.Transaction): Promise<InstanceType<T>>{
         return await startTransaction( async (trx) => {
-            const schema = this.schema
+            const schema = entityClass.schema
             const knex = getKnexInstance()
             // let guid = uuidv4()
             data = Object.keys(data).reduce((acc, propName)=>{
@@ -645,18 +610,9 @@ export class Entity {
             // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
             let insertedId = await knex.raw( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ').transacting(trx)
             let actualId = insertedId[0][1][0].id
-            return this.findOne<T>( (stmt, t) => stmt.where(t._.id, '=', actualId), trx)
+            let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId), trx)
+            return records[0]
         }, existingTrx)
-    }
-
-    /**
-     * find one record
-     * @param applyFilter 
-     * @returns the found record
-     */
-    static async findOne<T extends Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<T>{
-        let records = await this.find<T>(applyFilter, existingTrx)
-        return records[0]
     }
 
     /**
@@ -664,13 +620,15 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static async find<T extends Entity>(applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<T>>{
+    static async find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<InstanceType<T>>>{
         let dualSelector = Dual.newSelector()
+
+        console.log('xxxxxxx', entityClass)
         let prop = new NamedProperty(
             'data',
-            Types.Array(this),
+            Types.Array(entityClass),
             (dualSelector): SQLString => {
-                let currentEntitySelector = this.selector()
+                let currentEntitySelector = entityClass.selector()
                 let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.source)
                 let result: SQLString = stmt
                 if(applyFilter){
@@ -692,13 +650,14 @@ export class Entity {
             KnexStmt.transacting(existingTrx)
         }
         let resultData: any = await KnexStmt
-        let dualInstance = Dual.parseRaw(resultData[0][0] as SimpleObject)
+        let dualInstance = this.parseRaw(entityClass, resultData[0][0] as SimpleObject)
         let str = "data" as keyof Dual;
         return dualInstance[str]
     }
 
-    static parseRaw<T extends typeof Entity>(row: SimpleObject): InstanceType<T>{
-        let entityClass = this
+    static parseRaw<T extends typeof Entity>(entityClass: T, row: SimpleObject): InstanceType<T>{
+        // let entityClass = (entityConstructor as unknown as typeof Entity)
+        // let entityClass = this
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
 
@@ -709,6 +668,7 @@ export class Entity {
                 propName = metaInfo.propName
                 definition = metaInfo.definition
             } else{
+                
                 let prop = entityClass.schema.namedProperties.find(p => {
                     return p.fieldName === fieldName
                 })
@@ -737,6 +697,98 @@ export class Entity {
             return entityInstance
         }, new entityClass() as InstanceType<T>)
         return entityInstance
+    }
+}
+
+export class Entity {
+    [key: string]: any
+
+    constructor(){
+    }
+
+    static get schema(): Schema{
+        return schemas[this.name]
+    }
+
+    static get tableName() {
+        return this.schema.tableName
+    }
+
+    /**
+     * Can be overridden by inheritance Class
+     * @param schema
+     */
+    static register(schema: Schema) : void{
+    }
+
+    /**
+     * alias of produceSelector
+     * @returns Selector
+     */
+    static selector(): Selector {
+        return this.newSelector()
+    }
+
+    /**
+     * Selector is used for locating the table name / field names / computed functions
+     * field pointers
+     * @returns 
+     */
+    static newSelector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Selector{
+        let selector = new Selector(this, schemas[this.name])
+        selector.init()
+        return selector
+    }
+
+    static async createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: SimpleObject, existingTrx?: Knex.Transaction): Promise< I >{
+        // let tester = new this()
+        // let entityClass = config.models[tester.constructor.name]
+        // if (!entityClass) {
+        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
+        // }
+        let a = await Database.createOne(this, data, existingTrx)
+        return a as I
+    }
+
+    /**
+     * find one record
+     * @param applyFilter 
+     * @returns the found record
+     */
+    static async findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<I>{
+        // let tester = new this()
+        // let entityClass = config.models[tester.constructor.name]
+        // if (!entityClass) {
+        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
+        // }
+        let r = await Database.find(this, applyFilter)
+        return r[0] as I
+    }
+
+    /**
+     * find array of records
+     * @param applyFilter 
+     * @returns the found record
+     */
+    static async find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction, existingTrx?: Knex.Transaction): Promise<Array<I>>{
+        // let tester = new this()
+        // let entityClass = config.models[tester.constructor.name]
+        // if (!entityClass) {
+        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
+        // }
+        let records = await Database.find(this, applyFilter)
+        return records as Array<I>
+    }
+
+    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: SimpleObject): I{
+        // let tester = new this()
+        // let entityClass = config.models[tester.constructor.name]
+        // if (!entityClass) {
+            
+        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
+        // }
+        let r = Database.parseRaw(this, row)
+        return r as I
     }
 }
 

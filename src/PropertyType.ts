@@ -89,7 +89,7 @@ export const Types = {
             }
         }
     },
-    Object<T extends typeof Entity>(entityClass: T, nullable: boolean = true): PropertyType{
+    Object<I extends Entity>(entityClass: typeof Entity & (new (...args: any[]) => I), nullable: boolean = true): PropertyType{
         return {
             // isPrimitive: false,
             create: () => {
@@ -101,7 +101,7 @@ export const Types = {
                     }) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(rawValue: any): InstanceType<T>{
+            parseRaw(rawValue: any): I{
                 let parsed: SimpleObject
                 if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
@@ -112,13 +112,13 @@ export const Types = {
                 }
                 return entityClass.parseRaw(rawValue)
             },
-            parseProperty(propertyvalue: InstanceType<T>): any {
+            parseProperty(propertyvalue: I): any {
                 //TODO: implement
                 return propertyvalue
             }
         }
     },
-    Array<T extends typeof Entity>(entityClass: T, nullable: boolean = true): PropertyType{
+    Array<I extends Entity>(entityClass: typeof Entity & (new (...args: any[]) => I), nullable: boolean = true): PropertyType{
         return {
             // isPrimitive: false,
             create: () => {
@@ -130,7 +130,7 @@ export const Types = {
                     })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(rawValue: any): Array<InstanceType<T>>{
+            parseRaw(rawValue: any): Array<I>{
                 let parsed: Array<SimpleObject>
                 if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
@@ -143,7 +143,7 @@ export const Types = {
                     return entityClass.parseRaw(raw)
                 })
             },
-            parseProperty(propertyvalue: Array<InstanceType<T>>): any {
+            parseProperty(propertyvalue: Array<I>): any {
                 //TODO: implement
                 return propertyvalue
             }
