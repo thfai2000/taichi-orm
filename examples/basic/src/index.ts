@@ -1,7 +1,8 @@
-import {configure, getKnexInstance} from '../../../dist/'
+import {configure, raw} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
+
 let run = async() =>{
 
     // configure the orm
@@ -23,6 +24,16 @@ let run = async() =>{
             }
         }
     })
+    
+    await basic()
+
+    // await insert()
+
+    await advanced()
+    
+}
+
+async function basic(){
     /**
      * Basic
      */
@@ -70,8 +81,33 @@ let run = async() =>{
     })
     console.log('queried5:', records5)
 
-        
-    /**
+
+    let records6 = await Shop.find( (stmt, {all, $, $$}) => {
+        return stmt.select(all, $.products()).where( raw('?? > ?', [$$.productCount(), 2]))
+    })
+    console.log('query6', records6)
+}
+
+async function advanced(){
+
+    // Try Using Promise
+    let records0 = await Shop.find( (stmt) => {
+        return new Promise( (resolve) =>{
+            resolve(stmt.where({id: 1}))
+        })
+    })
+    console.log('queried0:', records0)
+
+    // Try async call
+    let records1 = await Shop.find( async (stmt) => {
+        return stmt.where({id: 1})
+    })
+    console.log('queried0:', records1)
+
+}
+
+async function insert(){
+     /**
      * insert records
      */  
     let record_inserted = await Shop.createOne({
@@ -80,43 +116,13 @@ let run = async() =>{
     console.log('inserted', record_inserted)
 
 
-    // let shops = [
-    //     {
-    //         products: [
-    //             {colors: []},
-    //             {colors: []},
-    //         ]
-    //     },
-    //     {
-    //         products: [
-    //             {colors: []},
-    //             {colors: []},
-    //             {colors: []}
-    //         ]
-    //     }
-    // ]
-
-    // shops.forEach(s => {
-
-    //     await Shop.create(s, (stmt, selector) => {
-    //         stmt.where(selector.id, '=', )
-    //     })
-
-    //     await Shop.update(s, (stmt, selector) => {
-    //         return stmt.where(selector.id, '=', )
-    //     }, ({products}) => {
-    //         products(5).colors(10)
-    //     })
-    // })
-
-    // Shop.mutate(data, (stmt, $) => {
-    //     stmt.update($.all, $.products( data.products, (stmt, $) => {
-    //         stmt.update($.all, $.colors() )
-    //     })).where( )
-    // })
-
-    // shop.save()       // create or update
+    let record_inserted1 = await Product.createOne({
+        name: 'hello',
+        shopId: record_inserted.id
+    })
+    console.log('inserted', record_inserted1)
 
 }
+
 
 run()

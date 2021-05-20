@@ -1,5 +1,7 @@
-import {Entity, Types, Schema, select} from '../../../../dist';
+// import { Knex } from 'knex';
+import {Entity, Types, Schema, select, raw, QueryFunction} from '../../../../dist';
 import Product from './Product';
+// import 'reflect-metadata'
 
 export default class Shop extends Entity{
 
@@ -10,7 +12,7 @@ export default class Shop extends Entity{
         
         schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return select('COUNT(*)').from(p.source).where(shop.$.id, '=', p.$.shopId)
+            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
         })
 
         // When Entity.create, Entity.update, Entity.delete is called
@@ -49,3 +51,48 @@ export default class Shop extends Entity{
     }
 
 }
+
+
+// Reflect.defineMetadata('design:type', '55444', Shop, "method");
+
+// console.log('xxxx', Shop.test() )
+
+
+
+
+    // let shops = [
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //         ]
+    //     },
+    //     {
+    //         products: [
+    //             {colors: []},
+    //             {colors: []},
+    //             {colors: []}
+    //         ]
+    //     }
+    // ]
+
+    // shops.forEach(s => {
+
+    //     await Shop.create(s, (stmt, selector) => {
+    //         stmt.where(selector.id, '=', )
+    //     })
+
+    //     await Shop.update(s, (stmt, selector) => {
+    //         return stmt.where(selector.id, '=', )
+    //     }, ({products}) => {
+    //         products(5).colors(10)
+    //     })
+    // })
+
+    // Shop.mutate(data, (stmt, $) => {
+    //     stmt.update($.all, $.products( data.products, (stmt, $) => {
+    //         stmt.update($.all, $.colors() )
+    //     })).where( )
+    // })
+
+    // shop.save()       // create or update
