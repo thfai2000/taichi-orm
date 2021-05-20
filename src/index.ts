@@ -348,12 +348,9 @@ export const configure = async function(newConfig: Partial<Config>){
     const registerEntity = (entityName: string, entityClass: any) => {
         let s = new Schema(entityName);
         if(entityClass.register){
-            tables.push(s)
             entityClass.register(s)
             schemas[entityName] = s
-        }
-        if(entityClass.postRegister){
-            entityClass.postRegister(s)
+            tables.push(s)
         }
         config.models[entityName] = entityClass
     }
@@ -508,9 +505,8 @@ export class Selector{
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty> = []
-    _: {[key: string] : string}
+    _: any
     $: {[key: string] : CompiledFunction}
-    $$: {[key: string] : CompiledFunction}
 
     // table: string            // "table"
     tableAlias: string       // "abc"
@@ -523,41 +519,60 @@ export class Selector{
         this.tableAlias = schema.entityName + '_' + makeid(5)
         this.entityClass = entityClass
         let selector = this
-        this._ = new Proxy( {} ,{
+        let _ : any = (value: any) => {
+            if(typeof value === 'string'){
+                return this.getNormalCompiled(value, selector)
+            } else if(value.constructor === Object){
+                let acc = Object.keys(value).reduce( (acc, key) => {
+                    acc[this.getNormalCompiled(key, selector)] = value[key]
+                    return acc
+                }, {} as SimpleObject)
+                return acc
+            } else if(Array.isArray(value)){
+                return value.map( v => this.getNormalCompiled(v, selector) )
+            } else return value
+        }
+
+        this._ = new Proxy( _ ,{
             get: (oTarget, sKey: string): string => {
-                let prop = this.getProperties().find( (prop) => prop.name === sKey)
-                if(!prop){
-                    throw new Error(`Cannot find property ${sKey}`)
-                }else if(prop.computedFunc){
-                    throw new Error(`Property ${sKey} is ComputedProperty. Accessing through _ is not allowed.`)
-                }
-                return prop.compileAs_(selector)
+                return this.getNormalCompiled(sKey, selector)
             }
         }) as {[key: string] : string}
 
         this.$ = new Proxy( {} ,{
             get: (oTarget, sKey: string): CompiledFunction => {
-                let prop = this.getProperties().find( (prop) => prop.name === sKey)
-                if(!prop){
-                    throw new Error(`Cannot find property ${sKey}`)
-                }else if(!prop.computedFunc){
-                    throw new Error(`Property ${sKey} is NormalProperty. Accessing through $ is not allowed.`)
+                let withAlias = true
+                if(sKey.startsWith('_')){
+                    sKey = sKey.substring(1)
+                    withAlias = false
                 }
-                return prop.compileAs$(selector, true)
+                let prop = this.getProperties().find( (prop) => prop.name === sKey)
+                this.checkDollar(prop, sKey)
+                return prop!.compileAs$(selector, withAlias)
             }
         }) as {[key: string] : CompiledFunction}
+    }
 
-        this.$$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledFunction => {
-                let prop = this.getProperties().find( (prop) => prop.name === sKey)
-                if(!prop){
-                    throw new Error(`Cannot find property ${sKey}`)
-                }else if(!prop.computedFunc){
-                    throw new Error(`Property ${sKey} is NormalProperty. Accessing through $$ is not allowed.`)
-                }
-                return prop.compileAs$(selector, false)
-            }
-        }) as {[key: string] : CompiledFunction}
+    private getNormalCompiled(value: string, selector: this) {
+        let prop = this.getProperties().find((prop) => prop.name === value)
+        this.checkDash(prop, value)
+        return prop!.compileAs_(selector)
+    }
+
+    private checkDollar(prop: NamedProperty | undefined, sKey: string) {
+        if (!prop) {
+            throw new Error(`Cannot find property ${sKey}`)
+        } else if (!prop.computedFunc) {
+            throw new Error(`Property ${sKey} is NormalProperty. Accessing through $ is not allowed.`)
+        }
+    }
+
+    private checkDash(prop: NamedProperty | undefined, sKey: string) {
+        if (!prop) {
+            throw new Error(`Cannot find property ${sKey}`)
+        } else if (prop.computedFunc) {
+            throw new Error(`Property ${sKey} is ComputedProperty. Accessing through _ is not allowed.`)
+        }
     }
 
     // "table AS abc"
@@ -854,7 +869,7 @@ export class Entity {
 // it is a special Entity or table. Just like the Dual in SQL Server
 export class Dual extends Entity {
 
-    static postRegister(schema: Schema) : void{
+    static register(schema: Schema) : void{
         //override the tableName into empty
         schema.tableName = ''
     }

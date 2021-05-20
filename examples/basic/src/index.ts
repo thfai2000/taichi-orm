@@ -25,7 +25,7 @@ let run = async() =>{
         }
     })
     
-    await basic()
+    // await basic()
 
     // await insert()
 
@@ -81,9 +81,8 @@ async function basic(){
     })
     console.log('queried5:', records5)
 
-
-    let records6 = await Shop.find( (stmt, {all, $, $$}) => {
-        return stmt.select(all, $.products()).where( raw('?? > ?', [$$.productCount(), 2]))
+    let records6 = await Shop.find( (stmt, {all, $}) => {
+        return stmt.select(all, $.products()).where( raw('?? > ?', [$._productCount(), 2]))
     })
     console.log('query6', records6)
 }
@@ -91,9 +90,9 @@ async function basic(){
 async function advanced(){
 
     // Try Using Promise
-    let records0 = await Shop.find( (stmt) => {
+    let records0 = await Shop.find( (stmt, {_}) => {
         return new Promise( (resolve) =>{
-            resolve(stmt.where({id: 1}))
+            resolve(stmt.where( _({id: 1})))
         })
     })
     console.log('queried0:', records0)
@@ -102,8 +101,14 @@ async function advanced(){
     let records1 = await Shop.find( async (stmt) => {
         return stmt.where({id: 1})
     })
-    console.log('queried0:', records1)
+    console.log('queried1:', records1)
 
+    let records2 = await Product.find( (stmt, {_} ) => {
+        return new Promise( (resolve) => {
+            resolve(stmt.where(_({shopId: 1})))
+        })
+    })
+    console.log('queried2:', records2)
 }
 
 async function insert(){
