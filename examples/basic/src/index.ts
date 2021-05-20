@@ -29,7 +29,7 @@ let run = async() =>{
 
     // await insert()
 
-    // await advanced()
+    await advanced()
     
 }
 
@@ -90,12 +90,19 @@ async function basic(){
 
 async function advanced(){
 
-    let records0 = await Shop.find( async (stmt) => {
-        return await new Promise( (resolve, reject) =>{
-            stmt.where({id: 1})
+    // Try Using Promise
+    let records0 = await Shop.find( (stmt) => {
+        return new Promise( (resolve) =>{
+            resolve(stmt.where({id: 1}))
         })
     })
     console.log('queried0:', records0)
+
+    // Try async call
+    let records1 = await Shop.find( async (stmt) => {
+        return stmt.where({id: 1})
+    })
+    console.log('queried0:', records1)
 
 }
 

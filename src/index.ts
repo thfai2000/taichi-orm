@@ -41,9 +41,15 @@ export const getKnexInstance = () => {
     return knex(newKnexConfig)
 }
 
-export const raw = (first:any, ...args: any[]) => {
-    return getKnexInstance().raw(first, ...args)
+const sealRaw = (first:any, ...args: any[]) => {
+    let sealRaw = getKnexInstance().raw(first, ...args)
+    // @ts-ignore
+    sealRaw.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+    return sealRaw
 }
+
+export const raw = sealRaw
+
 
 const startTransaction = async(func: (trx: Knex.Transaction) => any, existingTrx?: Knex.Transaction ): Promise<any> => {
     let knex = getKnexInstance()
@@ -307,10 +313,10 @@ export class NamedProperty {
                     if(columns.length > 1){
                         throw new Error('PropertyType doesn\'t allow multiple column values.')
                     }
-                    return getKnexInstance().raw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
+                    return sealRaw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
                 } else {
                     let transformed = namedProperty.definition.readTransform(subqueryString, columns)
-                    return getKnexInstance().raw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
+                    return sealRaw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
                 }
             }
 
@@ -392,9 +398,13 @@ export const configure = async function(newConfig: Partial<Config>){
     }
 }
 
-export const select = function(...args: Array<any>) : Knex.QueryBuilder {
-    return getKnexInstance().select(...args)
+const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
+    let sealSelect = getKnexInstance().select(...args)
+    // @ts-ignore
+    sealSelect.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+    return sealSelect
 }
+export const select = sealSelect
 
 // export type FunctionSelector = {
 //     [key: string] : CompiledFunction
@@ -591,14 +601,14 @@ export class Selector{
      // (SQL template) create a basic belongsTo prepared statement 
     hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        let stmt = getKnexInstance().from(selector.source).whereRaw("?? = ??", [this._.id, selector._[propName] ])
+        let stmt = sealSelect().from(selector.source).whereRaw("?? = ??", [this._.id, selector._[propName] ])
         return applyFilter(stmt, selector)
     }
 
     // (SQL template) create a basic belongsTo prepared statement 
     belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
         let selector = entityClass.newSelector()
-        let stmt = getKnexInstance().from(selector.source).whereRaw("?? = ??", [selector._.id, this._[propName] ])
+        let stmt = sealSelect().from(selector.source).whereRaw("?? = ??", [selector._.id, this._[propName] ])
         return applyFilter(stmt, selector)
     }
 
@@ -678,7 +688,7 @@ export class Database{
             Types.Array(entityClass),
             (dualSelector): SQLString => {
                 let currentEntitySelector = entityClass.selector()
-                let stmt: Knex.QueryBuilder = getKnexInstance().from(currentEntitySelector.source)
+                let stmt: Knex.QueryBuilder = sealSelect().from(currentEntitySelector.source)
                 let result: SQLString = stmt
                 if(applyFilter){
                     result = applyFilter(stmt, currentEntitySelector)
