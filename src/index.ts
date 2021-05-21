@@ -403,8 +403,8 @@ const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
 }
 export const select = sealSelect
 
-export const run = function(...args: Array<typeof Entity | ((...args: Array<Selector>) => Knex.QueryBuilder )> ) : ExecutionContext<Entity> {
-    return new ExecutionContext<Entity>( async(trx?: Knex.Transaction) => {
+export const run = function(...args: Array<typeof Entity | ((...args: Array<Selector>) => Knex.QueryBuilder )> ) : ExecutionContext<Entity[]> {
+    return new ExecutionContext<Dual[]>( async(trx?: Knex.Transaction) => {
         if(args.length < 1){
             throw new Error('At least one selector callback should be given.')
         }
@@ -415,9 +415,13 @@ export const run = function(...args: Array<typeof Entity | ((...args: Array<Sele
         let stmt = callback(...selectors)
         console.log("======== run ========")
         console.log(stmt.toString())
-        console.log("================")
+        console.log("=====================")
         let resultData = await Database.executeStatement(stmt, trx)
-        return resultData[0]
+        let tmp = {data: resultData[0]}
+        let dualInstance = Database.parseRaw(Entity, tmp)
+        let str = "data" as keyof Entity
+        let rows = dualInstance[str]
+        return rows
     })
 }
 
@@ -553,7 +557,7 @@ export class Selector{
                 return value.map( v => this.getNormalCompiled(v, selector) )
             } else return value
         }
-
+        
         this._ = new Proxy( _ ,{
             get: (oTarget, sKey: string): string => {
                 return this.getNormalCompiled(sKey, selector)
@@ -574,7 +578,7 @@ export class Selector{
         }) as {[key: string] : CompiledFunction}
     }
 
-    private getNormalCompiled(value: string, selector: this) {
+    getNormalCompiled(value: string, selector: this) {
         let prop = this.getProperties().find((prop) => prop.name === value)
         this.checkDash(prop, value)
         return prop!.compileAs_(selector)
@@ -609,7 +613,7 @@ export class Selector{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
         }
-        return `*`
+        return `${this.tableAlias}.*`
     }
 
     get id(): string{
@@ -897,7 +901,25 @@ export class Entity {
      */
     static newSelector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Selector{
         let selector = new Selector(this, schemas[this.name])
-        // selector.init()
+
+        selector = new Proxy(selector, {
+            get: (oTarget, sKey): any => {
+                if(typeof sKey === 'string'){
+                    if (sKey.length > 1){
+                        if( sKey.startsWith('_') ){
+                            return oTarget._[sKey.slice(1)]
+                        } else if( sKey.startsWith('$') ){
+                            return oTarget.$[sKey.slice(1)]
+                        }
+                    }
+                }
+                if(sKey in oTarget)
+                    return oTarget[sKey.toString()]
+                else throw new Error(`Cannot find property ${sKey.toString()} of selector`)
+            }
+        })
+
+
         return selector
     }
 
@@ -1004,14 +1026,3 @@ export class Dual extends Entity {
 // type d<Type> = {
 //     [key in keyof Type as `$${string}`] : boolean
 // }
-
-
-class Product extends Entity {
-
-}
-
-(async() => {
-    let records5 = await Product.find( (stmt, prd) => {
-        return stmt.select(prd.all, prd.$.shop())
-    })
-})();
