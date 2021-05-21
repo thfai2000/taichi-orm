@@ -404,20 +404,20 @@ const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
 export const select = sealSelect
 
 export const run = function(...args: Array<typeof Entity | ((...args: Array<Selector>) => Knex.QueryBuilder )> ) : ExecutionContext<Entity> {
-    return new ExecutionContext<Entity>( async( resolveCallback : ((result: Entity) => void) | null, rejectCallback: Function | null, trx?: Knex.Transaction) => {
+    return new ExecutionContext<Entity>( async(trx?: Knex.Transaction) => {
         if(args.length < 1){
-            rejectCallback && rejectCallback(new Error('At least one selector callback should be given.'))
+            throw new Error('At least one selector callback should be given.')
         }
-        try{
-            let callback = args[args.length -1] as (...args: Array<Selector>) => Knex.QueryBuilder
-            let entities = args.splice(args.length -1) as Array<typeof Entity>
-            let selectors = entities.map(entity => entity.selector())
-            let stmt = callback(...selectors)
-            let resultData = await Database.executeStatement(stmt, trx)
-            resolveCallback && resolveCallback(resultData)
-        }catch(error){
-            rejectCallback && rejectCallback(error)
-        }
+        
+        let callback = args[args.length -1] as (...args: Array<Selector>) => Knex.QueryBuilder
+        let entities = args.slice(0, args.length -1) as Array<typeof Entity>
+        let selectors = entities.map(entity => entity.selector())
+        let stmt = callback(...selectors)
+        console.log("======== run ========")
+        console.log(stmt.toString())
+        console.log("================")
+        let resultData = await Database.executeStatement(stmt, trx)
+        return resultData[0]
     })
 }
 
@@ -681,10 +681,7 @@ export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) =
 export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
 
 
-type ExecutionContextAction<I> =  (
-    resolveCallback: ((result: I) => I | PromiseLike<I>) | null , 
-    rejectCallback: ((reason: any) => any | PromiseLike<any>) | null,
-    trx?: Knex.Transaction) => void 
+type ExecutionContextAction<I> =  (trx?: Knex.Transaction) => Promise<I>
 
 
 
@@ -695,18 +692,23 @@ export class ExecutionContext<I> implements PromiseLike<I>{
     constructor(action: ExecutionContextAction<I>){
         this.action = action
     }
-    then<TResult1 = I, TResult2 = never>(
+    async then<TResult1, TResult2 = never>(
         onfulfilled: ((value: I) => TResult1 | PromiseLike<TResult1>) | null, 
         onrejected: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null)
-        : PromiseLike<TResult1 | TResult2>  {
-            
-            try{
-                this.action(onfulfilled, onrejected, this.trx)
-                return Promise<I>.resolve()
-            }catch(error){
-                return Promise<I>.reject(error)
-            } 
-        
+        : Promise<TResult1 | TResult2> {
+
+        try{
+            if(onfulfilled){
+                let result = await this.action(this.trx)
+                return onfulfilled(result)
+            }
+        }catch(error){
+            if(onrejected){
+                return onrejected(error)
+            }
+        }
+
+        return this.then(onfulfilled, onrejected)
     }
 
     usingConnection(trx: Knex.Transaction): ExecutionContext<I>{
@@ -717,41 +719,36 @@ export class ExecutionContext<I> implements PromiseLike<I>{
 export class Database{
 
     static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject): ExecutionContext< InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >( async (resolveCallback: Function | null, rejectCallback: Function | null, existingTrx?: Knex.Transaction) => {
-            try{
-                
-                const schema = entityClass.schema
-                const knex = getKnexInstance()
-                // let guid = uuidv4()
-                data = Object.keys(data).reduce((acc, propName)=>{
-                    let prop = schema.namedProperties.find(p => {
-                        return p.name === propName
-                    })
-                    if(!prop){
-                        throw new Error(`The Property [${propName}] doesn't exist`)
-                    }
-                    acc[prop.fieldName] = data[prop.name]
-                    return acc
-                }, {} as SimpleObject)
-                // Object.assign({},data,{[guidColumnName()]: guid})
-                let stmt = knex(schema.tableName).insert(data)
-                console.log('======== INSERT =======')
-                console.log(stmt.toString())
-                console.log('========================')
-                let result = await startTransaction( async (trx) => {
-                    // await stmt //execute sql
-                    // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
-                    let insertedId = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                    let actualId = insertedId[0][1][0].id
-                    let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId)).usingConnection(trx)
-                    return records[0]
-    
-                }, existingTrx)
-                resolveCallback && resolveCallback( result )
+        return new ExecutionContext< InstanceType<T> >( async (existingTrx?: Knex.Transaction) => {
+            
+            const schema = entityClass.schema
+            const knex = getKnexInstance()
+            // let guid = uuidv4()
+            data = Object.keys(data).reduce((acc, propName)=>{
+                let prop = schema.namedProperties.find(p => {
+                    return p.name === propName
+                })
+                if(!prop){
+                    throw new Error(`The Property [${propName}] doesn't exist`)
+                }
+                acc[prop.fieldName] = data[prop.name]
+                return acc
+            }, {} as SimpleObject)
+            // Object.assign({},data,{[guidColumnName()]: guid})
+            let stmt = knex(schema.tableName).insert(data)
+            console.log('======== INSERT =======')
+            console.log(stmt.toString())
+            console.log('========================')
+            let result = await startTransaction( async (trx) => {
+                // await stmt //execute sql
+                // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
+                let insertedId = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
+                let actualId = insertedId[0][1][0].id
+                let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId)).usingConnection(trx)
+                return records[0]
 
-            }catch(error){
-                rejectCallback && rejectCallback(error)
-            }
+            }, existingTrx)
+            return result
         })
     }
 
@@ -761,14 +758,9 @@ export class Database{
      * @returns the found record
      */
      static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >( async (resolveCallback : Function | null, rejectCallback: Function | null, existingTrx?: Knex.Transaction
-            ) => {
-            try{
-                let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
-                resolveCallback && resolveCallback(rows[0])
-            }catch(error){
-                rejectCallback && rejectCallback(error)
-            }
+        return new ExecutionContext< InstanceType<T> >( async (existingTrx?: Knex.Transaction) => {
+            let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
+            return rows[0]
         })
      }
 
@@ -778,15 +770,12 @@ export class Database{
      * @returns the found record
      */
     static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  Array<InstanceType<T>> >{
-        return new ExecutionContext< Array<InstanceType<T>> >( 
-            async (resolveCallback : ((result: Array<InstanceType<T>>) => void) | null, rejectCallback: Function | null, existingTrx?: Knex.Transaction
+        return new ExecutionContext< Array<InstanceType<T>> >(
+            async (existingTrx?: Knex.Transaction
             ) => {
-            try{
-                let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
-                resolveCallback && resolveCallback(rows)
-            }catch(error){
-                rejectCallback && rejectCallback(error)
-            }
+            
+            let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
+            return rows
         })
     }
 

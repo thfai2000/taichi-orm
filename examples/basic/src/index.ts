@@ -1,4 +1,4 @@
-import Deep, {select, raw, configure} from '../../../dist/'
+import {run, select, raw, configure} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
@@ -102,12 +102,11 @@ async function advanced(){
     })
     console.log('queried2:', records2)
 
-
-    let r = Deep.run(Shop, Product, (s, p) => {
-        return select(s.name, p.all, s.$.productCount() ).from(s.source).join(p.source, s._.id, p._.shopId)
+    let records3 = await run(Shop, Product, (s, p) => {
+        return select(s.name, p.all, s.$.products(), s.$.productCount() ).from(s.source).join(p.source, s._.id, p._.shopId)
     })
 
-    console.log('queried2:', records3)
+    console.log('queried3:', records3)
 }
 
 async function insert(){
