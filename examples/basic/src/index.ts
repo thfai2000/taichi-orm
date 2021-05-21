@@ -1,9 +1,9 @@
-import {configure, raw} from '../../../dist/'
+import Deep, {select, raw, configure} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
 
-let run = async() =>{
+let main = async() =>{
 
     // configure the orm
     await configure({
@@ -47,14 +47,6 @@ async function basic(){
         return stmt.where(root.id, '>', 2).limit(3)
     })
     console.log('queried1:', records1)
-
-    /**
-     *  find records in coding style 2
-     */
-    // let s = Shop.selector()
-    // //FIXME: remove the toString() later
-    // let records2 = await select(s.all).from(s.source).where(s.id, '>', 3)
-    // console.log('queried2:', records2)
 
     /**
      * find records with relations (computed field)
@@ -109,6 +101,13 @@ async function advanced(){
         })
     })
     console.log('queried2:', records2)
+
+
+    let r = Deep.run(Shop, Product, (s, p) => {
+        return select(s.name, p.all, s.$.productCount() ).from(s.source).join(p.source, s._.id, p._.shopId)
+    })
+
+    console.log('queried2:', records3)
 }
 
 async function insert(){
@@ -130,4 +129,4 @@ async function insert(){
 }
 
 
-run()
+main()
