@@ -187,26 +187,26 @@ export class NamedProperty {
     }
 
     compileAs_(rootSelector: Selector){
-        let itself = this
         if(this.computedFunc){
             throw new Error('Computed Property cannot be compiled as normal field.')
         } 
+        let namedProperty = this
         let tableAlias = rootSelector.tableAlias
         let fieldName = this.fieldName
-        
-        return `${tableAlias}.${fieldName}`
+        let fieldAlias = metaFieldAlias(namedProperty)
+
+        return sealRaw(`(SELECT ${tableAlias}.${fieldName} AS ${fieldAlias})`)
     }
 
-    compileAs$(rootSelector: Selector, withAlias: boolean){
-        let itself = this
+    compileAs$(rootSelector: Selector){
         if(!this.computedFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
         }
         let computedFunc = this.computedFunc
         let namedProperty = this
-        let fieldAlias = metaAlias(namedProperty)
+        let fieldAlias = metaFieldAlias(namedProperty)
 
-        const makeFn = (withAlias: boolean) => (queryFunction?: QueryFunction, ...args: any[]) => {
+        const makeFn = () => (queryFunction?: QueryFunction, ...args: any[]) => {
             const applyFilterFunc: QueryFunction = (stmt, selector) => {
                 if(queryFunction && !(queryFunction instanceof Function)){
                     console.log(queryFunction)
@@ -222,102 +222,106 @@ export class NamedProperty {
                 let subqueryString = subquery.toString()
                 console.log('SubQuery', subqueryString)
 
-                // determine the column list
-                let ast = sqlParser.parse(subqueryString)
+                // // determine the column list
+                // let ast = sqlParser.parse(subqueryString)
 
-                const santilize = (item: any): string => {
-                    let v = item.alias ?? item.value ?? makeid(5)
-                    v = v.replace(/[`']/g, '')
-                    let p = v.split('.')
-                    let name = p[p.length - 1]
-                    return name
-                }
+                // const santilize = (item: any): string => {
+                //     let v = item.alias ?? item.value ?? makeid(5)
+                //     v = v.replace(/[`']/g, '')
+                //     let p = v.split('.')
+                //     let name = p[p.length - 1]
+                //     return name
+                // }
 
-                let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
+                // let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
+
+                // columns = columns.filter(c => c !== '*')
                 
-                // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
+                // // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
 
-                // Important: more than one table has *
-                if(columns.includes('*')){
+                // // Important: more than one table has *
+                // if(columns.includes('*')){
 
-                    if(ast.value.from.type !== 'TableReferences'){
-                        throw new Error('Unexpected flow is reached.')
-                    }
-                    let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
-                        if(obj.type === 'TableReference'){
-                            if(obj.value.type === 'TableFactor'){
-                                // determine the from table
-                                if( obj.value.value.type === 'Identifier'){
-                                    return {type: 'table', value: santilize(obj.value.value) }
-                                }
-                            } else if( obj.value.value.type === 'SubQuery'){
-                                let selectItems = obj.value.value.value.selectItems
-                                if(selectItems.type === 'SelectExpr'){
-                                    // determine any fields from derived table
-                                    return selectItems.value.map( (item: any) => {
-                                        if( item.type === 'Identifier'){
-                                            return {type: 'field', value: santilize(item) }
-                                        }
-                                    })
-                                } else throw new Error('Unexpected flow is reached.')
-                            } else throw new Error('Unexpected flow is reached.')
-                        } else throw new Error('Unexpected flow is reached.')
-                    })
+                //     if(ast.value.from.type !== 'TableReferences'){
+                //         throw new Error('Unexpected flow is reached.')
+                //     }
+                //     let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
+                //         if(obj.type === 'TableReference'){
+                //             if(obj.value.type === 'TableFactor'){
+                //                 // determine the from table
+                //                 if( obj.value.value.type === 'Identifier'){
+                //                     return {type: 'table', value: santilize(obj.value.value) }
+                //                 }
+                //             } else if( obj.value.value.type === 'SubQuery'){
+                //                 let selectItems = obj.value.value.value.selectItems
+                //                 if(selectItems.type === 'SelectExpr'){
+                //                     // determine any fields from derived table
+                //                     return selectItems.value.map( (item: any) => {
+                //                         if( item.type === 'Identifier'){
+                //                             return {type: 'field', value: santilize(item) }
+                //                         }
+                //                     })
+                //                 } else throw new Error('Unexpected flow is reached.')
+                //             } else throw new Error('Unexpected flow is reached.')
+                //         } else throw new Error('Unexpected flow is reached.')
+                //     })
                     
                     
-                    let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
-                    if(tables.length > 0){
-                        let schemaArr = Object.keys(schemas).map(k => schemas[k])
-                        let selectedSchemas = tables.map(t => {
-                            let s = schemaArr.find(s => s.tableName === t) 
-                                if(!s)
-                                throw new Error(`Table [${t}] is not found.`)
-                            return s
-                        })
-                        let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
-                        columns = columns.concat(all)
-                    }
+                //     let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
+                //     if(tables.length > 0){
+                //         let schemaArr = Object.keys(schemas).map(k => schemas[k])
+                //         let selectedSchemas = tables.map(t => {
+                //             let s = schemaArr.find(s => s.tableName === t) 
+                //                 if(!s)
+                //                 throw new Error(`Table [${t}] is not found.`)
+                //             return s
+                //         })
+                //         let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
+                //         columns = columns.concat(all)
+                //     }
                     
-                    columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
+                //     columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
                     
-                    //determine the distinct set of columns
-                    columns = columns.filter(n => n !== '*')
-                    let fullSet = new Set(columns)
-                    columns = [...fullSet]
+                //     //determine the distinct set of columns
+                //     columns = columns.filter(n => n !== '*')
+                //     let fullSet = new Set(columns)
+                //     columns = [...fullSet]
                 
                     
-                    // going to replace star into all column names
-                    if( ast.value.selectItems.type !== 'SelectExpr'){
-                        throw new Error('Unexpected flow is reached.')
-                    } else {
-                        //remove * element
-                        let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
+                //     // going to replace star into all column names
+                //     if( ast.value.selectItems.type !== 'SelectExpr'){
+                //         throw new Error('Unexpected flow is reached.')
+                //     } else {
+                //         //remove * element
+                //         let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
                         
-                        let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
+                //         let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
 
-                        //add columns element
-                        ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
-                            return {
-                                type: "Identifier",
-                                value: name,
-                                alias: null,
-                                hasAs: null
-                            }
-                        })]
-                    }
+                //         //add columns element
+                //         ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
+                //             return {
+                //                 type: "Identifier",
+                //                 value: name,
+                //                 alias: null,
+                //                 hasAs: null
+                //             }
+                //         })]
+                //     }
 
-                    subqueryString = sqlParser.stringify(ast)
-                }
+                //     subqueryString = sqlParser.stringify(ast)
+                // }
 
-                if(!namedProperty.definition.readTransform){
-                    if(columns.length > 1){
-                        throw new Error('PropertyType doesn\'t allow multiple column values.')
-                    }
-                    return sealRaw(`(${subqueryString})` + (withAlias?` AS ${fieldAlias}`:'') )
-                } else {
-                    let transformed = namedProperty.definition.readTransform(subqueryString, columns)
-                    return sealRaw(`(${transformed.toString()})` + (withAlias?` AS ${fieldAlias}`:'') )
-                }
+                // if(!namedProperty.definition.readTransform){
+                //     if(columns.length > 1){
+                //         throw new Error('PropertyType doesn\'t allow multiple column values.')
+                //     }
+                //     return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
+                // } else {
+                //     let transformed = namedProperty.definition.readTransform(subqueryString, columns)
+                //     return sealRaw(`(SELECT (${transformed.toString()}) AS ${fieldAlias})`)
+                // }
+
+                return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
             }
 
             if(subquery instanceof Promise){
@@ -335,7 +339,7 @@ export class NamedProperty {
             }
         }
 
-        return makeFn(withAlias)
+        return makeFn()
     }
     
 
@@ -404,25 +408,28 @@ const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
 export const select = sealSelect
 
 export const run = function(...args: Array<typeof Entity | ((...args: Array<Selector>) => Knex.QueryBuilder )> ) : ExecutionContext<Entity[]> {
-    return new ExecutionContext<Dual[]>( async(trx?: Knex.Transaction) => {
-        if(args.length < 1){
-            throw new Error('At least one selector callback should be given.')
-        }
-        
-        let callback = args[args.length -1] as (...args: Array<Selector>) => Knex.QueryBuilder
-        let entities = args.slice(0, args.length -1) as Array<typeof Entity>
-        let selectors = entities.map(entity => entity.selector())
-        let stmt = callback(...selectors)
-        console.log("======== run ========")
-        console.log(stmt.toString())
-        console.log("=====================")
-        let resultData = await Database.executeStatement(stmt, trx)
-        let tmp = {data: resultData[0]}
-        let dualInstance = Database.parseRaw(Entity, tmp)
-        let str = "data" as keyof Entity
-        let rows = dualInstance[str]
-        return rows
-    })
+    return new ExecutionContext<Dual[]>(
+        async() => {
+            if(args.length < 1){
+                throw new Error('At least one selector callback should be given.')
+            }
+            let callback = args[args.length -1] as (...args: Array<Selector>) => Knex.QueryBuilder
+            let entities = args.slice(0, args.length -1) as Array<typeof Entity>
+            let selectors = entities.map(entity => entity.selector())
+            let stmt = callback(...selectors)
+            return Database.transpile(stmt)
+        },
+        async(stmt: SQLString, trx?: Knex.Transaction) => {
+            console.log("======== run ========")
+            console.log(stmt.toString())
+            console.log("=====================")
+            let resultData = await Database.executeStatement(stmt, trx)
+            let tmp = {data: resultData[0]}
+            let dualInstance = Database.parseRaw(Entity, tmp)
+            let str = "data" as keyof Entity
+            let rows = dualInstance[str]
+            return rows
+        })
 }
 
 
@@ -504,12 +511,29 @@ const findPropertyType = function(typeAlias: string): PropertyType{
     return r
 }
 
-const metaAlias = function(p: NamedProperty): string{
+
+const metaTableAlias = function(schema: Schema): string{
+    return schema.entityName + '___' + makeid(5)
+}
+
+const breakdownMetaTableAlias = function(metaAlias: string) {
+    metaAlias = metaAlias.replace(/[\`\']/g, '')
+    if(metaAlias.includes('___')){
+        let [entityName, randomNumber] = metaAlias.split('___')
+        let found = schemas[entityName]
+        return found
+    } else {
+        return null
+    }
+}
+
+const metaFieldAlias = function(p: NamedProperty): string{
     let typeAlias = registerPropertyType(p.definition)
     return `${p.name}___${typeAlias}`
 }
 
-const breakdownMetaAlias = function(metaAlias: string){
+const breakdownMetaFieldAlias = function(metaAlias: string){
+    metaAlias = metaAlias.replace(/[\`\']/g, '')
     if(metaAlias.includes('___')){
         let [propName, typeAlias] = metaAlias.split('___')
         let definition = findPropertyType(typeAlias)
@@ -530,9 +554,9 @@ export class Selector{
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty> = []
-    _: any
+    _: {[key: string] : Knex.Raw}
     $: {[key: string] : CompiledFunction}
-
+    
     // table: string            // "table"
     tableAlias: string       // "abc"
 
@@ -541,7 +565,7 @@ export class Selector{
    
     constructor(entityClass: typeof Entity, schema: Schema){
         this.schema = schema
-        this.tableAlias = schema.entityName + '_' + makeid(5)
+        this.tableAlias = metaTableAlias(schema)
         this.entityClass = entityClass
         let selector = this
         let _ : any = (value: any) => {
@@ -549,7 +573,8 @@ export class Selector{
                 return this.getNormalCompiled(value, selector)
             } else if(value.constructor === Object){
                 let acc = Object.keys(value).reduce( (acc, key) => {
-                    acc[this.getNormalCompiled(key, selector)] = value[key]
+                    let converted = this.getNormalCompiled(key, selector, false).toString()
+                    acc[converted] = value[key]
                     return acc
                 }, {} as SimpleObject)
                 return acc
@@ -559,26 +584,26 @@ export class Selector{
         }
         
         this._ = new Proxy( _ ,{
-            get: (oTarget, sKey: string): string => {
+            get: (oTarget, sKey: string) => {
                 return this.getNormalCompiled(sKey, selector)
             }
-        }) as {[key: string] : string}
+        }) as {[key: string] : Knex.Raw}
 
         this.$ = new Proxy( {} ,{
             get: (oTarget, sKey: string): CompiledFunction => {
-                let withAlias = true
-                if(sKey.startsWith('_')){
-                    sKey = sKey.substring(1)
-                    withAlias = false
-                }
+                // let withAlias = true
+                // if(sKey.startsWith('_')){
+                //     sKey = sKey.substring(1)
+                //     withAlias = false
+                // }
                 let prop = this.getProperties().find( (prop) => prop.name === sKey)
                 this.checkDollar(prop, sKey)
-                return prop!.compileAs$(selector, withAlias)
+                return prop!.compileAs$(selector)
             }
         }) as {[key: string] : CompiledFunction}
     }
 
-    getNormalCompiled(value: string, selector: this) {
+    getNormalCompiled(value: string, selector: this, withAlias: boolean = true) {
         let prop = this.getProperties().find((prop) => prop.name === value)
         this.checkDash(prop, value)
         return prop!.compileAs_(selector)
@@ -616,7 +641,7 @@ export class Selector{
         return `${this.tableAlias}.*`
     }
 
-    get id(): string{
+    get id(): Knex.Raw{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
         }
@@ -685,15 +710,17 @@ export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) =
 export type QueryFunction = (stmt: Knex.QueryBuilder, selector: Selector) => SQLString
 
 
-type ExecutionContextAction<I> =  (trx?: Knex.Transaction) => Promise<I>
-
+type ExecutionContextAction<I> =  (stmt: SQLString, trx?: Knex.Transaction) => Promise<I>
+type PrepareSQLStatementAction = () => Promise<SQLString>
 
 
 export class ExecutionContext<I> implements PromiseLike<I>{
+    prepareStmt: PrepareSQLStatementAction
     trx?: Knex.Transaction
     action: ExecutionContextAction<I>
 
-    constructor(action: ExecutionContextAction<I>){
+    constructor(prepareStmt: PrepareSQLStatementAction, action: ExecutionContextAction<I>){
+        this.prepareStmt = prepareStmt
         this.action = action
     }
     async then<TResult1, TResult2 = never>(
@@ -703,7 +730,7 @@ export class ExecutionContext<I> implements PromiseLike<I>{
 
         try{
             if(onfulfilled){
-                let result = await this.action(this.trx)
+                let result = await this.action(await this.prepareStmt(), this.trx)
                 return onfulfilled(result)
             }
         }catch(error){
@@ -719,41 +746,217 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         this.trx = trx
         return this
     }
+
+    async toSQLString(): Promise<SQLString> {
+        return this.prepareStmt()
+    }
 }
 export class Database{
 
-    static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject): ExecutionContext< InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >( async (existingTrx?: Knex.Transaction) => {
-            
-            const schema = entityClass.schema
-            const knex = getKnexInstance()
-            // let guid = uuidv4()
-            data = Object.keys(data).reduce((acc, propName)=>{
-                let prop = schema.namedProperties.find(p => {
-                    return p.name === propName
-                })
-                if(!prop){
-                    throw new Error(`The Property [${propName}] doesn't exist`)
-                }
-                acc[prop.fieldName] = data[prop.name]
-                return acc
-            }, {} as SimpleObject)
-            // Object.assign({},data,{[guidColumnName()]: guid})
-            let stmt = knex(schema.tableName).insert(data)
-            console.log('======== INSERT =======')
-            console.log(stmt.toString())
-            console.log('========================')
-            let result = await startTransaction( async (trx) => {
-                // await stmt //execute sql
-                // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
-                let insertedId = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                let actualId = insertedId[0][1][0].id
-                let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId)).usingConnection(trx)
-                return records[0]
+    static transpile(stmt: SQLString): SQLString {
 
-            }, existingTrx)
-            return result
+        let sql = stmt.toString()
+        console.log('xxxxxxxxxxxxxx')
+        console.log(sql)
+        console.log('xxxxxxxxxxxxxx')
+
+        console.log('start parsing...')
+        // sql = 'select * from `shop` as `Shop___Qq8j9`'
+        let ast = sqlParser.parse(sql)
+        console.log('parsed... then transpile')
+        ast = this._transpileAst(ast, false)
+        console.log('end parsing...')
+        // console.log( JSON.stringify(ast) )
+        return sqlParser.stringify(ast)
+    }
+
+    static _transpileAst(ast: SimpleObject, withAlias: boolean): SimpleObject{
+        if(!ast){
+            return ast
+        }
+        if( Array.isArray(ast)){
+            ast = ast.map(item => this._transpileAst(item, withAlias))
+            return ast
+        }
+        if( ast.type === 'Select'){
+            
+            let selectItems = ast.selectItems
+            if(selectItems.type !== 'SelectExpr'){
+                throw new Error('Unsupported')
+            }
+
+            // handle where first, no dependences
+            if (ast.where) {
+                ast.where = this._transpileAst(ast.where, false)
+            }
+
+            // must handle the 'from' before 'selectitem'... because of dependencies
+            if (ast.from) {
+                ast.from = this._transpileAst(ast.from, false)
+            }
+
+            // then handle select items... expand columns
+            let items: Array<SimpleObject> = selectItems.value
+            selectItems.value = items.flatMap( item => {
+                
+                if(item.type === 'Identifier' && item.value.includes('*')){
+                    // if it is *... expand the columns..
+                    return this._resolveStar(item, ast.from)
+                } else {
+                    return this._transpileAst(item, true)
+                }
+            })
+
+            // then handle transformation
+            let selectItemsValue = selectItems.value
+            if( selectItemsValue?.length === 1){
+                let item = selectItemsValue[0]
+                console.log('aaaaaaa', item)
+                item = this._transpileAst(item, false)
+                console.log('bbbbbbbbb', item)
+                let info = breakdownMetaFieldAlias(this._santilize(item))
+                if(info){
+                   let {definition} = info
+
+                    // transform data
+                    if(definition.readTransform){
+                        //find fields inside item
+                        let fields = item.value.selectItems.value
+                        
+                        console.log('ccccccc', item)
+                        throw new Error('cccccccccccc')
+                    }
+
+                    if(withAlias === true){
+                        return item
+                    } else {
+                        item.hasAs = null
+                        item.alias = null
+                        return item
+                    }
+                }
+            }
+
+            return ast
+        } else if (ast instanceof Object){
+            return Object.keys(ast).reduce((acc, key)=>{
+                acc[key] = this._transpileAst(ast[key], false)
+                return acc
+            },{} as SimpleObject)
+        }
+
+        return ast
+    }
+
+    private static _santilize(item: any): string {
+        let v = item.alias ?? item.value
+        v = v.replace(/[`']/g, '')
+        let p = v.split('.')
+        let name = p[p.length - 1]
+        return name
+    }
+
+    private static _resolveStar(ast: SimpleObject, from: SimpleObject): any {
+
+        let targetTable: string | null = null
+        let v = ast.value
+        v = v.replace(/[`']/g, '')
+        if(v.includes('.*') ){
+            targetTable = v.split('.')[0]
+        }
+
+        if(from.type !== 'TableReferences'){
+            throw new Error('Unexpected flow is reached.')
+        }
+        return from.value.flatMap( (obj: ASTObject ) => {
+            if(obj.type === 'TableReference'){
+                if(obj.value.type === 'TableFactor'){
+                    if( obj.value.value.type === 'Identifier'){
+                        
+                        let tableName = obj.value.alias.value ?? obj.value.value.value
+
+                        if(targetTable === null || targetTable === tableName){
+                            // find all fields from schema
+                            let schema = breakdownMetaTableAlias(tableName)
+                            if(!schema)
+                                throw new Error(`Entity [${tableName}] is not found.`)
+                                
+                            let all = schema.namedProperties.filter(p => !p.computedFunc).map(p => {
+                                let alias = metaFieldAlias(p)
+                                return {
+                                    type: "Identifier",
+                                    value: `${tableName}.${p.fieldName}`,
+                                    alias: alias,
+                                    hasAs: null
+                                }
+                            })
+                            return all
+                        }
+                        return []
+                    } else if( obj.value.value.type === 'SubQuery'){
+
+                        let tableName = obj.value.alias.value
+
+                        let selectItems = obj.value.value.value.selectItems
+                        if(targetTable === null || targetTable === tableName){
+                            if(selectItems.type === 'SelectExpr'){
+                                // determine any fields from derived table
+                                return selectItems.value.map( (item: any) => {
+                                    if( item.type === 'Identifier'){
+                                        let fieldName = this._santilize(item)
+                                        return {
+                                            type: "Identifier",
+                                            value: `${tableName}.${fieldName}`,
+                                            alias: null,
+                                            hasAs: null
+                                        } 
+                                    }
+                                })
+                            } else throw new Error('Unexpected flow is reached.')
+                        }
+                        return []
+                    } else throw new Error('Unexpected flow is reached.')
+                }  else throw new Error('Unexpected flow is reached.')
+            } else throw new Error('Unexpected flow is reached.')
         })
+
+    }
+
+    static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject): ExecutionContext< InstanceType<T> >{
+        return new ExecutionContext< InstanceType<T> >(
+            async() => {
+                const schema = entityClass.schema
+                const knex = getKnexInstance()
+                // let guid = uuidv4()
+                data = Object.keys(data).reduce((acc, propName)=>{
+                    let prop = schema.namedProperties.find(p => {
+                        return p.name === propName
+                    })
+                    if(!prop){
+                        throw new Error(`The Property [${propName}] doesn't exist`)
+                    }
+                    acc[prop.fieldName] = data[prop.name]
+                    return acc
+                }, {} as SimpleObject)
+                // Object.assign({},data,{[guidColumnName()]: guid})
+                let stmt = knex(schema.tableName).insert(data)
+                return Database.transpile(stmt)
+            },
+            async (stmt: SQLString, existingTrx?: Knex.Transaction) => {
+                console.log('======== INSERT =======')
+                console.log(stmt.toString())
+                console.log('========================')
+                let result = await startTransaction( async (trx) => {
+                    // await stmt //execute sql
+                    // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
+                    let insertedId = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
+                    let actualId = insertedId[0][1][0].id
+                    let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId)).usingConnection(trx)
+                    return records[0]
+
+                }, existingTrx)
+                return result
+            })
     }
 
     /**
@@ -762,8 +965,13 @@ export class Database{
      * @returns the found record
      */
      static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >( async (existingTrx?: Knex.Transaction) => {
-            let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
+         return new ExecutionContext< InstanceType<T> >(
+            async() => {
+                return await Database._prepare(entityClass, applyFilter)
+            },
+            async (stmt: SQLString, existingTrx?: Knex.Transaction
+            ) => {
+                let rows = await Database._find<T>(entityClass, stmt, existingTrx)
             return rows[0]
         })
      }
@@ -775,15 +983,17 @@ export class Database{
      */
     static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
-            async (existingTrx?: Knex.Transaction
+            async() => {
+                return await Database._prepare(entityClass, applyFilter)
+            },
+            async (stmt: SQLString, existingTrx?: Knex.Transaction
             ) => {
-            
-            let rows = await Database._find<T>(entityClass, applyFilter, existingTrx)
+                let rows = await Database._find<T>(entityClass, stmt, existingTrx)
             return rows
         })
     }
 
-    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction, existingTrx?: Knex.Transaction<any, any[]>) {
+    private static async _prepare<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): Promise<SQLString>{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -799,8 +1009,13 @@ export class Database{
             }
         )
         dualSelector.register(prop)
-
         let stmt = getKnexInstance().select(await dualSelector.$.data())
+        return Database.transpile(stmt)
+    }
+
+
+    private static async _find<T extends typeof Entity>(entityClass: T, stmt: SQLString, existingTrx?: Knex.Transaction<any, any[]>) {
+       
         console.log("========== FIND ================")
         console.log(stmt.toString())
         console.log("================================")
@@ -826,7 +1041,7 @@ export class Database{
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
 
-            let metaInfo = breakdownMetaAlias(fieldName)
+            let metaInfo = breakdownMetaFieldAlias(fieldName)
             let propName = null
             let definition = null
             if(metaInfo){
