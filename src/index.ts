@@ -234,7 +234,7 @@ export class NamedProperty {
                     // let items: Array<SimpleObject> = selectItems.value
                     selectItems.value = selectItems.value.flatMap( (item: SimpleObject) => {
                         
-                        if(item.type === 'Identifier' && item.value.includes('*')){
+                        if(item.type === 'Identifier' && ( item.value.includes('*') || item.value.includes('$star') ) ){
                             // if it is *... expand the columns..
                             return Database._resolveStar(item, ast.from)
                         } else {
@@ -660,7 +660,7 @@ export class Selector{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
         }
-        return `${this.tableAlias}.*`
+        return `${this.tableAlias}.$star`
     }
 
     get id(): Knex.Raw{
@@ -917,7 +917,7 @@ export class Database{
         let targetTable: string | null = null
         let v = ast.value
         v = v.replace(/[`']/g, '')
-        if(v.includes('.*') ){
+        if(v.includes('.*') || v.includes('.$star') ){
             targetTable = v.split('.')[0]
         }
 
@@ -926,7 +926,7 @@ export class Database{
         }
         return from.value.flatMap( (obj: ASTObject ) => {
             if(obj.type === 'TableReference'){
-                if(obj.value.type === 'TableFactor'){
+                if(['TableFactor', 'InnerCrossJoinTable'].includes(obj.value.type) ){
                     if( obj.value.value.type === 'Identifier'){
                         
                         let tableName = obj.value.alias?.value ?? obj.value.value?.value
@@ -972,7 +972,7 @@ export class Database{
                         }
                         return []
                     } else throw new Error('Unexpected flow is reached.')
-                }  else throw new Error('Unexpected flow is reached.')
+                }  else throw new Error(`Unexpected flow is reached. ${obj.value.type}`)
             } else throw new Error('Unexpected flow is reached.')
         })
 

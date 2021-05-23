@@ -105,7 +105,7 @@ async function advanced(){
 
     let records3 = await run(Shop, Product, (s, p) => {
 
-        let a = select( s._location, s.$.products(), s.$.productCount(), p._.id ).from(s.source)
+        let a = select( s._location, s.$.products(), s.$.productCount(), p.all ).from(s.source)
         let b = a.joinRaw(`JOIN ${p.source} ON ${s._.id} = ${p._.shopId}`)
         return b
     })
