@@ -198,7 +198,7 @@ export class NamedProperty {
         return sealRaw(`(SELECT ${tableAlias}.${fieldName} AS ${fieldAlias})`)
     }
 
-    compileAs$(rootSelector: Selector){
+    compileAs$(rootSelector: Selector, withTransform: boolean){
         if(!this.computedFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
         }
@@ -206,7 +206,7 @@ export class NamedProperty {
         let namedProperty = this
         let fieldAlias = metaFieldAlias(namedProperty)
 
-        const makeFn = () => (queryFunction?: QueryFunction, ...args: any[]) => {
+        const makeFn = (withTransform: boolean) => (queryFunction?: QueryFunction, ...args: any[]) => {
             const applyFilterFunc: QueryFunction = (stmt, selector) => {
                 if(queryFunction && !(queryFunction instanceof Function)){
                     console.log(queryFunction)
@@ -223,7 +223,44 @@ export class NamedProperty {
                 console.log('SubQuery', subqueryString)
 
                 // // determine the column list
-                // let ast = sqlParser.parse(subqueryString)
+                let mainNode = sqlParser.parse(subqueryString)
+                let ast = mainNode.value
+                console.log('xxxxxx', ast)
+
+                let columnsToBeTransformed: string[] = []
+                if( ast.type === 'Select'){
+                    // console.log('***** 2')
+                    let selectItems = ast.selectItems
+                    if(selectItems.type !== 'SelectExpr'){
+                        throw new Error('Unsupported')
+                    }
+
+                    // then handle select items... expand columns
+                    // let items: Array<SimpleObject> = selectItems.value
+                    selectItems.value = selectItems.value.flatMap( (item: SimpleObject) => {
+                        
+                        if(item.type === 'Identifier' && item.value.includes('*')){
+                            // if it is *... expand the columns..
+                            return Database._resolveStar(item, ast.from)
+                        } else {
+                            return item
+                        }
+                    })
+
+                    columnsToBeTransformed = selectItems.value.map( (f: SimpleObject) => Database._santilize(f) ) as string[]
+                
+                    subqueryString = sqlParser.stringify(mainNode)
+                }
+
+                let definition = namedProperty.definition
+
+                if(withTransform && definition.readTransform){
+                    let transformedSql = definition.readTransform(subqueryString, columnsToBeTransformed)
+                    return sealRaw(`(SELECT (${transformedSql.toString()}) AS ${fieldAlias})`)
+                } else {
+
+                    return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
+                }
 
                 // const santilize = (item: any): string => {
                 //     let v = item.alias ?? item.value ?? makeid(5)
@@ -311,17 +348,7 @@ export class NamedProperty {
                 //     subqueryString = sqlParser.stringify(ast)
                 // }
 
-                // if(!namedProperty.definition.readTransform){
-                //     if(columns.length > 1){
-                //         throw new Error('PropertyType doesn\'t allow multiple column values.')
-                //     }
-                //     return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
-                // } else {
-                //     let transformed = namedProperty.definition.readTransform(subqueryString, columns)
-                //     return sealRaw(`(SELECT (${transformed.toString()}) AS ${fieldAlias})`)
-                // }
-
-                return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
+                // return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
             }
 
             if(subquery instanceof Promise){
@@ -339,7 +366,7 @@ export class NamedProperty {
             }
         }
 
-        return makeFn()
+        return makeFn(withTransform)
     }
     
 
@@ -496,6 +523,7 @@ const registerPropertyType = function(d: PropertyType): string{
     let r = map1.get(d)
     if(!r){
         let key = makeid(5)
+        console.log('registerType', key)
         map1.set(d, key)
         map2.set(key, d)
         r = key
@@ -506,7 +534,7 @@ const registerPropertyType = function(d: PropertyType): string{
 const findPropertyType = function(typeAlias: string): PropertyType{
     let r = map2.get(typeAlias)
     if(!r){
-        throw new Error('Cannot find the PropertyType. Make sure it is registered before.')
+        throw new Error(`Cannot find the PropertyType by [${typeAlias}]. Make sure it is registered before.`)
     }
     return r
 }
@@ -518,7 +546,7 @@ const metaTableAlias = function(schema: Schema): string{
 
 const breakdownMetaTableAlias = function(metaAlias: string) {
     metaAlias = metaAlias.replace(/[\`\']/g, '')
-    if(metaAlias.includes('___')){
+    if(/^[^\_]*\_\_\_[^\_]*$/.test(metaAlias)){
         let [entityName, randomNumber] = metaAlias.split('___')
         let found = schemas[entityName]
         return found
@@ -529,13 +557,15 @@ const breakdownMetaTableAlias = function(metaAlias: string) {
 
 const metaFieldAlias = function(p: NamedProperty): string{
     let typeAlias = registerPropertyType(p.definition)
+    // console.log('register', typeAlias)
     return `${p.name}___${typeAlias}`
 }
 
 const breakdownMetaFieldAlias = function(metaAlias: string){
     metaAlias = metaAlias.replace(/[\`\']/g, '')
-    if(metaAlias.includes('___')){
+    if( /^[^\_]*\_\_\_[^\_]*$/.test(metaAlias) ){
         let [propName, typeAlias] = metaAlias.split('___')
+        // console.log('find', typeAlias)
         let definition = findPropertyType(typeAlias)
         return {propName, definition}
     } else {
@@ -591,14 +621,14 @@ export class Selector{
 
         this.$ = new Proxy( {} ,{
             get: (oTarget, sKey: string): CompiledFunction => {
-                // let withAlias = true
-                // if(sKey.startsWith('_')){
-                //     sKey = sKey.substring(1)
-                //     withAlias = false
-                // }
+                let withTransform = true
+                if(sKey.startsWith('_')){
+                    sKey = sKey.substring(1)
+                    withTransform = false
+                }
                 let prop = this.getProperties().find( (prop) => prop.name === sKey)
                 this.checkDollar(prop, sKey)
-                return prop!.compileAs$(selector)
+                return prop!.compileAs$(selector, withTransform)
             }
         }) as {[key: string] : CompiledFunction}
     }
@@ -756,19 +786,85 @@ export class Database{
     static transpile(stmt: SQLString): SQLString {
 
         let sql = stmt.toString()
+
+        if(sql.startsWith('(') && sql.endsWith(')')){
+            sql = sql.slice(1, sql.length - 1)
+        }
+
+        // map2.set('Qq8j9', Types.Number() )
+        // map2.set('dasf4', Types.Number() )
+        // map2.set('odjde', Types.Number() )
+        // sql = 'select (SELECT (SELECT 1 as `abc___Qq8j9` ) as `Shop___dasf4`) as `data___odjde`'
+
         console.log('xxxxxxxxxxxxxx')
         console.log(sql)
         console.log('xxxxxxxxxxxxxx')
 
         console.log('start parsing...')
-        // sql = 'select * from `shop` as `Shop___Qq8j9`'
         let ast = sqlParser.parse(sql)
+        // console.log( JSON.stringify(ast) )
         console.log('parsed... then transpile')
         ast = this._transpileAst(ast, false)
         console.log('end parsing...')
         // console.log( JSON.stringify(ast) )
         return sqlParser.stringify(ast)
     }
+
+            //     // remove double nested sql
+            // if(!ast.from && Array.isArray(selectItems.value) && selectItems.value.length === 1){
+            //     let item = selectItems.value[0]
+            //     if(item.type === 'SubQuery'){
+            //         let fieldName = this._santilize(item)
+            //         if(fieldName && breakdownMetaFieldAlias(fieldName)){
+            //             let newReturn = this._transpileAst(item.value, false)
+            //             newReturn.hasAs = true
+            //             newReturn.alias = fieldName
+            //             return newReturn
+            //         }
+            //     }
+            // }
+
+               // then handle transformation
+            // let selectItemsValue = selectItems.value
+            // if( selectItemsValue?.length === 1){
+            //     let item = selectItemsValue[0]
+            //     // console.log('aaaaaaa', item)
+            //     item = this._transpileAst(item, false)
+            //     // console.log('bbbbbbbbb', item)
+            //     let fieldName = this._santilize(item)
+            //     if(fieldName){
+            //         let info = breakdownMetaFieldAlias(fieldName)
+            //         if(info){
+            //            let {definition} = info
+    
+            //             // transform data
+            //             if(definition.readTransform){
+            //                 //find fields inside item
+            //                 let fields: SimpleObject[] = item.value.selectItems.value
+                            
+            //                 let fieldNames = fields.map( f => this._santilize(f) ).filter(f => f) as string[]
+    
+            //                 // console.log('ccccccc', JSON.stringify(item) )
+            //                 let originalSql = sqlParser.stringify(item)
+
+            //                 // console.log('eeeeeee', originalSql)
+
+            //                 let transformedSql = definition.readTransform(originalSql, fieldNames)
+            //                 let ast = sqlParser.parse(transformedSql)
+            //                 // remove the Main node
+            //                 return ast.value
+            //             }
+    
+            //             if(withAlias === true){
+            //                 return item
+            //             } else {
+            //                 item.hasAs = null
+            //                 item.alias = null
+            //                 return item
+            //             }
+            //         }
+            //     }
+            // }
 
     static _transpileAst(ast: SimpleObject, withAlias: boolean): SimpleObject{
         if(!ast){
@@ -778,85 +874,78 @@ export class Database{
             ast = ast.map(item => this._transpileAst(item, withAlias))
             return ast
         }
-        if( ast.type === 'Select'){
-            
-            let selectItems = ast.selectItems
-            if(selectItems.type !== 'SelectExpr'){
-                throw new Error('Unsupported')
-            }
+        if( ast.type === 'SubQuery'){
+            // console.log('process subquery with alias',ast.alias)
+            let astValue = ast.value
+            if(astValue.type === 'Select'){
 
-            // handle where first, no dependences
-            if (ast.where) {
-                ast.where = this._transpileAst(ast.where, false)
-            }
-
-            // must handle the 'from' before 'selectitem'... because of dependencies
-            if (ast.from) {
-                ast.from = this._transpileAst(ast.from, false)
-            }
-
-            // then handle select items... expand columns
-            let items: Array<SimpleObject> = selectItems.value
-            selectItems.value = items.flatMap( item => {
-                
-                if(item.type === 'Identifier' && item.value.includes('*')){
-                    // if it is *... expand the columns..
-                    return this._resolveStar(item, ast.from)
-                } else {
-                    return this._transpileAst(item, true)
+                // console.log('***** 2')
+                let selectItems = astValue.selectItems
+                if(selectItems.type !== 'SelectExpr'){
+                    throw new Error('Unsupported')
                 }
-            })
 
-            // then handle transformation
-            let selectItemsValue = selectItems.value
-            if( selectItemsValue?.length === 1){
-                let item = selectItemsValue[0]
-                console.log('aaaaaaa', item)
-                item = this._transpileAst(item, false)
-                console.log('bbbbbbbbb', item)
-                let info = breakdownMetaFieldAlias(this._santilize(item))
-                if(info){
-                   let {definition} = info
+                // handle where first, no dependences
+                if (astValue.where) {
+                    astValue.where = this._transpileAst(astValue.where, false)
+                }
+    
+                
+                // must handle the 'from' before 'selectitem'... because of dependencies
+                if (astValue.from) {
+                    astValue.from = this._transpileAst(astValue.from, false)
+                }
+                
+                // let rand = makeid(5)
+                // console.log('-> subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
+                
+                astValue.selectItems.value = astValue.selectItems.value.map( (item: SimpleObject) => this._transpileAst(item, true) )
 
-                    // transform data
-                    if(definition.readTransform){
-                        //find fields inside item
-                        let fields = item.value.selectItems.value
+                // console.log('<-- subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
+                // remove double nested sql
+                
+                if(astValue.selectItems.value.length === 1){
+                    let item = astValue.selectItems.value[0]
+                    // console.log('iiiiii', ast.alias)
+                    if(item.type === 'SubQuery'){
+                        console.log('gggggggg')
+                        if(!withAlias){
+                            item.hasAs = null
+                            item.alias = null
+                        }
+                        return item
                         
-                        console.log('ccccccc', item)
-                        throw new Error('cccccccccccc')
-                    }
-
-                    if(withAlias === true){
-                        return item
-                    } else {
-                        item.hasAs = null
-                        item.alias = null
-                        return item
                     }
                 }
             }
 
             return ast
-        } else if (ast instanceof Object){
-            return Object.keys(ast).reduce((acc, key)=>{
-                acc[key] = this._transpileAst(ast[key], false)
+        } else if ( (ast as SimpleObject) instanceof Object){
+            
+            // console.log('**** 1 start', withAlias)
+            let newReturn = Object.keys(ast).reduce((acc, key)=>{
+                // console.log('***** 1.1 ', key)
+                acc[key] = this._transpileAst(ast[key], withAlias)
                 return acc
             },{} as SimpleObject)
+            return newReturn
         }
 
         return ast
     }
 
-    private static _santilize(item: any): string {
+    static _santilize(item: any): string | null {
         let v = item.alias ?? item.value
-        v = v.replace(/[`']/g, '')
-        let p = v.split('.')
-        let name = p[p.length - 1]
-        return name
+        if(typeof v === 'string'){
+            v = v.replace(/[`']/g, '')
+            let p = v.split('.')
+            let name = p[p.length - 1]
+            return name
+        }
+        return null
     }
 
-    private static _resolveStar(ast: SimpleObject, from: SimpleObject): any {
+    static _resolveStar(ast: SimpleObject, from: SimpleObject): any {
 
         let targetTable: string | null = null
         let v = ast.value
@@ -873,7 +962,7 @@ export class Database{
                 if(obj.value.type === 'TableFactor'){
                     if( obj.value.value.type === 'Identifier'){
                         
-                        let tableName = obj.value.alias.value ?? obj.value.value.value
+                        let tableName = obj.value.alias?.value ?? obj.value.value?.value
 
                         if(targetTable === null || targetTable === tableName){
                             // find all fields from schema
@@ -887,7 +976,7 @@ export class Database{
                                     type: "Identifier",
                                     value: `${tableName}.${p.fieldName}`,
                                     alias: alias,
-                                    hasAs: null
+                                    hasAs: true
                                 }
                             })
                             return all
@@ -967,7 +1056,7 @@ export class Database{
      static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  InstanceType<T> >{
          return new ExecutionContext< InstanceType<T> >(
             async() => {
-                return await Database._prepare(entityClass, applyFilter)
+                return await Database._prepareFind(entityClass, applyFilter)
             },
             async (stmt: SQLString, existingTrx?: Knex.Transaction
             ) => {
@@ -984,7 +1073,7 @@ export class Database{
     static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
             async() => {
-                return await Database._prepare(entityClass, applyFilter)
+                return await Database._prepareFind(entityClass, applyFilter)
             },
             async (stmt: SQLString, existingTrx?: Knex.Transaction
             ) => {
@@ -993,7 +1082,7 @@ export class Database{
         })
     }
 
-    private static async _prepare<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): Promise<SQLString>{
+    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): Promise<SQLString>{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1009,8 +1098,7 @@ export class Database{
             }
         )
         dualSelector.register(prop)
-        let stmt = getKnexInstance().select(await dualSelector.$.data())
-        return Database.transpile(stmt)
+        return Database.transpile(await dualSelector.$.data())
     }
 
 
@@ -1020,6 +1108,8 @@ export class Database{
         console.log(stmt.toString())
         console.log("================================")
         let resultData: any = await Database.executeStatement(stmt, existingTrx)
+        console.log('xxxxx', resultData[0][0])
+
 
         let dualInstance = this.parseRaw(Dual, resultData[0][0] as SimpleObject)
         let str = "data" as keyof Dual
@@ -1040,7 +1130,6 @@ export class Database{
         // let entityClass = this
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
-
             let metaInfo = breakdownMetaFieldAlias(fieldName)
             let propName = null
             let definition = null
