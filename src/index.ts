@@ -4,7 +4,10 @@ import * as fs from 'fs'
 import { PropertyType, Types } from './PropertyType'
 export { PropertyType, Types }
 // import { v4 as uuidv4 } from 'uuid'
-const sqlParser = require('js-sql-parser')
+// const sqlParser = require('js-sql-parser')
+import { AST, Column, Parser } from 'node-sql-parser'
+const sqlParser = new Parser();
+
 
 
 export type Config = {
@@ -220,36 +223,40 @@ export class NamedProperty {
             let process = (subquery: SQLString): Knex.Raw => {
                 let subqueryString = subquery.toString()
                 // // determine the column list
-                let mainNode = sqlParser.parse(subqueryString)
-                let ast = mainNode.value
+                let ast: AST = sqlParser.astify(subqueryString) as AST
+                // let ast = mainNode.value
 
                 let columnsToBeTransformed: string[] = []
-                if( ast.type === 'Select'){
-                    let selectItems = ast.selectItems
-                    if(selectItems.type !== 'SelectExpr'){
-                        throw new Error('Unsupported')
+                if( ast.type === 'select'){
+                    let selectAst = ast
+                    let columns = ast.columns
+                    
+                    let columnsTranslated = []
+                    // then handle select items... expand columns
+                    if(columns === '*'){
+                        columns = Database._resolveStar(columns, selectAst.from)
+                    } else {
+                        columns.map( (col: Column) => {
+                            if(col.expr.type === 'column_ref' && ( col.expr.column.includes('*') || col.expr.column.includes('$star') ) ){
+                                // if it is *... expand the columns..
+                                return Database._resolveStar(col, selectAst.from)
+                            } else {
+                                return col
+                            }
+                        })
                     }
 
-                    // then handle select items... expand columns
-                    // let items: Array<SimpleObject> = selectItems.value
-                    selectItems.value = selectItems.value.flatMap( (item: SimpleObject) => {
-                        
-                        if(item.type === 'Identifier' && ( item.value.includes('*') || item.value.includes('$star') ) ){
-                            // if it is *... expand the columns..
-                            return Database._resolveStar(item, ast.from)
-                        } else {
-                            return item
-                        }
-                    })
+                    let processedColumns = columns as Column[]
 
-                    columnsToBeTransformed = selectItems.value.map( (f: SimpleObject) => {
-                        if(!f.alias && f.type === 'SubQuery' && f.value.selectItems.value.length === 1){
-                            return Database._santilize(f.value.selectItems.value[0])
+                    columnsToBeTransformed = processedColumns.flatMap( (col: any) => {
+                        if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
+                            return Database._extractColumnAlias(col.expr.columns[0])
                         }
-                        return Database._santilize(f) 
+                        return Database._extractColumnAlias(col) 
                     }) as string[]
                 
-                    subqueryString = sqlParser.stringify(mainNode)
+                    ast.columns = processedColumns
+                    subqueryString = sqlParser.sqlify(ast)
                 }
 
                 let definition = namedProperty.definition
@@ -261,94 +268,6 @@ export class NamedProperty {
 
                     return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
                 }
-
-                // const santilize = (item: any): string => {
-                //     let v = item.alias ?? item.value ?? makeid(5)
-                //     v = v.replace(/[`']/g, '')
-                //     let p = v.split('.')
-                //     let name = p[p.length - 1]
-                //     return name
-                // }
-
-                // let columns: string[] = ast.value.selectItems.value.map( (v:any) => santilize(v) )
-
-                // columns = columns.filter(c => c !== '*')
-                
-                // // HERE: columns can contains metaAlias (computedProps only) and normal fieldName
-
-                // // Important: more than one table has *
-                // if(columns.includes('*')){
-
-                //     if(ast.value.from.type !== 'TableReferences'){
-                //         throw new Error('Unexpected flow is reached.')
-                //     }
-                //     let info: Array<any> = ast.value.from.value.map( (obj: ASTObject ) => {
-                //         if(obj.type === 'TableReference'){
-                //             if(obj.value.type === 'TableFactor'){
-                //                 // determine the from table
-                //                 if( obj.value.value.type === 'Identifier'){
-                //                     return {type: 'table', value: santilize(obj.value.value) }
-                //                 }
-                //             } else if( obj.value.value.type === 'SubQuery'){
-                //                 let selectItems = obj.value.value.value.selectItems
-                //                 if(selectItems.type === 'SelectExpr'){
-                //                     // determine any fields from derived table
-                //                     return selectItems.value.map( (item: any) => {
-                //                         if( item.type === 'Identifier'){
-                //                             return {type: 'field', value: santilize(item) }
-                //                         }
-                //                     })
-                //                 } else throw new Error('Unexpected flow is reached.')
-                //             } else throw new Error('Unexpected flow is reached.')
-                //         } else throw new Error('Unexpected flow is reached.')
-                //     })
-                    
-                    
-                //     let tables: Array<string> = info.filter( (i: any) => i.type === 'table').map(i => i.value)
-                //     if(tables.length > 0){
-                //         let schemaArr = Object.keys(schemas).map(k => schemas[k])
-                //         let selectedSchemas = tables.map(t => {
-                //             let s = schemaArr.find(s => s.tableName === t) 
-                //                 if(!s)
-                //                 throw new Error(`Table [${t}] is not found.`)
-                //             return s
-                //         })
-                //         let all = selectedSchemas.map(schema => schema.namedProperties.filter(p => !p.computedFunc).map(p => p.fieldName) ).flat()
-                //         columns = columns.concat(all)
-                //     }
-                    
-                //     columns.concat( info.filter( (i:any) => i.type === 'field').map(i => i.value) )
-                    
-                //     //determine the distinct set of columns
-                //     columns = columns.filter(n => n !== '*')
-                //     let fullSet = new Set(columns)
-                //     columns = [...fullSet]
-                
-                    
-                //     // going to replace star into all column names
-                //     if( ast.value.selectItems.type !== 'SelectExpr'){
-                //         throw new Error('Unexpected flow is reached.')
-                //     } else {
-                //         //remove * element
-                //         let retain = ast.value.selectItems.value.filter( (v:any) => v.value !== '*' )
-                        
-                //         let newlyAdd = columns.filter( c => !retain.find( (v:any) => santilize(v) === c ) )
-
-                //         //add columns element
-                //         ast.value.selectItems.value = [...retain, ...newlyAdd.map(name => {
-                //             return {
-                //                 type: "Identifier",
-                //                 value: name,
-                //                 alias: null,
-                //                 hasAs: null
-                //             }
-                //         })]
-                //     }
-
-                //     subqueryString = sqlParser.stringify(ast)
-                // }
-
-                // return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
             }
 
             if(subquery instanceof Promise){
@@ -434,47 +353,6 @@ const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
 }
 export const select = sealSelect
 
-// export type FunctionSelector = {
-//     [key: string] : CompiledFunction
-// }
-
-// export type FieldSelector = {
-//     [key: string] : string
-// }
-
-// export class CompiledNamedPropertyWithSubQuery{
-//     compiledNamedProperty: CompiledNamedProperty
-//     subquery: string
-//     constructor(compiledNamedProperty: CompiledNamedProperty, subquery: string){
-//         this.compiledNamedProperty = compiledNamedProperty
-//         this.subquery = subquery
-//     }
-// }
-// export class CompiledNamedPropertyGetter{
-//     compiledNamedProperty: CompiledNamedProperty
-//     constructor(compiledNamedProperty: CompiledNamedProperty){
-//         this.compiledNamedProperty = compiledNamedProperty
-//     }
-//     get(){
-//         return this.compiledNamedProperty
-//     }
-// }
-
-// export class CompiledNamedProperty{
-//     namedProperty: NamedProperty
-//     rootSelector: Selector<typeof Entity>
-//     tableAlias?: string | null
-//     fieldName?: string | null
-//     fieldAlias?: string | null
-//     compiled: string | CompiledNamedPropertyFunction
-
-//     constructor(rootSelector: Selector<typeof Entity>, prop: NamedProperty) {
-//         this.namedProperty = prop
-//         this.rootSelector = rootSelector
-        
-//     }
-// }
-
 export type SimpleObject = { [key:string]: any}
 
 
@@ -543,10 +421,10 @@ const breakdownMetaFieldAlias = function(metaAlias: string){
     }
 }
 
-type ASTObject = {
-    type: string,
-    value: any
-}
+// type ASTObject = {
+//     type: string,
+//     value: any
+// }
 
 export class Selector{
 
@@ -699,32 +577,6 @@ export class Selector{
         return applyFilter(stmt, selector)
     }
 
-    /**
-     * Create and compile a new ComputedProperty
-     * It is similar to compileNamedProperty but it return the selector of this new property
-     * @param namedProperty A `NamedProperty` instance
-     * @returns the selector of this new property
-     */
-    // derivedProp(namedProperty: NamedProperty){
-    //     if(!namedProperty.computedFunc){
-    //         throw new Error('derivedProp only allows ComputedProperty.')
-    //     }
-    //     return this.compileNamedProperty(namedProperty).compiled
-    // }
-
-    /**
-     * Create and compile a new NamedProperty
-     * NamedProperty can be compiled into CompiledNamedProperty for actual SQL query
-     * The compilation is:
-     *  - embedding a runtime entity's selector into the 'computed function'
-     *  - or translate the field into something like 'tableAlias.fieldName'
-     * @param namedProperty A `NamedProperty` instance
-     * @returns CompiledNamedProperty 
-     */
-    // compileNamedProperty(prop: NamedProperty) {
-    //     let rootSelector = this
-    //     prop.compile(rootSelector)
-    // }
 }
 
 export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw | Promise<Knex.Raw>
@@ -901,31 +753,41 @@ export class Database{
         return ast
     }
 
-    static _santilize(item: any): string | null {
-        let v = item.alias ?? item.value
-        if(typeof v === 'string'){
-            v = v.replace(/[`']/g, '')
-            let p = v.split('.')
-            let name = p[p.length - 1]
-            return name
+    static _extractColumnAlias(col: Column | '*'): string | null {
+        let found = this._extractColumnName(col)
+        if(found){
+            return found[0]
         }
         return null
     }
 
-    static _resolveStar(ast: SimpleObject, from: SimpleObject): any {
+    static _extractColumnName(col: Column | '*'): Array<string | null> {
+        if(col === '*'){
+            return ['*']
+        }
+        let v = col.as
+        if(v){
+            return [v]
+        } else if(!v && col.expr.type === 'column_ref'){
+            v = col.expr.column
+            return [v, col.expr.table]
+        }
+        return []
+    }
 
-        let targetTable: string | null = null
-        let v = ast.value
-        v = v.replace(/[`']/g, '')
-        if(v.includes('.*') || v.includes('.$star') ){
-            targetTable = v.split('.')[0]
+    static _resolveStar(ast: Column | '*', from: any[] | null): any {
+
+        let [name, targetTable] = this._extractColumnName(ast)
+
+        if(from === null){
+            throw new Error('Not expected')
         }
 
-        if(from.type !== 'TableReferences'){
-            throw new Error('Unexpected flow is reached.')
-        }
-        return from.value.flatMap( (obj: ASTObject ) => {
-            if(obj.type === 'TableReference'){
+        return from.flatMap( (obj: SimpleObject ) => {
+
+            let tableNameOrTableAlias = obj.as ?? obj.table
+
+            if(tableNameOrTableAlias){
 
                 let checkingAst =[]
                 
@@ -982,7 +844,7 @@ export class Database{
                                 // determine any fields from derived table
                                 return selectItems.value.map( (item: any) => {
                                     if( item.type === 'Identifier'){
-                                        let fieldName = this._santilize(item)
+                                        let fieldName = this._extractColumnAlias(item)
                                         return {
                                             type: "Identifier",
                                             value: `${tableName}.${fieldName}`,
