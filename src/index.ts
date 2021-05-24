@@ -231,32 +231,63 @@ export class NamedProperty {
                     let selectAst = ast
                     let columns = ast.columns
                     
-                    let columnsTranslated = []
                     // then handle select items... expand columns
-                    if(columns === '*'){
-                        columns = Database._resolveStar(columns, selectAst.from)
-                    } else {
-                        columns.map( (col: Column) => {
+
+                    const handleColumns = (from: any[] | null, columns: any[] | Column[] | '*'): any[] | Column[] => {
+                        if(columns === '*'){
+                            columns = [{
+                                expr: {
+                                    type: 'column_ref',
+                                    table: null,
+                                    column: '*'
+                                },
+                                as: null
+                            }]
+                        }
+
+                        return columns.flatMap( (col: Column) => {
                             if(col.expr.type === 'column_ref' && ( col.expr.column.includes('*') || col.expr.column.includes('$star') ) ){
                                 // if it is *... expand the columns..
-                                return Database._resolveStar(col, selectAst.from)
+                                let moreColumns = Database._resolveStar(col, from)
+                                return moreColumns
+                                // @ts-ignore
+                            } else if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
+                                // @ts-ignore
+                                col.as = col.expr.columns[0].as
+                                if(!col.as){
+                                    throw new Error('Unexpected Flow.')
+                                }
+                                return col
                             } else {
+
+                                if(!col.as){
+                                    col.as = makeid(5)
+                                }
                                 return col
                             }
                         })
+                        
                     }
 
-                    let processedColumns = columns as Column[]
+                    let processedColumns = handleColumns(selectAst.from, columns) as Column[]
+
+                    //eliminate duplicated columns
+
+                    processedColumns = processedColumns.reduce( (acc: any[], item: SimpleObject) => {
+                        if( !acc.find( (x:any) => item.as === x.as ) ){
+                            acc.push(item)
+                        }
+                        return acc
+                    },[] as any[])
 
                     columnsToBeTransformed = processedColumns.flatMap( (col: any) => {
-                        if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
-                            return Database._extractColumnAlias(col.expr.columns[0])
-                        }
                         return Database._extractColumnAlias(col) 
                     }) as string[]
                 
                     ast.columns = processedColumns
                     subqueryString = sqlParser.sqlify(ast)
+                } else {
+                    throw new Error('Computed property must be started with Select')
                 }
 
                 let definition = namedProperty.definition
@@ -588,6 +619,7 @@ type ExecutionContextAction<I> =  (stmt: SQLString, trx?: Knex.Transaction) => P
 type PrepareSQLStatementAction = () => Promise<SQLString>
 
 
+
 export class ExecutionContext<I> implements PromiseLike<I>{
     prepareStmt: PrepareSQLStatementAction
     trx?: Knex.Transaction
@@ -681,9 +713,16 @@ export class Database{
         console.debug(sql)
         console.debug('=========================')
 
-        let ast = sqlParser.parse(sql)
+        let ast: any = sqlParser.astify(sql)
+        // console.log('xxxxxxx')
+        // console.log( JSON.stringify(ast) )
+
         ast = this._transpileAst(ast, false)
-        return sqlParser.stringify(ast)
+        // console.log('xxxxxxx')
+        // console.log( JSON.stringify(ast) )
+
+        let a = sqlParser.sqlify(ast)
+        return a
     }
 
     static _transpileAst(ast: SimpleObject, withAlias: boolean): SimpleObject{
@@ -694,54 +733,45 @@ export class Database{
             ast = ast.map(item => this._transpileAst(item, withAlias))
             return ast
         }
-        if( ast.type === 'SubQuery'){
-            let astValue = ast.value
-            if(astValue.type === 'Select'){
-                let selectItems = astValue.selectItems
-                if(selectItems.type !== 'SelectExpr'){
-                    throw new Error('Unsupported')
-                }
+        if( ast.expr && ast.expr.type === 'select'){
+            let expr = ast.expr
+            // handle where first, no dependences
+            if (expr.where) {
+                expr.where = this._transpileAst(expr.where, false)
+            }
 
-                // handle where first, no dependences
-                if (astValue.where) {
-                    astValue.where = this._transpileAst(astValue.where, false)
-                }
-    
-                // must handle the 'from' before 'selectitem'... because of dependencies
-                if (astValue.from) {
-                    astValue.from = this._transpileAst(astValue.from, false)
-                }
-                
-                // let rand = makeid(5)
-                // console.debug('-> subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-                
-                astValue.selectItems.value = astValue.selectItems.value.map( (item: SimpleObject) => this._transpileAst(item, true) )
+            // must handle the 'from' before 'selectitem'... because of dependencies
+            if (expr.from) {
+                expr.from = this._transpileAst(expr.from, true)
+            }
+            
+            // let rand = makeid(5)
+            // console.debug('-> subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
+            
+            expr.columns = expr.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
 
-                // console.debug('<-- subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-                // remove double nested sql
-                
-                if(astValue.selectItems.value.length === 1){
-                    let item = astValue.selectItems.value[0]
-                    if(item.type === 'SubQuery'){
-                        if(!withAlias){
-                            item.hasAs = null
-                            item.alias = null
-                        }
-                        return item
-                    } else if(item.type === 'Identifier'){
-
-                        if(!withAlias){
-                            item.hasAs = null
-                            item.alias = null
-                        }
-                        return item
+            // console.debug('<-- subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
+            // remove double nested sql
+            
+            if(expr.columns.length === 1){
+                let item = expr.columns[0]
+                if(item.expr.type === 'select'){
+                    if(!withAlias){
+                        item.as = null
                     }
+                    return item
+                } else if(item.expr.type === 'column_ref'){
 
-
+                    if(!withAlias){
+                        item.as = null
+                    }
+                    return item
                 }
+
             }
 
             return ast
+            
         } else if ( (ast as SimpleObject) instanceof Object){
             let newReturn = Object.keys(ast).reduce((acc, key)=>{
                 acc[key] = this._transpileAst(ast[key], withAlias)
@@ -770,7 +800,7 @@ export class Database{
             return [v]
         } else if(!v && col.expr.type === 'column_ref'){
             v = col.expr.column
-            return [v, col.expr.table]
+            return [v, col.expr.table || null]
         }
         return []
     }
@@ -785,80 +815,54 @@ export class Database{
 
         return from.flatMap( (obj: SimpleObject ) => {
 
-            let tableNameOrTableAlias = obj.as ?? obj.table
+            let tableNameOrTableAlias = obj.as
 
+            
             if(tableNameOrTableAlias){
 
-                let checkingAst =[]
-                
-                if(['TableFactor'].includes(obj.value.type)){
-                    checkingAst.push(obj.value)
-                } else if(['InnerCrossJoinTable', 'LeftRightJoinTable'].includes(obj.value.type)){
+                //if there is no target table refered or the target table matched the name
+                if(!targetTable || targetTable === tableNameOrTableAlias){
 
-                    if(obj.value.left){
-                        if(['TableFactor'].includes(obj.value.left.type)){
-                            checkingAst.push(obj.value.left)
+                    if(obj.table){
+                        let schema = breakdownMetaTableAlias(tableNameOrTableAlias)
+                        if(!schema)
+                            throw new Error(`Schema is not found.`)
+                            
+                        let all = schema.namedProperties.filter(p => !p.computedFunc).map(p => {
+                            let alias = metaFieldAlias(p)
+                            return {
+                                expr: {
+                                    type: "column_ref",
+                                    table: tableNameOrTableAlias,
+                                    column: p.fieldName
+                                },
+                                as: alias
+                            }
+                        })
+                        return all
+                    }else {
+                        let ast: AST = obj.expr.ast
+                        if(ast.type === 'select'){
+                            let selectAst = ast
+                            if( selectAst.columns === '*'){
+                                throw new Error('Unexpected flow is reached.') 
+                            } else {
+                                return selectAst.columns.map( (c: SimpleObject) => ({
+                                    expr: {
+                                        type: "column_ref",
+                                        table: tableNameOrTableAlias,
+                                        column: c.as ?? c.column
+                                    },
+                                    as: c.as
+                                }))
+                            }
                         }
+                        else throw new Error('Unexpected flow is reached.')
                     }
-                    if(obj.value.right){
-                        if(['TableFactor'].includes(obj.value.right.type)){
-                            checkingAst.push(obj.value.right)
-                        }
-                    }
+
                 }
 
-                if(checkingAst.length === 0){
-                    throw new Error(`Unexpected flow is reached. ${obj.value.type}`)
-                }
-
-                return checkingAst.flatMap(ast => {
-                    if( ast.value.type === 'Identifier'){
-                        
-                        let tableName = ast.alias?.value ?? ast.value?.value
-
-                        if(targetTable === null || targetTable === tableName){
-                            // find all fields from schema
-                            let schema = breakdownMetaTableAlias(tableName)
-                            if(!schema)
-                                throw new Error(`Entity [${tableName}] is not found.`)
-                                
-                            let all = schema.namedProperties.filter(p => !p.computedFunc).map(p => {
-                                let alias = metaFieldAlias(p)
-                                return {
-                                    type: "Identifier",
-                                    value: `${tableName}.${p.fieldName}`,
-                                    alias: alias,
-                                    hasAs: true
-                                }
-                            })
-                            return all
-                        }
-                        return []
-                    } else if( ast.value.type === 'SubQuery'){
-
-                        let tableName = ast.alias.value
-
-                        let selectItems = ast.value.value.selectItems
-                        if(targetTable === null || targetTable === tableName){
-                            if(selectItems.type === 'SelectExpr'){
-                                // determine any fields from derived table
-                                return selectItems.value.map( (item: any) => {
-                                    if( item.type === 'Identifier'){
-                                        let fieldName = this._extractColumnAlias(item)
-                                        return {
-                                            type: "Identifier",
-                                            value: `${tableName}.${fieldName}`,
-                                            alias: null,
-                                            hasAs: null
-                                        } 
-                                    }
-                                })
-                            } else throw new Error('Unexpected flow is reached.')
-                        }
-                        return []
-                    } else throw new Error('Unexpected flow is reached.')
-                })
-
+                return []
             } else throw new Error('Unexpected flow is reached.')
         })
 
