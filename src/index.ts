@@ -926,10 +926,33 @@ export class Database{
         }
         return from.value.flatMap( (obj: ASTObject ) => {
             if(obj.type === 'TableReference'){
-                if(['TableFactor', 'InnerCrossJoinTable'].includes(obj.value.type) ){
-                    if( obj.value.value.type === 'Identifier'){
+
+                let checkingAst =[]
+                
+                if(['TableFactor'].includes(obj.value.type)){
+                    checkingAst.push(obj.value)
+                } else if(['InnerCrossJoinTable', 'LeftRightJoinTable'].includes(obj.value.type)){
+
+                    if(obj.value.left){
+                        if(['TableFactor'].includes(obj.value.left.type)){
+                            checkingAst.push(obj.value.left)
+                        }
+                    }
+                    if(obj.value.right){
+                        if(['TableFactor'].includes(obj.value.right.type)){
+                            checkingAst.push(obj.value.right)
+                        }
+                    }
+                }
+
+                if(checkingAst.length === 0){
+                    throw new Error(`Unexpected flow is reached. ${obj.value.type}`)
+                }
+
+                return checkingAst.flatMap(ast => {
+                    if( ast.value.type === 'Identifier'){
                         
-                        let tableName = obj.value.alias?.value ?? obj.value.value?.value
+                        let tableName = ast.alias?.value ?? ast.value?.value
 
                         if(targetTable === null || targetTable === tableName){
                             // find all fields from schema
@@ -949,11 +972,11 @@ export class Database{
                             return all
                         }
                         return []
-                    } else if( obj.value.value.type === 'SubQuery'){
+                    } else if( ast.value.type === 'SubQuery'){
 
-                        let tableName = obj.value.alias.value
+                        let tableName = ast.alias.value
 
-                        let selectItems = obj.value.value.value.selectItems
+                        let selectItems = ast.value.value.selectItems
                         if(targetTable === null || targetTable === tableName){
                             if(selectItems.type === 'SelectExpr'){
                                 // determine any fields from derived table
@@ -972,7 +995,8 @@ export class Database{
                         }
                         return []
                     } else throw new Error('Unexpected flow is reached.')
-                }  else throw new Error(`Unexpected flow is reached. ${obj.value.type}`)
+                })
+
             } else throw new Error('Unexpected flow is reached.')
         })
 
