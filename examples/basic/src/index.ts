@@ -29,7 +29,7 @@ let main = async() =>{
 
     await advanced()
     
-    // await insert()
+    await insert()
 
 }
 
