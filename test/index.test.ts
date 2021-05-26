@@ -89,3 +89,24 @@ test('Create Simple Object', async () => {
     })
     expect(record).toMatchObject({location: 'Shatin'})
 });
+
+test('Found Simple Object', async () => {
+    const expectedData = {
+        location: 'Shatin'
+      }
+    let record = await models.Shop.createOne(expectedData)
+    let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.prop({id: record.id})))
+
+    expect(found).toMatchObject(expectedData)
+});
+
+test('Not Found Simple Object', async () => {
+    const expectedData = {
+        location: 'Shatin'
+      }
+    let record = await models.Shop.createOne(expectedData)
+    let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.prop({id: record.id + 10000})))
+    expect(found).toBeNull()
+});
+
+

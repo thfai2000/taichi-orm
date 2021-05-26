@@ -926,7 +926,7 @@ export class Database{
             async (stmt: SQLString, existingTrx?: Knex.Transaction
             ) => {
                 let rows = await Database._find<T>(entityClass, stmt, existingTrx)
-            return rows[0]
+            return rows[0] ?? null
         })
      }
 
