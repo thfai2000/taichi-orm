@@ -98,6 +98,10 @@ let schemas: {
     [key: string]: Schema
 } = {}
 
+let registeredModels: {
+    [key: string]: typeof Entity
+} = {}
+
 export class Schema {
 
     tableName: string
@@ -333,11 +337,19 @@ export const configure = async function(newConfig: Partial<Config>){
             schemas[entityName] = s
             tables.push(s)
         }
-        config.models[entityName] = entityClass
+        registeredModels[entityName] = entityClass
     }
     
     //register special Entity Dual
     registerEntity(Dual.name, Dual)
+
+    //register models 
+    if(config.models){
+        let models = config.models
+        Object.keys(models).forEach(key => {
+            registerEntity(key, models[key]);
+        })
+    }
     //register models by path
     if(config.modelsPath){
         let files = fs.readdirSync(config.modelsPath)
@@ -353,20 +365,14 @@ export const configure = async function(newConfig: Partial<Config>){
             }
         }))
     }
-    //register models 
-    if(config.models){
-        let models = config.models
-        Object.keys(models).forEach(key => {
-            registerEntity(key, models[key]);
-        })
-    }
+
 
     let sqlStmt = tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';'
 
     //write schemas into sql file
     if(config.outputSchemaPath){
         let path = config.outputSchemaPath
-        fs.writeFileSync(path, sqlStmt )
+        fs.writeFileSync(path, sqlStmt)
         console.debug('schemas files:', Object.keys(schemas))
     }
 
@@ -374,6 +380,8 @@ export const configure = async function(newConfig: Partial<Config>){
     if(config.createModels){
         await getKnexInstance().raw(sqlStmt)
     }
+
+    return config
 }
 
 const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
@@ -1150,6 +1158,7 @@ export class Dual extends Entity {
 
 
 export const run = Database.run
+export const models = registeredModels
 
 /**
  * 

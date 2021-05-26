@@ -6,9 +6,9 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "npm install && tsc --watch",
+    "dev": "npm install && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" "
   },
   "repository": {
     "type": "git",
@@ -21,16 +21,20 @@
   },
   "homepage": "https://github.com/thfai2000/llorm#readme",
   "devDependencies": {
+    "@types/jest": "^26.0.23",
     "@types/knex": "^0.16.1",
     "@types/lodash": "^4.14.169",
     "@types/node": "^15.0.3",
     "@types/node-sql-parser": "^1.1.0",
     "@types/uuid": "^8.3.0",
+    "concurrently": "^6.2.0",
+    "jest": "^27.0.1",
     "mysql2": "^2.2.5",
     "nodemon": "^2.0.7",
     "reflect-metadata": "^0.1.13",
     "sqlite3": "^5.0.2",
-    "typescript": "^4.2.4"
+    "typescript": "^4.2.4",
+    "uuid": "^3.4.0"
   },
   "dependencies": {
     "knex": "^0.95.5",
