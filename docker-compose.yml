@@ -11,8 +11,8 @@ services:
             - MYSQL_DATABASE=example
         ports:
             - '3306:3306'
-        logging:
-            driver: none
+        # logging:
+        #     driver: none
     adminer:
         image: adminer
         ports:

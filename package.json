@@ -8,7 +8,11 @@
   "scripts": {
     "dev": "npm install && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
     "build": "tsc",
-    "test": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" "
+    "test": "npm run test:sqlite",
+    "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
+    "test:sqlite": "jest --watch --setupFiles=./dist-test/setup-sqlite.js",
+    "mysql": "docker-compose down && docker-compose up",
+    "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" "
   },
   "repository": {
     "type": "git",
@@ -28,6 +32,7 @@
     "@types/node-sql-parser": "^1.1.0",
     "@types/uuid": "^8.3.0",
     "concurrently": "^6.2.0",
+    "cross-env": "^7.0.3",
     "jest": "^27.0.1",
     "mysql2": "^2.2.5",
     "nodemon": "^2.0.7",

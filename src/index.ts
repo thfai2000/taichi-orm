@@ -9,13 +9,14 @@ import { AST, Column, Parser } from 'node-sql-parser'
 const sqlParser = new Parser();
 
 
-
 export type Config = {
-    knexConfig: Knex.Config,
+    client?: string,
+    connection?: SimpleObject,
     models: {[key:string]: typeof Entity}
     createModels?: boolean,
     modelsPath?: string,
     outputSchemaPath?: string,
+    // waitUtilDatabaseReady?: boolean,
     entityNameToTableName?: (params:string) => string,
     // tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
@@ -27,8 +28,7 @@ export type Config = {
 // the new orm config
 export const config: Config = {
     createModels: false,
-    models: {},
-    knexConfig: {client: 'mysql2'},
+    models: {}
 }
 
 // const guidColumnName = () => config.guidColumnName ?? '__guid__'
@@ -36,7 +36,11 @@ export const config: Config = {
 // a global knex instance
 export const getKnexInstance = () => {
     // multipleStatements must be true
-    let newKnexConfig = Object.assign( {}, config.knexConfig)
+    let newKnexConfig = {
+        client: config.client,
+        connection: config.connection,
+        useNullAsDefault: true
+    }
     if(newKnexConfig.connection){
         newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
     }
@@ -328,6 +332,20 @@ export class NamedProperty {
 
 export const configure = async function(newConfig: Partial<Config>){
     Object.assign(config, newConfig)
+
+
+    // if(config.waitUtilDatabaseReady){
+        
+    //     while(){
+    //         try{
+    //             await getKnexInstance().raw('SELECT 1')
+    //         }catch(error){
+    
+    //         }
+    //     }
+
+    // }
+
     let tables: Schema[] = []
 
     const registerEntity = (entityName: string, entityClass: any) => {
@@ -367,21 +385,24 @@ export const configure = async function(newConfig: Partial<Config>){
     }
 
 
-    let sqlStmt = tables.map(t => t.createTableStmt()).filter(t => t).join(";\n") + ';'
+    let sqlStmts: string[] = tables.map(t => t.createTableStmt()).filter(t => t)
 
     //write schemas into sql file
     if(config.outputSchemaPath){
         let path = config.outputSchemaPath
-        fs.writeFileSync(path, sqlStmt)
+        fs.writeFileSync(path, sqlStmts.join(";\n") + ';')
         console.debug('schemas files:', Object.keys(schemas))
     }
 
     //create tables
+    // important: sqllite3 doesn't accept multiple statements
     if(config.createModels){
-        await getKnexInstance().raw(sqlStmt)
+        await Promise.all( sqlStmts.map( async(sql) => {
+            await getKnexInstance().raw(sql)
+        }) )
     }
 
-    return config
+    return sqlStmts
 }
 
 const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
@@ -696,7 +717,7 @@ export class Database{
                 console.debug(stmt.toString())
                 console.debug("=====================")
                 let resultData = await Database.executeStatement(stmt, trx)
-                let tmp = resultData[0][0]
+                let tmp = resultData[0]
                 let dualInstance = Database.parseRaw(Dual, tmp)
                 let str = "data" as keyof Dual
                 let rows = dualInstance[str]
@@ -903,9 +924,18 @@ export class Database{
                 let result = await startTransaction( async (trx) => {
                     // await stmt //execute sql
                     // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
-                    let insertedId = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                    let actualId = insertedId[0][1][0].id
-                    let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', actualId)).usingConnection(trx)
+                    let insertedId: number
+                    if(config.client?.startsWith('mysql')){
+                        const r = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
+                        insertedId = r[1][0].id
+                    } else if(config.client?.startsWith('sqlite')){
+                        await this.executeStatement( stmt.toString(), trx)
+                        const r = await this.executeStatement('SELECT last_insert_rowid() AS id ', trx)
+                        insertedId = r[0].id
+                    } else{
+                        throw new Error('NYI')
+                    }
+                    let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', insertedId)).usingConnection(trx)
                     return records[0]
 
                 }, existingTrx)
@@ -973,19 +1003,26 @@ export class Database{
         console.debug(stmt.toString())
         console.debug("================================")
         let resultData: any = await Database.executeStatement(stmt, existingTrx)
-       
-        let dualInstance = this.parseRaw(Dual, resultData[0][0] as SimpleObject)
+
+        let dualInstance = this.parseRaw(Dual, resultData[0] as SimpleObject)
         let str = "data" as keyof Dual
         let rows = dualInstance[str] as Array<InstanceType<T>>
         return rows
     }
 
     static async executeStatement(stmt: SQLString, existingTrx?: Knex.Transaction): Promise<any> {
+
         let KnexStmt = getKnexInstance().raw(stmt.toString())
         if (existingTrx) {
             KnexStmt.transacting(existingTrx)
         }
-        return await KnexStmt
+        let result = await KnexStmt
+
+        if(config.client?.startsWith('mysql')){
+            return result[0]
+        } else if(config.client?.startsWith('sqlite')){
+            return result
+        }
     }
 
     static parseRaw<T extends typeof Entity>(entityClass: T, row: SimpleObject): InstanceType<T>{

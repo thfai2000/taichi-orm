@@ -1,4 +1,4 @@
-import {run, select, raw, configure, Schema, Selector, Entity, Types, models} from '../dist/'
+import {run, select, raw, configure, Schema, Selector, Entity, Types, models, getKnexInstance} from '../dist/'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 
@@ -50,22 +50,22 @@ const initializeDatabase = async () => {
 
     let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
-    let a = await configure({
-        models: {Product, Shop, Color},
+    // @ts-ignore
+    let config = JSON.parse(process.env.ENVIRONMENT)
+
+    let sql = await configure({
+        models: {Shop, Product, Color},
         createModels: true,
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: {
-            client: 'mysql2',
-            connection: {
-                host : '127.0.0.1',
-                user : 'example',
-                password : 'example',
-                database : 'example',
-                port: 3306
-            }
-        }
+        
+        client: config.client,
+        connection: config.connection
+
     })
+
+    // console.log("sql", sql)
+    // console.log('xxxxx', await getKnexInstance().raw('SELECT * FROM sqlite_master WHERE type=\'table\';') )
 }
 
 const clearDatabase = () => {
@@ -83,6 +83,7 @@ afterAll(() => {
 
 
 test('Create Simple Object', async () => {
+
 
     let record = await models.Shop.createOne({
       location: 'Shatin'
