@@ -8,11 +8,11 @@ export { PropertyType, Types }
 import { AST, Column, Parser } from 'node-sql-parser'
 const sqlParser = new Parser();
 
-
 export type Config = {
-    client?: string,
-    connection?: SimpleObject | string,
-    pool?: SimpleObject,
+    knexConfig: Omit<Knex.Config, "client" | "connection"> & {
+        client: string
+        connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
+    },
     models: {[key:string]: typeof Entity}
     createModels?: boolean,
     modelsPath?: string,
@@ -30,10 +30,11 @@ export type Config = {
 // the new orm config
 export const config: Config = {
     createModels: false,
-    models: {}
+    models: {},
+    knexConfig: {
+        client: 'mysql' //default mysql
+    }
 }
-
-// const guidColumnName = () => config.guidColumnName ?? '__guid__'
 
 let _globalKnexInstance: Knex | null = null
 
@@ -44,19 +45,30 @@ export const getKnexInstance = (): Knex => {
     }
 
     // multipleStatements must be true
-    let newKnexConfig: Partial<Config> = {
-        client: config.client,
-        connection: config.connection,
-        useNullAsDefault: true,
+    // let newKnexConfig: Partial<Config> = {
+    //     client: config.client,
+    //     connection: config.connection,
+    //     useNullAsDefault: true,
+    // }
+
+    // if(config.pool){
+    //     newKnexConfig.pool = config.pool
+    // }
+
+    let newKnexConfig = Object.assign({
+        useNullAsDefault: true
+    }, config.knexConfig)
+
+    if(typeof newKnexConfig.connection !== 'object'){
+        throw new Error('Configuration connection only accept object.')
     }
 
-    if(config.pool){
-        newKnexConfig.pool = config.pool
+    if(typeof newKnexConfig.client !== 'string'){
+        throw new Error('Configuration client only accept string')
     }
 
-    if(typeof newKnexConfig.connection === 'object'){
-        newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
-    }
+    newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
+    
     
     // console.log('newKnexConfig', newKnexConfig)
     _globalKnexInstance = knex(newKnexConfig)
@@ -923,10 +935,10 @@ export class Database{
                     // await stmt //execute sql
                     // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
                     let insertedId: number
-                    if(config.client?.startsWith('mysql')){
+                    if(config.knexConfig.client.startsWith('mysql')){
                         const r = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
                         insertedId = r[1][0].id
-                    } else if(config.client?.startsWith('sqlite')){
+                    } else if(config.knexConfig.client?.startsWith('sqlite')){
                         await this.executeStatement( stmt.toString(), trx)
                         const r = await this.executeStatement('SELECT last_insert_rowid() AS id', trx)
                         insertedId = r[0].id
@@ -1016,9 +1028,9 @@ export class Database{
         }
         let result = await KnexStmt
 
-        if(config.client?.startsWith('mysql')){
+        if(config.knexConfig.client.startsWith('mysql')){
             return result[0]
-        } else if(config.client?.startsWith('sqlite')){
+        } else if(config.knexConfig.client.startsWith('sqlite')){
             return result
         }
     }

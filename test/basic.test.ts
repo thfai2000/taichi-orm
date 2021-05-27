@@ -30,9 +30,7 @@ const initializeDatabase = async () => {
         createModels: true,
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        client: config.client,
-        connection: config.connection
-
+        knexConfig: config
     })
 
     // console.log("sql", sql)

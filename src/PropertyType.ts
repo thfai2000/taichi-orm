@@ -9,7 +9,7 @@ export interface PropertyType {
     parseProperty: (propertyvalue: any) => any
 }
 
-const client = () => config.client!.toString()
+const client = () => config.knexConfig.client.toString()
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
 const autoIncrement = () => client().startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
 const jsonArrayAgg = () => client().startsWith('sqlite')? 'json_group_array': 'JSON_ARRAYAGG'
