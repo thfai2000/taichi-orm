@@ -1,4 +1,4 @@
-import {run, select, raw, configure} from '../../../dist/'
+import {run, select, raw, configure, getKnexInstance} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'
@@ -24,13 +24,13 @@ let main = async() =>{
             }
         }
     })
-    
-    // await basic()
 
-    // await insert()
+    await basic()
 
     await advanced()
     
+    await insert()
+
 }
 
 async function basic(){
@@ -53,7 +53,7 @@ async function basic(){
      * !important: computed field is a function call
      */
     let records3 = await Shop.find( (stmt, root) => {
-        return stmt.select(root.all, root.$.products())
+        return stmt.select('*', root.$.products())
     })
     console.log('queried3:', records3)
 
@@ -62,29 +62,30 @@ async function basic(){
      * find records with multiple level of relations
      */
     let records4 = await Shop.find( (stmt, shop) => {
-        return stmt.select(shop.all, shop.$.productCount(), shop.$.products( (stmt2, prd) => {
-            return stmt2.select(prd.all, prd.$.colors()).limit(4)
+        return stmt.select('*', shop.$.productCount(), shop.$.products( (stmt2, prd) => {
+            return stmt2.select('*', prd.$.colors()).limit(4)
         }))
     })
     console.log('queried4:', records4)
 
     let records5 = await Product.find( (stmt, prd) => {
-        return stmt.select(prd.all, prd.$.shop())
+        return stmt.select('*', prd.$.shop())
     })
+
     console.log('queried5:', records5)
 
-    let records6 = await Shop.find( (stmt, {all, $}) => {
-        return stmt.select(all, $.products()).where( raw('?? > ?', [$._productCount(), 2]))
+    let records6 = await Shop.find( (stmt, {$} ) => {
+        return stmt.select('*', $.products()).where( raw('?? > ?', [$._productCount(), 2]))
     })
-    console.log('query6', records6)
+    console.log('queried6:', records6)
 }
 
 async function advanced(){
 
     // Try Using Promise
-    let records0 = await Shop.find( (stmt, {_}) => {
+    let records0 = await Shop.find( (stmt, {prop}) => {
         return new Promise( (resolve) =>{
-            resolve(stmt.where( _({id: 1})))
+            resolve(stmt.where(prop({id: 1})))
         })
     })
     console.log('queried0:', records0)
@@ -95,18 +96,22 @@ async function advanced(){
     })
     console.log('queried1:', records1)
 
-    let records2 = await Product.find( (stmt, {_} ) => {
+    let records2 = await Product.find( (stmt, {prop} ) => {
         return new Promise( (resolve) => {
-            resolve(stmt.where(_({shopId: 1})))
+            resolve(stmt.where(prop({shopId: 1})))
         })
     })
     console.log('queried2:', records2)
 
     let records3 = await run(Shop, Product, (s, p) => {
-        return select(s.name, p.all, s.$.products(), s.$.productCount() ).from(s.source).join(p.source, s._.id, p._.shopId)
+
+        let a = select( s.all, s._location, s.$.products(), s.$.productCount(), p.all ).from(s.source)
+        let b = a.joinRaw(`JOIN ${p.source} ON ${s._.id} = ${p._.shopId}`)
+        return b
     })
 
     console.log('queried3:', records3)
+    
 }
 
 async function insert(){
@@ -129,3 +134,6 @@ async function insert(){
 
 
 main()
+
+
+
