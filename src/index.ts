@@ -11,7 +11,8 @@ const sqlParser = new Parser();
 
 export type Config = {
     client?: string,
-    connection?: SimpleObject,
+    connection?: SimpleObject | string,
+    pool?: SimpleObject,
     models: {[key:string]: typeof Entity}
     createModels?: boolean,
     modelsPath?: string,
@@ -23,6 +24,7 @@ export type Config = {
     // fieldNameToPropName?: (params:string) => string,
     suppressErrorOnPropertyNotFound?: string,
     // guidColumnName?: string
+    useNullAsDefault?: boolean
 }
 
 // the new orm config
@@ -33,19 +35,32 @@ export const config: Config = {
 
 // const guidColumnName = () => config.guidColumnName ?? '__guid__'
 
+let _globalKnexInstance: Knex | null = null
+
 // a global knex instance
-export const getKnexInstance = () => {
+export const getKnexInstance = (): Knex => {
+    if(_globalKnexInstance){
+        return _globalKnexInstance
+    }
+
     // multipleStatements must be true
-    let newKnexConfig = {
+    let newKnexConfig: Partial<Config> = {
         client: config.client,
         connection: config.connection,
-        useNullAsDefault: true
+        useNullAsDefault: true,
     }
-    if(newKnexConfig.connection){
+
+    if(config.pool){
+        newKnexConfig.pool = config.pool
+    }
+
+    if(typeof newKnexConfig.connection === 'object'){
         newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
     }
     
-    return knex(newKnexConfig)
+    // console.log('newKnexConfig', newKnexConfig)
+    _globalKnexInstance = knex(newKnexConfig)
+    return _globalKnexInstance
 }
 
 const sealRaw = (first:any, ...args: any[]) => {
@@ -375,7 +390,7 @@ export const configure = async function(newConfig: Partial<Config>){
             if(file.endsWith('.js')){
                 let path = config.modelsPath + '/' + file
                 path = path.replace(/\.js$/,'')
-                console.debug('load model file:', path)
+                // console.debug('load model file:', path)
                 let p = path.split('/')
                 let entityName = p[p.length - 1]
                 let entityClass = require(path)
@@ -391,7 +406,7 @@ export const configure = async function(newConfig: Partial<Config>){
     if(config.outputSchemaPath){
         let path = config.outputSchemaPath
         fs.writeFileSync(path, sqlStmts.join(";\n") + ';')
-        console.debug('schemas files:', Object.keys(schemas))
+        // console.debug('schemas files:', Object.keys(schemas))
     }
 
     //create tables
@@ -738,17 +753,13 @@ export class Database{
         // map2.set('odjde', Types.Number() )
         // sql = 'select (SELECT (SELECT 1 as `abc___Qq8j9` ) as `Shop___dasf4`) as `data___odjde`'
 
-        console.debug('==== before transpile ===')
-        console.debug(sql)
-        console.debug('=========================')
+        // console.debug('==== before transpile ===')
+        // console.debug(sql)
+        // console.debug('=========================')
 
         let ast: any = sqlParser.astify(sql)
-        // console.log('xxxxxxx')
-        // console.log( JSON.stringify(ast) )
 
         ast = this._transpileAst(ast, false)
-        // console.log('xxxxxxx')
-        // console.log( JSON.stringify(ast) )
 
         let a = sqlParser.sqlify(ast)
         return a
@@ -918,9 +929,9 @@ export class Database{
                 return Database.transpile(stmt)
             },
             async (stmt: SQLString, existingTrx?: Knex.Transaction) => {
-                console.debug('======== INSERT =======')
-                console.debug(stmt.toString())
-                console.debug('========================')
+                // console.debug('======== INSERT =======')
+                // console.debug(stmt.toString())
+                // console.debug('========================')
                 let result = await startTransaction( async (trx) => {
                     // await stmt //execute sql
                     // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
@@ -930,13 +941,13 @@ export class Database{
                         insertedId = r[1][0].id
                     } else if(config.client?.startsWith('sqlite')){
                         await this.executeStatement( stmt.toString(), trx)
-                        const r = await this.executeStatement('SELECT last_insert_rowid() AS id ', trx)
+                        const r = await this.executeStatement('SELECT last_insert_rowid() AS id', trx)
                         insertedId = r[0].id
                     } else{
                         throw new Error('NYI')
                     }
                     let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', insertedId)).usingConnection(trx)
-                    return records[0]
+                    return records[0] ?? null
 
                 }, existingTrx)
                 return result
@@ -999,9 +1010,9 @@ export class Database{
 
     private static async _find<T extends typeof Entity>(entityClass: T, stmt: SQLString, existingTrx?: Knex.Transaction<any, any[]>) {
        
-        console.debug("========== FIND ================")
-        console.debug(stmt.toString())
-        console.debug("================================")
+        // console.debug("========== FIND ================")
+        // console.debug(stmt.toString())
+        // console.debug("================================")
         let resultData: any = await Database.executeStatement(stmt, existingTrx)
 
         let dualInstance = this.parseRaw(Dual, resultData[0] as SimpleObject)

@@ -6,8 +6,8 @@
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "npm install && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
-    "build": "tsc",
+    "dev": "npm install && rm -rf dist && rm -rf dist-test && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
+    "build": "npm install && rm -rf dist && tsc --project tsconfig.json",
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
     "test:sqlite": "jest --watch --setupFiles=./dist-test/setup-sqlite.js",
