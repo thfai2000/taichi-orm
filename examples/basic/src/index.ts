@@ -1,4 +1,4 @@
-import {run, select, raw, configure, getKnexInstance, Selector} from '../../../dist/'
+import {run, select, raw, configure, getKnexInstance} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import Shop from './models/Shop'
 import Product from './models/Product'

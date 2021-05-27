@@ -23,8 +23,12 @@ class Product extends Entity{
     await configure({
         models: { Shop, Product },
         createModels: true,
-        client: 'sqlite',
-        connection: ':memory:'
+        knexConfig: {
+            client: 'sqlite',
+            connection: {
+                filename: ':memory:'
+            }
+        }
     })
     /**
      * Basic

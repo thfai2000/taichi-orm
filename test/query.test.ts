@@ -1,6 +1,21 @@
-import {run, select, raw, configure, Schema, Entity, Types, models} from '../dist'
+import {run, select, raw, configure, Schema, Entity, Types, Relations, models} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+
+let shopData = [
+  { id: 1, name: 'Shop 1', location: 'Shatin'},
+  { id: 2, name: 'Shop 2', location: 'Yuen Long'},
+  { id: 3, name: 'Shop 3', location: 'Tsuen Wan'},
+  { id: 4, name: 'Shop 4', location: 'Tsuen Wan'},
+  { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
+]
+
+let productData = [
+  { name: 'Product 1a', shopId: 1},
+  { name: 'Product 1b', shopId: 1},
+  { name: 'Product 2a', shopId: 2},
+  { name: 'Product 2b', shopId: 2}
+]
 
 const initializeDatabase = async () => {
     // configure the orm
@@ -9,7 +24,7 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
           schema.prop('name', Types.String(100))
           schema.prop('location', Types.String(255))
-          schema.computedProp('products', Types.Array(Product), (shop, applyFilters) => shop.hasMany(Product, 'shopId', applyFilters) )
+          schema.computedProp('products', Types.Array(Product), Relations.hasMany(Product, 'shopId') )
           schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
               let p = Product.selector()
               return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
@@ -24,8 +39,8 @@ const initializeDatabase = async () => {
           schema.prop('createdAt', Types.Date())
           schema.prop('shopId', Types.Number() )
           // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-          schema.computedProp('shop', Types.Object(Shop), (product, applyFilters) => product.belongsTo(Shop, 'shopId', applyFilters) )
-          schema.computedProp('colors', Types.Array(Color), (product, applyFilters) => product.hasMany(Color, 'productId', applyFilters) )
+          schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
+          schema.computedProp('colors', Types.Array(Color), Relations.hasMany(Color, 'productId') )
               
       }
     }
@@ -51,24 +66,12 @@ const initializeDatabase = async () => {
         knexConfig: config
     })
 
-    let shopData = [
-      { id: 1, name: 'Shop 1', location: 'Shatin'},
-      { id: 2, name: 'Shop 2', location: 'Yuen Long'},
-      { id: 3, name: 'Shop 3', location: 'Tsuen Wan'},
-      { id: 4, name: 'Shop 4', location: 'Tsuen Wan'},
-      { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
-    ]
+
 
     await Promise.all(shopData.map( async(d) => {
       return await models.Shop.createOne(d)
     }))
     
-    let productData = [
-      { name: 'Product 1a', shopId: 1},
-      { name: 'Product 1b', shopId: 1},
-      { name: 'Product 2a', shopId: 2},
-      { name: 'Product 2b', shopId: 2}
-    ]
 
     await Promise.all(productData.map( async(d) => {
       return await models.Product.createOne(d)
@@ -90,20 +93,26 @@ afterEach(() => {
 describe('Query', () => {
 
   test('Query by knex methods', async () => {
+    let limit = 2
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 2).limit(2)
+        return stmt.where(root.id, '>', 2).limit(limit)
     })
-
-    expect(records).toHaveLength(2)
+    expect(records).toHaveLength(limit)
     // expect(records).toBe(expect.)
-
-
   });
 
-  // test('Query computed fields', async () => {
-
-
-  // });
+  test('Query computed fields', async () => {
+    let records = await models.Shop.find( (stmt, root) => {
+        return stmt.select('*', root.$.products())
+    })
+    expect(records).toHaveLength(shopData.length)
+    expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
+      ...shop,
+      products: expect.arrayContaining(
+        productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
+      )
+    }))))
+  });
 
 })
 

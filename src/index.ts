@@ -3,6 +3,8 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { PropertyType, Types } from './PropertyType'
 export { PropertyType, Types }
+import { Relations } from './Relations'
+export { Relations }
 // import { v4 as uuidv4 } from 'uuid'
 // const sqlParser = require('js-sql-parser')
 import { AST, Column, Parser } from 'node-sql-parser'
@@ -432,7 +434,7 @@ export const configure = async function(newConfig: Partial<Config>){
     return sqlStmts
 }
 
-const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
+export const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
     let sealSelect = getKnexInstance().select(...args)
     // @ts-ignore
     sealSelect.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
@@ -508,7 +510,7 @@ const breakdownMetaFieldAlias = function(metaAlias: string){
     }
 }
 
-interface Selector {
+export interface Selector {
     (value: any): any
     entityClass: typeof Entity
     schema: Schema
@@ -630,27 +632,6 @@ export class SelectorImpl{
     register(namedProperty: NamedProperty){
         this.derivedProps.push(namedProperty)
     }
-    // init(){
-    //     // the lifecycle should be 
-    //     this.schema.namedProperties.forEach( (prop) => {
-    //         this.compileNamedProperty(prop)
-    //     })
-    // }
-
-     // (SQL template) create a basic belongsTo prepared statement 
-    hasMany(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
-        let selector = entityClass.newSelector()
-        let stmt = sealSelect().from(selector.source).whereRaw("?? = ??", [this._.id, selector._[propName] ])
-        return applyFilter(stmt, selector)
-    }
-
-    // (SQL template) create a basic belongsTo prepared statement 
-    belongsTo(entityClass: typeof Entity, propName: string, applyFilter: QueryFunction): SQLString{
-        let selector = entityClass.newSelector()
-        let stmt = sealSelect().from(selector.source).whereRaw("?? = ??", [selector._.id, this._[propName] ])
-        return applyFilter(stmt, selector)
-    }
-
 }
 
 export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw | Promise<Knex.Raw>
@@ -1139,8 +1120,6 @@ export class Entity {
             } else return value
         } as Selector
 
-        selectorImpl.interface = selector
-        selector.impl = selectorImpl
         // selector._ = selectorImpl._
         // selector.$ = selectorImpl.$
         // selector.schema = selectorImpl.schema
@@ -1164,12 +1143,15 @@ export class Entity {
                         }
                     } 
                 }
-                if(sKey in selectorImpl)
+                if(sKey in selectorImpl){
                     return selectorImpl[sKey.toString()]
+                }
                 else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
             }
         })
 
+        selectorImpl.interface = selector
+        selector.impl = selectorImpl
         return selector
     }
 
