@@ -1,4 +1,4 @@
-import {Entity, Schema, Types} from '../../../../dist';
+import {Entity, Schema, select, Types} from '../../../../dist';
 import Shop from './Shop';
 import Color from './Color';
 
@@ -17,6 +17,7 @@ export default class Product extends Entity{
 		schema.computedProp('shop', Types.Object(Shop), (product, applyFilters) => product.belongsTo(Shop, 'shopId', applyFilters) )
 
 		schema.computedProp('colors', Types.Array(Color), (product, applyFilters) => product.hasMany(Color, 'productId', applyFilters) )
+
 		
 		// model.computedProp('deliveryOptions', Types.arrayOf(DeliveryChannel), false,
 		// 	(args, rootTable) => {

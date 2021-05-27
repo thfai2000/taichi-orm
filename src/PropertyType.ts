@@ -9,7 +9,7 @@ export interface PropertyType {
     parseProperty: (propertyvalue: any) => any
 }
 
-const client = () => config.knexConfig.client!.toString()
+const client = () => config.knexConfig.client.toString()
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
 const autoIncrement = () => client().startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
 const jsonArrayAgg = () => client().startsWith('sqlite')? 'json_group_array': 'JSON_ARRAYAGG'
@@ -33,6 +33,9 @@ export const Types = {
         return {
             // isPrimitive: true,
             create: () => ['INTEGER', nullableText(nullable)],
+            // readTransform: (sql) => {
+            //     return `(${sql}) + 1`
+            // },
             parseRaw(rawValue): any{
                 return parseInt(rawValue)
             },
@@ -127,7 +130,7 @@ export const Types = {
             readTransform: (query: SQLString, columns: Array<string>) => {
                 let jsonify =  `SELECT IFNULL(${jsonArrayAgg()}(JSON_OBJECT(${
                         columns.map(c => `'${c}', ${c}`).join(',')
-                    })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\``
+                    })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\` `
                 return jsonify
             },
             parseRaw(rawValue: any): Array<I>{
