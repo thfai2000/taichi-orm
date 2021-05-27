@@ -212,7 +212,7 @@ export class NamedProperty {
         }
     }
 
-    compileAs_(rootSelector: Selector){
+    compileAs_(rootSelector: SelectorImpl){
         if(this.computedFunc){
             throw new Error('Computed Property cannot be compiled as normal field.')
         } 
@@ -224,7 +224,7 @@ export class NamedProperty {
         return sealRaw(`(SELECT ${tableAlias}.${fieldName} AS ${fieldAlias})`)
     }
 
-    compileAs$(rootSelector: Selector, withTransform: boolean){
+    compileAs$(rootSelector: SelectorImpl, withTransform: boolean){
         if(!this.computedFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
         }
@@ -240,7 +240,7 @@ export class NamedProperty {
                 const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
                 return x
             }
-            let subquery: SQLString | Promise<SQLString> = computedFunc(rootSelector, applyFilterFunc, ...args)
+            let subquery: SQLString | Promise<SQLString> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
 
 
             let process = (subquery: SQLString): Knex.Raw => {
@@ -496,20 +496,31 @@ const breakdownMetaFieldAlias = function(metaAlias: string){
     }
 }
 
-// type ASTObject = {
-//     type: string,
-//     value: any
-// }
+interface Selector {
+    (value: any): any
+    entityClass: typeof Entity
+    schema: Schema
+    derivedProps: Array<NamedProperty>
+    _: {[key: string] : Knex.Raw}
+    $: {[key: string] : CompiledFunction}
+    // $$: {[key: string] : CompiledFunction}
+    // prop: (value: any) => any
+    [key: string]: any
+    tableAlias: string
+    register(namedProperty: NamedProperty): void
+    getProperties(): NamedProperty[]
+}
 
-export class Selector{
 
+export class SelectorImpl{
+    interface: Selector | null | undefined
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty> = []
     _: {[key: string] : Knex.Raw}
     $: {[key: string] : CompiledFunction}
     // $$: {[key: string] : CompiledFunction}
-    prop: (value: any) => any
+    // prop: (value: any) => any
     [key: string]: any
     tableAlias: string
 
@@ -517,10 +528,10 @@ export class Selector{
     // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
    
     constructor(entityClass: typeof Entity, schema: Schema){
+        let selector = this
         this.schema = schema
         this.tableAlias = metaTableAlias(schema)
         this.entityClass = entityClass
-        let selector = this
         
         this._ = new Proxy( {} ,{
             get: (oTarget, sKey: string) => {
@@ -529,44 +540,17 @@ export class Selector{
         }) as {[key: string] : Knex.Raw}
 
         this.$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledFunction => {
+            get: (oTarget, sKey: string): CompiledFunction | Knex.Raw => {
                 return selector.getComputedCompiled(sKey)
             }
-        }) as {[key: string] : CompiledFunction}
-
-        // this.$$ = new Proxy( {} ,{
-        //     get: (oTarget, sKey: string): CompiledFunction => {
-        //         let prop = this.getProperties().find( (prop) => prop.name === sKey)
-        //         this.checkDollar(prop, sKey)
-        //         return prop!.compileAs$(selector, false)
-        //     }
-        // }) as {[key: string] : CompiledFunction}
-
-        this.prop = (value: any) => {
-            if(typeof value === 'string'){
-                return selector.getNormalCompiled(value)
-            } else if(value.constructor === Object){
-
-                let sqlArgs: string[] = []
-                let accSqls: string[] = []
-            
-                Object.keys(value).forEach( (key) => {
-                    let prop = selector.getProperties().find((prop) => prop.name === key)
-                    if(prop && !prop.computedFunc){
-                        let converted = selector.getNormalCompiled(key).toString()
-                        accSqls.push(`${converted} = ?`)
-                        sqlArgs.push(value[key])
-                    }
-                })
-                return sealRaw( accSqls.join(' AND '), sqlArgs)
-            } else if(Array.isArray(value)){
-                return value.map( v => this.getNormalCompiled(v) )
-            } else return value
-        }
+        }) 
     }
 
     getComputedCompiled(sKey: string) {
         let selector = this
+        if(!selector){
+            throw new Error('Unexpected')
+        }
         let withTransform = true
         if (sKey.startsWith('_')) {
             withTransform = false
@@ -579,6 +563,9 @@ export class Selector{
 
     getNormalCompiled(value: string) {
         let selector = this
+        if(!selector){
+            throw new Error('Unexpected')
+        }
         let prop = this.getProperties().find((prop) => prop.name === value)
         this.checkDash(prop, value)
         return prop!.compileAs_(selector)
@@ -586,17 +573,17 @@ export class Selector{
 
     private checkDollar(prop: NamedProperty | undefined, sKey: string) {
         if (!prop) {
-            throw new Error(`Cannot find property ${sKey}`)
+            throw new Error(`Cannot find property '${sKey}'`)
         } else if (!prop.computedFunc) {
-            throw new Error(`Property ${sKey} is NormalProperty. Accessing through $ is not allowed.`)
+            throw new Error(`Property '${sKey}' is NormalProperty. Accessing through $ is not allowed.`)
         }
     }
 
     private checkDash(prop: NamedProperty | undefined, sKey: string) {
         if (!prop) {
-            throw new Error(`Cannot find property ${sKey}`)
+            throw new Error(`Cannot find property '${sKey}'`)
         } else if (prop.computedFunc) {
-            throw new Error(`Property ${sKey} is ComputedProperty. Accessing through _ is not allowed.`)
+            throw new Error(`Property '${sKey}' is ComputedProperty. Accessing through _ is not allowed.`)
         }
     }
 
@@ -623,7 +610,7 @@ export class Selector{
         return this._.id
     }
 
-    getProperties(){
+    getProperties(): NamedProperty[]{
         // derived Props has higher priority. I can override the schema property
         return [...this.derivedProps, ...this.schema.namedProperties]
     }
@@ -1115,30 +1102,61 @@ export class Entity {
      * @returns 
      */
     static newSelector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Selector{
-        let selector = new Selector(this, schemas[this.name])
+        let selectorImpl = new SelectorImpl(this, schemas[this.name])
+        // let entityClass = this
 
+        let selector = function(value: any){
+            if(typeof value === 'string'){
+                return selectorImpl.getNormalCompiled(value)
+            } else if(value.constructor === Object){
+
+                let sqlArgs: string[] = []
+                let accSqls: string[] = []
+            
+                Object.keys(value).forEach( (key) => {
+                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
+                    if(prop && !prop.computedFunc){
+                        let converted = selectorImpl.getNormalCompiled(key).toString()
+                        accSqls.push(`${converted} = ?`)
+                        sqlArgs.push(value[key])
+                    }
+                })
+                return sealRaw( accSqls.join(' AND '), sqlArgs)
+            } else if(Array.isArray(value)){
+                return value.map( v => selectorImpl.getNormalCompiled(v) )
+            } else return value
+        } as Selector
+
+        selectorImpl.interface = selector
+        selector.impl = selectorImpl
+        // selector._ = selectorImpl._
+        // selector.$ = selectorImpl.$
+        // selector.schema = selectorImpl.schema
+        // selector.entityClass = selectorImpl.entityClass
+        // selector.tableAlias = selectorImpl.tableAlias
+        // selector.getProperties = selectorImpl.getProperties
+        
         selector = new Proxy(selector, {
             get: (oTarget, sKey): any => {
                 if(typeof sKey === 'string'){
                     // if (sKey.length > 2) {
                     //     if( /^\$\$[^$_]/.test(sKey) ){
                     //         return oTarget.$$[sKey.slice(2)]
-                    //     } 
+                    //     }    
                     // }
                     if (sKey.length > 1){
                         if( /^\_/.test(sKey) ){
-                            return oTarget._[sKey.slice(1)]
+                            return selectorImpl._[sKey.slice(1)]
                         } else if( /^\$/.test(sKey) ){
-                            return oTarget.$[sKey.slice(1)]
+                            return selectorImpl.$[sKey.slice(1)]
                         }
                     } 
                 }
-                if(sKey in oTarget)
-                    return oTarget[sKey.toString()]
-                else throw new Error(`Cannot find property ${sKey.toString()} of selector`)
+                if(sKey in selectorImpl)
+                    return selectorImpl[sKey.toString()]
+                else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
             }
         })
-
 
         return selector
     }

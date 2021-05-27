@@ -25,15 +25,6 @@ class Product extends Entity{
         createModels: true,
         client: 'sqlite',
         connection: ':memory:'
-        // connection: {
-        //     filename: "file:memDb1?mode=memory",
-        //     flags: ['OPEN_URI']
-        // },
-        // pool: {
-        //     min: 1, 
-        //     max: 1,
-        //     idleTimeoutMillis: 360000*1000 
-        // }
     })
     /**
      * Basic
@@ -48,7 +39,6 @@ class Product extends Entity{
     ]
 
     await Promise.all(shopData.map( async(d) => {
-      console.log('eeeeeeee 1')
       return await Shop.createOne(d)
     }))
 

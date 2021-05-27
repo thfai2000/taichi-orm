@@ -1,4 +1,4 @@
-import {run, select, raw, configure, Schema, Selector, Entity, Types, models, getKnexInstance} from '../dist'
+import {run, select, raw, configure, Schema, Entity, Types, models} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 
@@ -97,8 +97,6 @@ describe('Query', () => {
 
     expect(records).toHaveLength(2)
     // expect(records).toBe(expect.)
-
-
 
 
   });
