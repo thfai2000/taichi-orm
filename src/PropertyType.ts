@@ -53,9 +53,11 @@ export const Types = {
     //         }
     //     }
     // },
-    Number(nullable: boolean = true): PropertyType{
+    Number(nullable: boolean = true, defaultValue?: number): PropertyType{
         return {
-            create: (prop) => [[`\`${prop.fieldName}\``, 'INTEGER', nullableText(nullable)].join(' ')],
+            create: (prop) => [
+                [`\`${prop.fieldName}\``, 'INTEGER', nullableText(nullable), (defaultValue !== undefined?`DEFAULT ${defaultValue}`:'') ].join(' ')
+            ],
             parseRaw(rawValue): any{
                 return rawValue === null? null : parseInt(rawValue)
             },

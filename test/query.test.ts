@@ -59,7 +59,7 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
         schema.prop('name', Types.String(255, true))
         schema.prop('createdAt', Types.Date())
-        schema.prop('shopId', Types.Number() )
+        schema.prop('shopId', Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
         schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
 

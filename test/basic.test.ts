@@ -190,7 +190,8 @@ describe('Type Parsing', () => {
 
   })
 
-
+  // TODO: not null checking: set null if the property cannot be null
+  // TODO: test default value it null during creation
 
 })
 
