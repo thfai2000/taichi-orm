@@ -1,6 +1,6 @@
 {
   "name": "llorm",
-  "version": "0.0.6-a1",
+  "version": "0.0.7",
   "description": "Low-level Object Relation Mapper",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
