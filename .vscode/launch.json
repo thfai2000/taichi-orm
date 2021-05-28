@@ -11,8 +11,8 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
-            "cwd": "${workspaceFolder}/examples/basic/",
-            "program": "${workspaceFolder}/examples/basic/dist/index.js",
+            "cwd": "${workspaceFolder}/examples/sqlite/",
+            "program": "${workspaceFolder}/examples/sqlite/dist/index.js",
             "outFiles": [
                 "${workspaceFolder}/**/*.js"
             ]

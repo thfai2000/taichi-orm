@@ -15,18 +15,32 @@ const initializeDatabase = async () => {
     
       static register(schema: Schema){
           schema.prop('name', Types.String(255, true))
-          schema.prop('createdAt', Types.Date())
-          schema.prop('shopId', Types.Number() )              
+          schema.prop('isActive', Types.Boolean(true))
+          schema.prop('price', Types.Decimal(5, 2, true))
+          schema.prop('createdAt', Types.Date(true))
+          schema.prop('shopId', Types.Number(true))
       }
     }
+
+    class StrictProduct extends Entity{
+    
+      static register(schema: Schema){
+          schema.prop('name', Types.String(255, false))
+          schema.prop('isActive', Types.Boolean(false))
+          schema.prop('price', Types.Decimal(5, 2, false))
+          schema.prop('createdAt', Types.Date(false))
+          schema.prop('shopId', Types.Number(false))
+      }
+    }
+
 
     let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
     // @ts-ignore
     let config = JSON.parse(process.env.ENVIRONMENT)
 
-    let sql = await configure({
-        models: {Shop, Product},
+    await configure({
+        models: {Shop, Product, StrictProduct},
         createModels: true,
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
@@ -49,7 +63,7 @@ afterEach(() => {
     return clearDatabase();
 });
 
-describe('Basic', () => {
+describe('Basic Read and Write', () => {
 
   test('Create and Find Shop', async () => {
     let expectedShop1 = {
@@ -138,4 +152,46 @@ describe('Basic', () => {
 
 })
 
+
+describe('Type Parsing', () => {
+
+  test('Parsing Value', async () => {
+    let expectedProduct1 = {
+      id: 1,
+      name: 'My Product',
+      isActive: true,
+      price: 10002.05,
+      createdAt: new Date(),
+      shopId: 2
+    }
+    let product1 = await models.Product.createOne({
+      ...expectedProduct1
+    })
+
+    expect(product1).toStrictEqual(expect.objectContaining(expectedProduct1))
+  })
+
+
+  test('Parsing Null', async () => {
+
+    let expectedProduct2 = {
+      id: 2,
+      name: null,
+      isActive: null,
+      price: null,
+      createdAt: null,
+      shopId: null
+    }
+    let product2 = await models.Product.createOne({
+      ...expectedProduct2
+    })
+
+    expect(product2).toStrictEqual(expect.objectContaining(expectedProduct2))
+
+  })
+
+  // TODO: not null checking: set null if the property cannot be null
+  // TODO: test default value it null during creation
+
+})
 

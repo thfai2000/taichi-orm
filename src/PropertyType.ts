@@ -1,12 +1,12 @@
-import { Entity, config, SimpleObject, makeid, SQLString } from "."
+import { Entity, config, SimpleObject, makeid, SQLString, NamedProperty } from "."
 
 export interface PropertyType {
     // isPrimitive: boolean
-    create: () => Array<string>
+    create: (prop: NamedProperty) => Array<string>
     readTransform?: (query: SQLString, columns: Array<string>) => SQLString
     writeTransform?: (query: SQLString, columns: Array<string>) => SQLString
-    parseRaw: (rawValue: any) => any
-    parseProperty: (propertyvalue: any) => any
+    parseRaw: (rawValue: any, prop: NamedProperty) => any
+    parseProperty: (propertyvalue: any, prop: NamedProperty) => any
 }
 
 const client = () => config.knexConfig.client.toString()
@@ -18,83 +18,138 @@ const jsonArrayAgg = () => client().startsWith('sqlite')? 'json_group_array': 'J
 export const Types = {
     PrimaryKey(): PropertyType{
         return {
-            // isPrimitive: true,
-            create: () => ['INTEGER', nullableText(false), 'PRIMARY KEY', autoIncrement()],
+            create: (prop) => [[`\`${prop.fieldName}\``, 'INTEGER', nullableText(false), 'PRIMARY KEY', autoIncrement()].join(' ')],
             parseRaw(rawValue): any{
-                return parseInt(rawValue)
+                return rawValue === null? null: parseInt(rawValue)
             },
-            parseProperty(propertyvalue): any {
-                //TODO: implement
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
                 return propertyvalue
             }
         }
     },
-    Number(nullable: boolean = true): PropertyType{
+    // TODO: Foreign Key allow ON Delete... 
+    // It is wrong design...
+    // ForeignKey(foreignEntity: typeof Entity, nullable: boolean = true): PropertyType{
+    //     return {
+    //         create: (fieldName) => {
+    //             if(client().startsWith('sqlite')){
+    //                 return [
+    //                     [`\`${fieldName}\``, 'INTEGER', nullableText(nullable)].join(' '),
+    //                     [`FOREIGN KEY (\`${fieldName}\`) REFERENCES`, `\`${foreignEntity.tableName}\`(\`${config.primaryKeyName}\`)`].join(' ')
+    //                 ]
+    //             }
+    //             return [
+    //                 [`\`${fieldName}\``, 'INTEGER', nullableText(nullable), 'FOREIGN KEY REFERENCES', `\`${foreignEntity.tableName}\`(\`${config.primaryKeyName}\`)`].join(' ')
+    //             ]
+    //         },
+    //         parseRaw(rawValue): any{
+    //             return parseInt(rawValue)
+    //         },
+    //         parseProperty(propertyvalue): any {
+    //             return propertyvalue
+    //         }
+    //     }
+    // },
+    Number(nullable: boolean = true, defaultValue?: number): PropertyType{
         return {
-            // isPrimitive: true,
-            create: () => ['INTEGER', nullableText(nullable)],
-            // readTransform: (sql) => {
-            //     return `(${sql}) + 1`
-            // },
+            create: (prop) => [
+                [`\`${prop.fieldName}\``, 'INTEGER', nullableText(nullable), (defaultValue !== undefined?`DEFAULT ${defaultValue}`:'') ].join(' ')
+            ],
             parseRaw(rawValue): any{
-                return parseInt(rawValue)
+                return rawValue === null? null : parseInt(rawValue)
             },
-            parseProperty(propertyvalue): any {
-                //TODO: implement
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null && !nullable){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
                 return propertyvalue
+            }
+        }
+    },
+    Decimal(precision: number, scale: number, nullable: boolean = true): PropertyType{
+        return {
+            create: (prop) => [[`\`${prop.fieldName}\``, `DECIMAL(${precision},${scale})`, nullableText(nullable)].join(' ')],
+
+            parseRaw(rawValue): any{
+                return rawValue === null? null: parseFloat(rawValue)
+            },
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null && !nullable){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
+                return propertyvalue
+            }
+        }
+    },
+    Boolean(nullable: boolean = true): PropertyType{
+        return {
+            create: (prop) => [[`\`${prop.fieldName}\``, 'TINYINT(1)', nullableText(nullable)].join(' ')],
+            parseRaw(rawValue): any{
+                //TODO: warning if nullable is false but value is null
+                return rawValue === null? null: parseInt(rawValue) > 0
+            },
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null && !nullable){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
+                return propertyvalue === null? propertyvalue: (propertyvalue? 1 : 0)
             }
         }
     },
     String(length: number, nullable: boolean = true): PropertyType{
         return {
-            // isPrimitive: true,
-            create: () => [`VARCHAR(${length})`, nullableText(nullable) ],
+            create: (prop) => [[`\`${prop.fieldName}\``, `VARCHAR(${length})`, nullableText(nullable) ].join(' ')],
             // transform: () => {
             //     throw new Error('Field Transformation is not allowed.')
             // },
             parseRaw(rawValue): any{
-                return `${rawValue}`
+                return rawValue === null? null: `${rawValue}`
             },
-            parseProperty(propertyvalue): any {
-                //TODO: implement
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null && !nullable){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
                 return propertyvalue
             }
         }
     },
     Date(nullable: boolean = true): PropertyType{
         return {
-            // isPrimitive: true,
-            create: () => ['DATETIME', nullableText(nullable)],
+            create: (prop) => [[`\`${prop.fieldName}\``, 'DATETIME', nullableText(nullable)].join(' ')],
             parseRaw(rawValue): any{
                 //FIXME: has to check if it is valid in locale
-                return new Date(rawValue)
+                return rawValue === null? null: new Date(rawValue)
             },
-            parseProperty(propertyvalue): any {
-                //TODO: implement
+            parseProperty(propertyvalue, prop): any {
+                if(propertyvalue === null && !nullable){
+                    throw new Error(`The Property '${prop.name}' cannot be null.`)
+                }
                 return propertyvalue
             }
         }
     },
-    NativeJSON(nullable: boolean = true): PropertyType {
-        return {
-            // isPrimitive: true,
-            create: () => ['JSON', nullableText(nullable)],
-            readTransform: () => {
-                throw new Error('Field Transformation is not allowed.')
-            },
-            parseRaw(rawValue): any{
-                //FIXME: has to check if it is valid in locale
-                return new Date(rawValue)
-            },
-            parseProperty(propertyvalue): any {
-                //TODO: implement
-                return propertyvalue
-            }
-        }
-    },
+    // NativeJSON(nullable: boolean = true): PropertyType {
+    //     return {
+    //         // isPrimitive: true,
+    //         create: () => ['JSON', nullableText(nullable)],
+    //         readTransform: () => {
+    //             throw new Error('Field Transformation is not allowed.')
+    //         },
+    //         parseRaw(rawValue): any{
+    //             //FIXME: has to check if it is valid in locale
+    //             return new Date(rawValue)
+    //         },
+    //         parseProperty(propertyvalue): any {
+    //             //TODO: implement
+    //             return propertyvalue
+    //         }
+    //     }
+    // },
     Object<I extends Entity>(entityClass: typeof Entity & (new (...args: any[]) => I), nullable: boolean = true): PropertyType{
         return {
-            // isPrimitive: false,
             create: () => {
                 throw new Error('Field creation is not allowed.')
             },
@@ -104,16 +159,19 @@ export const Types = {
                     }) FROM (${query.toString()}) AS \`${makeid(5)}\``
                 return jsonify
             },
-            parseRaw(rawValue: any): I{
+            parseRaw(rawValue: any): I | null{
                 let parsed: SimpleObject
-                if(typeof rawValue === 'string'){
+                if( rawValue === null){
+                    //TODO: warning if nullable is false but value is null
+                    return rawValue
+                } else if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
                 } else if(typeof rawValue === 'object'){
                     parsed = rawValue
                 } else {
                     throw new Error('It is not supported.')
                 }
-                return entityClass.parseRaw(rawValue)
+                return entityClass.parseRaw(parsed)
             },
             parseProperty(propertyvalue: I): any {
                 //TODO: implement
@@ -121,9 +179,8 @@ export const Types = {
             }
         }
     },
-    Array<I extends Entity>(entityClass: typeof Entity & (new (...args: any[]) => I), nullable: boolean = true): PropertyType{
+    Array<I extends Entity>(entityClass: typeof Entity & (new (...args: any[]) => I)): PropertyType{
         return {
-            // isPrimitive: false,
             create: () => {
                 throw new Error('Field creation is not allowed.')
             },
@@ -135,7 +192,9 @@ export const Types = {
             },
             parseRaw(rawValue: any): Array<I>{
                 let parsed: Array<SimpleObject>
-                if(typeof rawValue === 'string'){
+                if( rawValue === null){
+                    throw new Error('Null is not expected.')
+                } else if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
                 } else if(Array.isArray(rawValue)){
                     parsed = rawValue

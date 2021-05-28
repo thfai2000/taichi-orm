@@ -1,6 +1,6 @@
 {
   "name": "llorm",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Low-level Object Relation Mapper",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
@@ -18,12 +18,13 @@
     "type": "git",
     "url": "git+https://github.com/thfai2000/llorm.git"
   },
-  "author": "Eddie",
-  "license": "ISC",
+  "author": "Eddie Tang",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/thfai2000/llorm/issues"
   },
   "homepage": "https://github.com/thfai2000/llorm#readme",
+  "runkitExampleFilename": "runkitexample.js",
   "devDependencies": {
     "@types/jest": "^26.0.23",
     "@types/knex": "^0.16.1",

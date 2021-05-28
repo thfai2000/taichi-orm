@@ -1,5 +1,4 @@
-import {configure, Entity, Relations, Schema, Types, models, select, raw} from '../../../dist/'
-import {snakeCase} from 'lodash'
+const {configure, Relations, Types} = require('llorm')
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -42,9 +41,10 @@ let productColorData = [
 
 ;(async() =>{
 
+    // declare some entities here:
     class Shop extends Entity{
 
-      static register(schema: Schema){
+      static register(schema){
         schema.prop('name', Types.String(100))
         schema.prop('location', Types.String(255))
         schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
@@ -57,7 +57,7 @@ let productColorData = [
     
     class Product extends Entity{
     
-      static register(schema: Schema){
+      static register(schema){
         schema.prop('name', Types.String(255, true))
         schema.prop('createdAt', Types.Date())
         schema.prop('shopId', Types.Number() )
@@ -79,13 +79,13 @@ let productColorData = [
     }
     
     class Color extends Entity{
-      static register(schema: Schema){
+      static register(schema){
         schema.prop('code', Types.String(50))
       }
     }
 
     class ProductColor extends Entity{
-      static register(schema: Schema){
+      static register(schema){
         schema.prop('productId', Types.Number(false))
         schema.prop('colorId', Types.Number(false))
         schema.prop('type', Types.String(50, false))
@@ -95,8 +95,6 @@ let productColorData = [
     await configure({
         models: {Shop, Product, Color, ProductColor},
         createModels: true,
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: {
             client: 'sqlite',
             connection: {
@@ -121,19 +119,17 @@ let productColorData = [
       return await models.ProductColor.createOne(d)
     }))
 
-    // let execContext = models.Shop.find( (stmt, s) => stmt.where(s._.id, '=',1))
 
-    // console.log(records)
-
-    let execContext = models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products( (stmt, p) => {
-          return stmt.select('*', p.$.colors())
+    // you can do complicated query in one go.
+    let records = await Shop.find( (stmt, root) => {
+        return stmt.select('*', root.$.productCount(), root.$.products( (stmt, p) => {
+          return stmt.select('*', p.$.mainColor(), p.$.colors( (stmt, c) => {
+            return stmt.limit(2)
+          }))
         }))
     })
 
-    // console.log('=========================', await execContext.toSQLString())
-    
-    let records = await execContext
-    console.log('results', records[0].products[0])
+    // Here you are
+    console.log('results', records)
 
 })()
