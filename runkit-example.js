@@ -1,3 +1,4 @@
+require('sqlite3')
 const {configure, Entity, Relations, Types, select, raw} = require('llorm')
 
 let shopData = [
