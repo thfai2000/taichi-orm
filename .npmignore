@@ -1,0 +1,8 @@
+docker-compose.yml
+examples
+dist-test
+test
+.vscode
+jest.config.js
+ts*.json
+.gitignore

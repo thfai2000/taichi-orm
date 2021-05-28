@@ -1,4 +1,4 @@
-const {configure, Relations, Types} = require('llorm')
+const {configure, Entity, Relations, Types, select, raw} = require('llorm')
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -104,19 +104,19 @@ let productColorData = [
     })
 
     await Promise.all(shopData.map( async(d) => {
-      return await models.Shop.createOne(d)
+      return await Shop.createOne(d)
     }))
     
     await Promise.all(productData.map( async(d) => {
-      return await models.Product.createOne(d)
+      return await Product.createOne(d)
     }))
 
     await Promise.all(colorData.map( async(d) => {
-      return await models.Color.createOne(d)
+      return await Color.createOne(d)
     }))
 
     await Promise.all(productColorData.map( async(d) => {
-      return await models.ProductColor.createOne(d)
+      return await ProductColor.createOne(d)
     }))
 
 
