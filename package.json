@@ -1,6 +1,6 @@
 {
   "name": "llorm",
-  "version": "0.0.6",
+  "version": "0.0.6-a1",
   "description": "Low-level Object Relation Mapper",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
@@ -25,7 +25,7 @@
     "url": "https://github.com/thfai2000/llorm/issues"
   },
   "homepage": "https://github.com/thfai2000/llorm#readme",
-  "runkitExampleFilename": "examples/runkit/index.js",
+  "runkitExampleFilename": "runkit-example.js",
   "engines": {
     "node": ">=10"
   },
