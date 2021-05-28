@@ -206,7 +206,12 @@ describe('Computed Fields using Standard Relations', () => {
 
 describe('custom Computed Fields', () => {
 
-
+  test('Query computed field', async () => {
+    let record = await models.Shop.findOne( (stmt, root) => {
+        return stmt.select('*', root.$.productCount()).where(root.id, '=', 2)
+    })
+    expect(record.productCount).toBe(2)
+  });
 
 })
 

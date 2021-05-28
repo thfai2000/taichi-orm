@@ -27,10 +27,12 @@ export type Config = {
     suppressErrorOnPropertyNotFound?: string,
     // guidColumnName?: string
     useNullAsDefault?: boolean
+    primaryKeyName: string
 }
 
 // the new orm config
 export const config: Config = {
+    primaryKeyName: 'id',
     createModels: false,
     models: {},
     knexConfig: {
@@ -147,7 +149,7 @@ export class Schema {
         this.entityName = entityName
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
-            'id',
+            config.primaryKeyName,
             Types.PrimaryKey(),
             null
         )
@@ -156,7 +158,10 @@ export class Schema {
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${this.namedProperties.filter(f => !f.computedFunc).map(f => `\`${f.fieldName}\` ${f.definition.create().join(' ')}`).join(',\n')}\n)`;
+            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${
+                this.namedProperties.filter(f => !f.computedFunc).map(f => {
+                    return `${f.definition.create(f)}`  
+                }).flat().join(',\n')}\n)`;
         }
         return ''
     }
@@ -492,9 +497,9 @@ export const select = sealSelect
 
 export type SimpleObject = { [key:string]: any}
 
-const map1 = new Map<PropertyType, string>()
-const map2 = new Map<string, PropertyType>()
-const registerPropertyType = function(d: PropertyType): string{
+const map1 = new Map<NamedProperty, string>()
+const map2 = new Map<string, NamedProperty>()
+const registerGlobalNamedProperty = function(d: NamedProperty): string{
     let r = map1.get(d)
     if(!r){
         let key = makeid(5)
@@ -505,10 +510,10 @@ const registerPropertyType = function(d: PropertyType): string{
     return r
 }
 
-const findPropertyType = function(typeAlias: string): PropertyType{
-    let r = map2.get(typeAlias)
+const findGlobalNamedProperty = function(propAlias: string): NamedProperty{
+    let r = map2.get(propAlias)
     if(!r){
-        throw new Error(`Cannot find the PropertyType by [${typeAlias}]. Make sure it is registered before.`)
+        throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
     }
     return r
 }
@@ -530,16 +535,16 @@ const breakdownMetaTableAlias = function(metaAlias: string) {
 }
 
 const metaFieldAlias = function(p: NamedProperty): string{
-    let typeAlias = registerPropertyType(p.definition)
-    return `${p.name}___${typeAlias}`
+    let propAlias = registerGlobalNamedProperty(p)
+    return `${p.name}___${propAlias}`
 }
 
 const breakdownMetaFieldAlias = function(metaAlias: string){
     metaAlias = metaAlias.replace(/[\`\']/g, '')
     if( /^[^\_]*\_\_\_[^\_]*$/.test(metaAlias) ){
-        let [propName, typeAlias] = metaAlias.split('___')
-        let definition = findPropertyType(typeAlias)
-        return {propName, definition}
+        let [propName, propAlias] = metaAlias.split('___')
+        let namedProperty = findGlobalNamedProperty(propAlias)
+        return {propName, namedProperty}
     } else {
         return null
     }
@@ -988,7 +993,7 @@ export class Database{
                     if(!prop){
                         throw new Error(`The Property [${propName}] doesn't exist`)
                     }
-                    acc[prop.fieldName] = data[prop.name]
+                    acc[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop)
                     return acc
                 }, {} as SimpleObject)
                 let stmt = knex(schema.tableName).insert(data)
@@ -1109,11 +1114,11 @@ export class Database{
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
             let metaInfo = breakdownMetaFieldAlias(fieldName)
-            let propName = null
-            let definition = null
+            // let propName = null
+            let namedProperty = null
             if(metaInfo){
-                propName = metaInfo.propName
-                definition = metaInfo.definition
+                // propName = metaInfo.propName
+                namedProperty = metaInfo.namedProperty
             } else{
                 
                 let prop = entityClass.schema.namedProperties.find(p => {
@@ -1125,17 +1130,18 @@ export class Database{
                         throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
                     }
                 }else{
-                    propName = prop.name
-                    definition = prop.definition
+                    namedProperty = prop
+                    // propName = prop.name
+                    // definition = prop.definition
                 }
             }
             /**
              * it can be boolean, string, number, Object, Array of Object (class)
              * Depends on the props..
              */
-            let propValue = definition!.parseRaw(row[fieldName])
+            let propValue = namedProperty?.definition!.parseRaw(row[fieldName], namedProperty)
             
-            Object.defineProperty(entityInstance, propName!, {
+            Object.defineProperty(entityInstance, namedProperty?.name!, {
                 configurable: true,
                 enumerable: true,
                 writable: true,
