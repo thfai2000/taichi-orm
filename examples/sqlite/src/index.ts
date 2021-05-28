@@ -17,16 +17,27 @@ let productData = [
 ]
 
 
-// let colorData = [
-//   {code: 'red'},
-//   {code: 'orange'},
-//   {code: 'yellow'},
-//   {code: 'green'},
-//   {code: 'blue'},
-//   {code: 'black'},
-//   {code: 'white'}
-// ]
+let colorData = [
+  { id: 1, code: 'red'},
+  { id: 2, code: 'orange'},
+  { id: 3, code: 'yellow'},
+  { id: 4, code: 'green'},
+  { id: 5, code: 'blue'},
+  { id: 6, code: 'black'},
+  { id: 7, code: 'white'}
+]
 
+let productColorData = [
+  { productId: 1, colorId: 1, type: 'main'},
+  { productId: 1, colorId: 6, type: 'normal'},
+  { productId: 1, colorId: 7, type: 'normal'},
+
+  { productId: 2, colorId: 3, type: 'normal'},
+  { productId: 2, colorId: 4, type: 'main'},
+  //no main color for product 3
+  { productId: 3, colorId: 2, type: 'normal'},
+  { productId: 3, colorId: 5, type: 'normal'},
+]
 
 
 ;(async() =>{
@@ -37,9 +48,9 @@ let productData = [
         schema.prop('name', Types.String(100))
         schema.prop('location', Types.String(255))
         schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', Types.Number(), async (shop, applyFilters) => {
+        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
+            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
       }
     }
@@ -55,12 +66,12 @@ let productData = [
 
         schema.computedProp('colors', 
           Types.Array(Color), 
-          Relations.relateThrough(Color, ProductColor, 'productId', 'colorId') 
+          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
         )
         
         schema.computedProp('mainColor', 
           Types.Object(Color), 
-          Relations.relateThrough(Color, ProductColor, 'productId', 'colorId', (stmt, relatedSelector, throughSelector) => {
+          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
             return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
           })
         )
@@ -82,7 +93,7 @@ let productData = [
     }
 
     await configure({
-        models: {Shop, Product, Color},
+        models: {Shop, Product, Color, ProductColor},
         createModels: true,
         entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
@@ -94,21 +105,35 @@ let productData = [
         }
     })
 
-
-
     await Promise.all(shopData.map( async(d) => {
       return await models.Shop.createOne(d)
     }))
     
-
     await Promise.all(productData.map( async(d) => {
       return await models.Product.createOne(d)
     }))
 
-    let records = await models.Shop.find( async (stmt, root) => {
-        return stmt.select('*', await root.$.productCount())
+    await Promise.all(colorData.map( async(d) => {
+      return await models.Color.createOne(d)
+    }))
+
+    await Promise.all(productColorData.map( async(d) => {
+      return await models.ProductColor.createOne(d)
+    }))
+
+    // let execContext = models.Shop.find( (stmt, s) => stmt.where(s._.id, '=',1))
+
+    // console.log(records)
+
+    let execContext = models.Shop.find( (stmt, root) => {
+        return stmt.select('*', root.$.products( (stmt, p) => {
+          return stmt.select('*', p.$.colors())
+        }))
     })
 
-    console.log('results', records)
+    // console.log('=========================', await execContext.toSQLString())
+    
+    let records = await execContext
+    console.log('results', records[0].products[0])
 
 })()

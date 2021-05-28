@@ -21,8 +21,8 @@ export const Relations = {
             let relatedSelector = entityClass.newSelector()
             let throughSelector = throughEntity.newSelector()
 
-            let stmt = sealSelect().from(relatedSelector.source)
-                .joinRaw(`LEFT JOIN ${throughSelector.source} ON ${throughSelector._[relationPropName]} = ${relatedSelector._.id}`)
+            let stmt = sealSelect(relatedSelector.all).from(relatedSelector.source)
+                .joinRaw(`INNER JOIN ${throughSelector.sourceRaw} ON ${throughSelector._[relationPropName]} = ${relatedSelector._.id}`)
                 .whereRaw("?? = ??", [rootSelector._.id, throughSelector._[ownerPropName]])
 
             if(!customFilter){

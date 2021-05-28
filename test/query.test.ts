@@ -11,21 +11,32 @@ let shopData = [
 ]
 
 let productData = [
-  { name: 'Product 1a', shopId: 1},
-  { name: 'Product 1b', shopId: 1},
-  { name: 'Product 2a', shopId: 2},
-  { name: 'Product 2b', shopId: 2}
+  { id: 1, name: 'Product 1a', shopId: 1},
+  { id: 2, name: 'Product 1b', shopId: 1},
+  { id: 3, name: 'Product 2a', shopId: 2},
+  { id: 4, name: 'Product 2b', shopId: 2}
 ]
 
-
 let colorData = [
-  {code: 'red'},
-  {code: 'orange'},
-  {code: 'yellow'},
-  {code: 'green'},
-  {code: 'blue'},
-  {code: 'black'},
-  {code: 'white'}
+  { id: 1, code: 'red'},
+  { id: 2, code: 'orange'},
+  { id: 3, code: 'yellow'},
+  { id: 4, code: 'green'},
+  { id: 5, code: 'blue'},
+  { id: 6, code: 'black'},
+  { id: 7, code: 'white'}
+]
+
+let productColorData = [
+  { productId: 1, colorId: 1, type: 'main'},
+  { productId: 1, colorId: 6, type: 'normal'},
+  { productId: 1, colorId: 7, type: 'normal'},
+
+  { productId: 2, colorId: 3, type: 'normal'},
+  { productId: 2, colorId: 4, type: 'main'},
+  //no main color for product 3
+  { productId: 3, colorId: 2, type: 'normal'},
+  { productId: 3, colorId: 5, type: 'normal'},
 ]
 
 const initializeDatabase = async () => {
@@ -38,7 +49,7 @@ const initializeDatabase = async () => {
         schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
         schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
+            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
       }
     }
@@ -54,12 +65,12 @@ const initializeDatabase = async () => {
 
         schema.computedProp('colors', 
           Types.Array(Color), 
-          Relations.relateThrough(Color, ProductColor, 'productId', 'colorId') 
+          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
         )
         
         schema.computedProp('mainColor', 
           Types.Object(Color), 
-          Relations.relateThrough(Color, ProductColor, 'productId', 'colorId', (stmt, relatedSelector, throughSelector) => {
+          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
             return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
           })
         )
@@ -87,14 +98,12 @@ const initializeDatabase = async () => {
     let config = JSON.parse(process.env.ENVIRONMENT)
 
     await configure({
-        models: {Shop, Product, Color},
+        models: {Shop, Product, Color, ProductColor},
         createModels: true,
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
     })
-
-
 
     await Promise.all(shopData.map( async(d) => {
       return await models.Shop.createOne(d)
@@ -108,6 +117,10 @@ const initializeDatabase = async () => {
 
     await Promise.all(colorData.map( async(d) => {
       return await models.Color.createOne(d)
+    }))
+
+    await Promise.all(productColorData.map( async(d) => {
+      return await models.ProductColor.createOne(d)
     }))
 }
 
@@ -137,7 +150,7 @@ describe('Using with Knex', () => {
 })
 
 describe('Computed Fields using Standard Relations', () => {
-  test('Query computed fields - hasMany', async () => {
+  test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
         return stmt.select('*', root.$.products())
     })
@@ -163,17 +176,29 @@ describe('Computed Fields using Standard Relations', () => {
     }))))
   });
 
-  test('Query computed fields - multiple level', async () => {
+  test('Query computed fields - hasThrough + multiple level', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products())
+        return stmt.select('*', root.$.products( (stmt, p) => {
+          return stmt.select('*', p.$.colors(), p.$.mainColor() )
+        }))
     })
     expect(records).toHaveLength(shopData.length)
     expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
       ...shop,
       products: expect.arrayContaining(
-        productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
+        productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining({
+          ...product,
+          colors: expect.arrayContaining(
+            productColorData.filter( pc => pc.productId === product.id ).map( pc => colorData.find(c => c.id === pc.colorId) ?? null )
+          ),
+          mainColor: 
+            colorData.filter(c => c.id === productColorData.find( pc => pc.productId === product.id && pc.type === 'main' )?.colorId)
+            .map(c => expect.objectContaining(c) )[0] ?? null
+          
+        }))
       )
     }))))
+
   });
 
 })

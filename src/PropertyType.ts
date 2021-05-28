@@ -106,14 +106,20 @@ export const Types = {
             },
             parseRaw(rawValue: any): I{
                 let parsed: SimpleObject
-                if(typeof rawValue === 'string'){
+                if( rawValue === null){
+                    if(nullable){
+                        return rawValue
+                    } else {
+                        throw new Error('Null is not expected.')
+                    }
+                } else if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
                 } else if(typeof rawValue === 'object'){
                     parsed = rawValue
                 } else {
                     throw new Error('It is not supported.')
                 }
-                return entityClass.parseRaw(rawValue)
+                return entityClass.parseRaw(parsed)
             },
             parseProperty(propertyvalue: I): any {
                 //TODO: implement
@@ -130,12 +136,18 @@ export const Types = {
             readTransform: (query: SQLString, columns: Array<string>) => {
                 let jsonify =  `SELECT IFNULL(${jsonArrayAgg()}(JSON_OBJECT(${
                         columns.map(c => `'${c}', ${c}`).join(',')
-                    })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\` `
+                    })), ${nullable?'NULL': 'JSON_ARRAY()'}) FROM (${query.toString()}) AS \`${makeid(5)}\` `
                 return jsonify
             },
             parseRaw(rawValue: any): Array<I>{
                 let parsed: Array<SimpleObject>
-                if(typeof rawValue === 'string'){
+                if( rawValue === null){
+                    if(nullable){
+                        return rawValue
+                    } else {
+                        throw new Error('Null is not expected.')
+                    }
+                } else if(typeof rawValue === 'string'){
                     parsed = JSON.parse(rawValue)
                 } else if(Array.isArray(rawValue)){
                     parsed = rawValue
@@ -143,7 +155,7 @@ export const Types = {
                     throw new Error('It is not supported.')
                 }
                 return parsed.map( raw => {
-                    return entityClass.parseRaw(raw)
+                    return raw? entityClass.parseRaw(raw) : raw
                 })
             },
             parseProperty(propertyvalue: Array<I>): any {

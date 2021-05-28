@@ -12,7 +12,7 @@ export default class Shop extends Entity{
         
         schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop.id, p._.shopId])), p) 
+            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
 
         // When Entity.create, Entity.update, Entity.delete is called

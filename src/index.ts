@@ -235,7 +235,7 @@ export class NamedProperty {
         let fieldName = this.fieldName
         let fieldAlias = metaFieldAlias(namedProperty)
 
-        return sealRaw(`(SELECT ${tableAlias}.${fieldName} AS ${fieldAlias})`)
+        return sealRaw(`(SELECT \`${tableAlias}\`.\`${fieldName}\` AS \`${fieldAlias}\`)`)
     }
 
     compileAs$(rootSelector: SelectorImpl, withTransform: boolean): CompiledFunction{
@@ -300,6 +300,7 @@ export class NamedProperty {
                         console.log('')
                         console.log('\x1b[33m%s\x1b[0m', '2. Maybe you placed any invalid Raw SQL \'Knex.Raw\' in the QueryBuilder. You can use \'QueryBuilder.toString()\' to inspect the constructed SQL.')
                         console.log('')
+                        console.log(subqueryString)
                         throw err
                     }
                     // let ast = mainNode.value
@@ -546,6 +547,7 @@ const breakdownMetaFieldAlias = function(metaAlias: string){
 
 export interface Selector {
     (value: any): any
+    impl: SelectorImpl
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty>
@@ -553,7 +555,11 @@ export interface Selector {
     $: {[key: string] : CompiledFunction}
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
-    [key: string]: any
+    all: string
+    source: string
+    sourceRaw: string
+    id: Knex.Raw
+    // [key: string]: any
     tableAlias: string
     register(namedProperty: NamedProperty): void
     getProperties(): NamedProperty[]
@@ -609,13 +615,18 @@ export class SelectorImpl{
         return prop!.compileAs$(selector, withTransform)
     }
 
-    getNormalCompiled(value: string) {
+    getNormalCompiled(sKey: string) {
         let selector = this
         if(!selector){
             throw new Error('Unexpected')
         }
-        let prop = this.getProperties().find((prop) => prop.name === value)
-        this.checkDash(prop, value)
+        // let withEscape = false
+        // if (sKey.startsWith('_')) {
+        //     withEscape = true
+        //     sKey = sKey.slice(1)
+        // }
+        let prop = this.getProperties().find((prop) => prop.name === sKey)
+        this.checkDash(prop, sKey)
         return prop!.compileAs_(selector)
     }
 
@@ -641,6 +652,13 @@ export class SelectorImpl{
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
         }
         return `${this.schema.tableName} AS ${this.tableAlias}`
+    }
+
+    get sourceRaw(): string{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
+        }
+        return `\`${this.schema.tableName}\` AS \`${this.tableAlias}\``
     }
 
     // "abc.*"
@@ -761,18 +779,17 @@ export class Database{
             sql = sql.slice(1, sql.length - 1)
         }
 
-        // map2.set('Qq8j9', Types.Number() )
-        // map2.set('dasf4', Types.Number() )
-        // map2.set('odjde', Types.Number() )
-        // sql = 'select (SELECT (SELECT 1 as `abc___Qq8j9` ) as `Shop___dasf4`) as `data___odjde`'
-
         // console.debug('==== before transpile ===')
         // console.debug(sql)
         // console.debug('=========================')
 
         let ast: any = sqlParser.astify(sql)
 
-        ast = this._transpileAst(ast, false)
+        // console.log('aaaaa', JSON.stringify(ast) )
+
+        ast = this._transpileAst(ast, true)
+
+        // console.log('zzzzzzz', JSON.stringify(ast) )
 
         let a = sqlParser.sqlify(ast)
         return a
@@ -782,19 +799,22 @@ export class Database{
         if(!ast){
             return ast
         }
-        if( Array.isArray(ast)){
+        if(typeof ast === 'string'){
+            return ast
+        } else if( Array.isArray(ast)){
             ast = ast.map(item => this._transpileAst(item, withAlias))
             return ast
-        }
-        if( ast.expr && ast.expr.type === 'select'){
+        } else if( ast.expr && ast.expr.type === 'select'){
             let expr = ast.expr
             // handle where first, no dependences
+            
             if (expr.where) {
                 expr.where = this._transpileAst(expr.where, false)
             }
 
             // must handle the 'from' before 'selectitem'... because of dependencies
             if (expr.from) {
+                // console.log('bbbbbbbb', expr.from[0].expr.ast)
                 expr.from = this._transpileAst(expr.from, true)
             }
             
@@ -825,9 +845,44 @@ export class Database{
 
             return ast
             
+        } else if( !withAlias && ast.type === 'select' ) {
+
+            if (ast.where) {
+                ast.where = this._transpileAst(ast.where, false)
+            }
+
+            // must handle the 'from' before 'selectitem'... because of dependencies
+            if (ast.from) {
+                ast.from = this._transpileAst(ast.from, true)
+            }
+
+            ast.columns = ast.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
+
+            if(ast.columns.length === 1){
+                let item = ast.columns[0]
+                if(item.expr.type === 'select'){
+                    return item.expr
+                } else if(item.expr.type === 'column_ref'){
+                    return item.expr
+                }
+            }
+            
+            return ast
+            
         } else if ( (ast as SimpleObject) instanceof Object){
             let newReturn = Object.keys(ast).reduce((acc, key)=>{
-                acc[key] = this._transpileAst(ast[key], withAlias)
+
+                if(['ast', 'columns', 'column', 'where', 'from', 'on', 'expr', 'left', 'right'].includes(key)){
+
+                    if(key === 'left' || key === 'right'){
+                        withAlias = false
+                    }
+                    acc[key] = this._transpileAst(ast[key], withAlias)
+                }
+                else {
+                    acc[key] = ast[key]
+                }
+
                 return acc
             },{} as SimpleObject)
             return newReturn
@@ -1227,12 +1282,6 @@ export class Entity {
     }
 
     static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: SimpleObject): I{
-        // let tester = new this()
-        // let entityClass = config.models[tester.constructor.name]
-        // if (!entityClass) {
-            
-        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
-        // }
         let r = Database.parseRaw(this, row)
         return r as I
     }
