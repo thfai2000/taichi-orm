@@ -1,6 +1,7 @@
 import {run, select, raw, configure, Schema, Entity, Types, Relations, models} from '../dist'
-import {snakeCase} from 'lodash'
+import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+// import {clearSysFields} from './util'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -100,6 +101,7 @@ const initializeDatabase = async () => {
     await configure({
         models: {Shop, Product, Color, ProductColor},
         createModels: true,
+        enableUuid: config.client.startsWith('sqlite'),
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
@@ -141,7 +143,7 @@ describe('Using with Knex', () => {
   test('Query with limit', async () => {
     let limit = 2
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 2).limit(limit)
+        return stmt.where(root.pk, '>', 2).limit(limit)
     })
     expect(records).toHaveLength(limit)
     // expect(records).toBe(expect.)
@@ -155,12 +157,10 @@ describe('Computed Fields using Standard Relations', () => {
         return stmt.select('*', root.$.products())
     })
     expect(records).toHaveLength(shopData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
+    expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop,
-      products: expect.arrayContaining(
-        productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
-      )
-    }))))
+      products: productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
+    })))
   });
 
   test('Query computed fields - belongsTo', async () => {
@@ -168,12 +168,12 @@ describe('Computed Fields using Standard Relations', () => {
         return stmt.select('*', root.$.shop())
     })
     expect(records).toHaveLength(productData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(productData.map(product => expect.objectContaining({
+    expect(records).toEqual(productData.map(product => expect.objectContaining({
       ...product,
       shop: expect.objectContaining(
         shopData.find(shop => product.shopId === shop.id)
       )
-    }))))
+    })))
   });
 
   test('Query computed fields - hasThrough + multiple level', async () => {
@@ -183,21 +183,24 @@ describe('Computed Fields using Standard Relations', () => {
         }))
     })
     expect(records).toHaveLength(shopData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
+    expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop,
-      products: expect.arrayContaining(
+      products:
         productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining({
           ...product,
-          colors: expect.arrayContaining(
-            productColorData.filter( pc => pc.productId === product.id ).map( pc => colorData.find(c => c.id === pc.colorId) ?? null )
+
+          colors: productColorData.filter( pc => pc.productId === product.id ).map( 
+                pc => {
+                  let item = colorData.find(c => c.id === pc.colorId)
+                  return item? expect.objectContaining(item): null
+                }
           ),
           mainColor: 
             colorData.filter(c => c.id === productColorData.find( pc => pc.productId === product.id && pc.type === 'main' )?.colorId)
             .map(c => expect.objectContaining(c) )[0] ?? null
-          
+
         }))
-      )
-    }))))
+    })))
 
   });
 
@@ -208,7 +211,7 @@ describe('custom Computed Fields', () => {
 
   test('Query computed field', async () => {
     let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select('*', root.$.productCount()).where(root.id, '=', 2)
+        return stmt.select('*', root.$.productCount()).where(root.pk, '=', 2)
     })
     expect(record.productCount).toBe(2)
   });

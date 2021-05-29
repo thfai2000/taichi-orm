@@ -1,13 +1,14 @@
 import {run, select, raw, configure, Schema, Entity, Types, models, getKnexInstance} from '../dist/'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+// import {clearSysFields} from './util'
 
 const initializeDatabase = async () => {
     // configure the orm
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', Types.String(255))
+          schema.prop('location', Types.String(255, false))
       }
     }
     
@@ -42,6 +43,7 @@ const initializeDatabase = async () => {
     await configure({
         models: {Shop, Product, StrictProduct},
         createModels: true,
+        enableUuid: config.client.startsWith('sqlite'),
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
@@ -63,6 +65,11 @@ afterEach(() => {
     return clearDatabase();
 });
 
+// test('test jest', () => {
+//   expect([1,2,3]).toEqual([1,3,2]);
+
+// })
+
 describe('Basic Read and Write', () => {
 
   test('Create and Find Shop', async () => {
@@ -74,7 +81,7 @@ describe('Basic Read and Write', () => {
       ...expectedShop1,
       id: undefined
     })
-    expect(shop1).toMatchObject(expectedShop1)
+    expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
 
     let expectedShop2 = {
       id: 2,
@@ -84,7 +91,7 @@ describe('Basic Read and Write', () => {
       ...expectedShop2,
       id: undefined
     })
-    expect(shop2).toMatchObject(expectedShop2)
+    expect(shop2).toMatchObject(expect.objectContaining(expectedShop2))
  
     let expectedProduct1 = {
       id: 1,
@@ -96,7 +103,7 @@ describe('Basic Read and Write', () => {
       id: undefined
     })
 
-    expect(product1).toMatchObject(expectedProduct1)
+    expect(product1).toMatchObject(expect.objectContaining(expectedProduct1))
 
     let expectedProduct2 = {
       id: 2,
@@ -108,7 +115,7 @@ describe('Basic Read and Write', () => {
       id: undefined
     })
 
-    expect(product2).toMatchObject(expectedProduct2)
+    expect(product2).toMatchObject(expect.objectContaining(expectedProduct2))
 
     let expectedProduct3 = {
       id: 3,
@@ -120,38 +127,42 @@ describe('Basic Read and Write', () => {
       id: undefined
     })
 
-    expect(product3).toMatchObject(expectedProduct3)
+    expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
     let foundShop1ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop1.id})))
     let foundShop1ByLocation = await models.Shop.findOne( (stmt, s) => stmt.where(s({location: expectedShop1.location})))
 
-    expect(foundShop1ById).toMatchObject(foundShop1ByLocation)
-    expect(foundShop1ById).toMatchObject(expectedShop1)
+    expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
+    expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
     let foundShop2ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop2.id})))
-    expect(foundShop2ById).toMatchObject(expectedShop2)
+    expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
     let foundShopNotExists =  await models.Shop.findOne( (stmt, s) => stmt.where(s({id: 100000})))
     expect(foundShopNotExists).toBeNull()
 
     let foundAllShop = await models.Shop.find()
-    expect(foundAllShop).toEqual( expect.arrayContaining([expectedShop1, expectedShop2]))
+    expect(foundAllShop).toEqual(
+      [
+        expect.objectContaining(expectedShop1), 
+        expect.objectContaining(expectedShop2)
+      ] 
+    )
 
     let foundProductsByShopId1 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop1.id})) )
     expect(foundProductsByShopId1).toEqual( 
-      expect.arrayContaining([
+      [
         expect.objectContaining(expectedProduct1), 
         expect.objectContaining(expectedProduct2)
-      ])
+      ]
     )
 
     let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
-    expect(foundProductsByShopId2).toEqual( expect.arrayContaining([expect.objectContaining(expectedProduct3)]) )
+    expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
   });
 
 })
-
 
 describe('Type Parsing', () => {
 
