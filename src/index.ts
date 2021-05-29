@@ -94,41 +94,50 @@ const sealRaw = (first:any, ...args: any[]) => {
 export const raw = sealRaw
 
 
-const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T>, existingTrx?: Knex.Transaction ): Promise<T> => {
+export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction ): Promise<T> => {
     let knex = getKnexInstance()
     return await new Promise((resolve, reject)=> {
-        const useTrx = (trx: Knex.Transaction) => {
+        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
             try{
                 const AsyncFunction = (async () => {}).constructor;
                 if(func instanceof AsyncFunction){
-                    func(trx).then(
-                        (result: any) => {
-                            trx.commit()
+                    let called = func(trx) as Promise<T>
+                    called.then(
+                        (result: T) => {
+                            if(!isExistingTrx){
+                                trx.commit()
+                            }
                             resolve(result)
                         },
                         (error: any) => {
-                            trx.rollback()
+                            if(!isExistingTrx){
+                                trx.rollback()
+                            }
                             reject(error)
                         }
                     )
                 }else{
                     let result = func(trx)
-                    trx.commit()
+                    if(!isExistingTrx){
+                        trx.commit()
+                    }
                     resolve(result)
                 }
             }catch(error){
-                trx.rollback()
+                if(!isExistingTrx){
+                    trx.rollback()
+                }
                 reject(error)
             }
         }
 
         if(existingTrx){
             // use existing
-            useTrx(existingTrx)
+            useTrx(existingTrx, true)
         } else {
             // use new 
             knex.transaction( (trx) => {
-                useTrx(trx)
+                useTrx(trx, false)
             })
         }
     })
