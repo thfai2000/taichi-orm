@@ -1076,14 +1076,14 @@ export class Database{
     private static async _create<T extends typeof Entity>(inputs: BeforeExecutionOutput, entityClass: T, existingTrx: Knex.Transaction<any, any[]> | undefined) {
         return await startTransaction< (InstanceType<T> | null)[]>(async (trx) => {
             let allResults = await Promise.all(inputs.map(async ( input) => {
-                let insertedId: number
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
                 // console.debug('========================')
                 if (config.knexConfig.client.startsWith('mysql')) {
+                    let insertedId: number
                     const r = await this.executeStatement(input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                    insertedId = r[1][0].id
-                    let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t._.id, insertedId])).usingConnection(trx)
+                    insertedId = r[0].insertId
+                    let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
                     return records[0] ?? null
 
                 } else if (config.knexConfig.client.startsWith('sqlite')) {

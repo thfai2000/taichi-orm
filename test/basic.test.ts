@@ -17,7 +17,7 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
           schema.prop('name', Types.String(255, true))
           schema.prop('isActive', Types.Boolean(true))
-          schema.prop('price', Types.Decimal(5, 2, true))
+          schema.prop('price', Types.Decimal(7, 2, true))
           schema.prop('createdAt', Types.Date(true))
           schema.prop('shopId', Types.Number(true))
       }
@@ -179,7 +179,7 @@ describe('Type Parsing', () => {
       ...expectedProduct1
     })
 
-    expect(product1).toStrictEqual(expect.objectContaining(expectedProduct1))
+    expect(product1).toEqual(expect.objectContaining(expectedProduct1))
   })
 
 
@@ -197,7 +197,7 @@ describe('Type Parsing', () => {
       ...expectedProduct2
     })
 
-    expect(product2).toStrictEqual(expect.objectContaining(expectedProduct2))
+    expect(product2).toEqual(expect.objectContaining(expectedProduct2))
 
   })
 
