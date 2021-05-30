@@ -1,12 +1,12 @@
-import {Schema, Entity, Types} from '../../../../dist/'
+import {Schema, Entity, Types, Relations} from '../../../../dist/'
 import Product from './Product';
 
 export default class Color extends Entity{
 
     static register(schema: Schema){
 
-        schema.prop('code', Types.String(50))
-        schema.prop('productId', Types.Number() )
-        schema.computedProp('product', Types.Object(Product), (color, applyFilters) => color.belongsTo(Product, 'productId', applyFilters) )
+        schema.prop('code', new Types.String(false, 50))
+        schema.prop('productId', new Types.Number() )
+        schema.computedProp('product', new Types.ObjectOf(Product), Relations.belongsTo(Product, 'productId') )
     }
 }

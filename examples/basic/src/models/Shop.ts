@@ -1,16 +1,16 @@
 // import { Knex } from 'knex';
-import {Entity, Types, Schema, select, raw, QueryFunction} from '../../../../dist';
+import {Entity, Types, Schema, select, raw, Relations} from '../../../../dist';
 import Product from './Product';
 // import 'reflect-metadata'
 
 export default class Shop extends Entity{
 
     static register(schema: Schema){
-        schema.prop('location', Types.String(255))
+        schema.prop('location', new Types.String(true, 255))
 
-        schema.computedProp('products', Types.Array(Product), (shop, applyFilters) => shop.hasMany(Product, 'shopId', applyFilters) )
+        schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
         
-        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+        schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
             return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
