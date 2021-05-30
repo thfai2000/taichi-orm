@@ -59,7 +59,7 @@ const initializeDatabase = async () => {
     
       static register(schema: Schema){
         schema.prop('name', Types.String(255, true))
-        schema.prop('createdAt', Types.Date())
+        schema.prop('createdAt', Types.DateTime(6, true))
         schema.prop('shopId', Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
         schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
@@ -189,12 +189,13 @@ describe('Computed Fields using Standard Relations', () => {
         productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining({
           ...product,
 
-          colors: productColorData.filter( pc => pc.productId === product.id ).map( 
+          colors: expect.arrayContaining(
+            productColorData.filter( pc => pc.productId === product.id ).map( 
                 pc => {
                   let item = colorData.find(c => c.id === pc.colorId)
                   return item? expect.objectContaining(item): null
                 }
-          ),
+          )),
           mainColor: 
             colorData.filter(c => c.id === productColorData.find( pc => pc.productId === product.id && pc.type === 'main' )?.colorId)
             .map(c => expect.objectContaining(c) )[0] ?? null

@@ -18,7 +18,7 @@ const initializeDatabase = async () => {
           schema.prop('name', Types.String(255, true))
           schema.prop('isActive', Types.Boolean(true))
           schema.prop('price', Types.Decimal(7, 2, true))
-          schema.prop('createdAt', Types.Date(true))
+          schema.prop('createdAt', Types.DateTime(6, true))
           schema.prop('shopId', Types.Number(true))
       }
     }
@@ -29,7 +29,7 @@ const initializeDatabase = async () => {
           schema.prop('name', Types.String(255, false))
           schema.prop('isActive', Types.Boolean(false))
           schema.prop('price', Types.Decimal(5, 2, false))
-          schema.prop('createdAt', Types.Date(false))
+          schema.prop('createdAt', Types.DateTime(6, false))
           schema.prop('shopId', Types.Number(false))
       }
     }

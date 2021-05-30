@@ -69,8 +69,6 @@ describe('Test Create - No transaction', () => {
 
 })
 
-
-
 describe('Test Create - with transaction', () => {
 
   test('Create One - Success', async () => {
@@ -85,7 +83,7 @@ describe('Test Create - with transaction', () => {
     expect(record).toEqual( expect.objectContaining({
       ...shopData
     }))
-
+    
     // try to find it again, to prove it is committed
     let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
     expect(found).toEqual( expect.objectContaining({

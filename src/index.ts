@@ -105,29 +105,45 @@ export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promis
                     called.then(
                         (result: T) => {
                             if(!isExistingTrx){
-                                trx.commit()
+                                trx.commit().then( 
+                                    () => resolve(result),
+                                    (error) => reject(error)
+                                )
+                            } else {
+                                resolve(result)
                             }
-                            resolve(result)
                         },
                         (error: any) => {
                             if(!isExistingTrx){
-                                trx.rollback()
+                                trx.rollback().then(
+                                    () => reject(error),
+                                    () => reject(error)
+                                )
+                            } else {
+                                reject(error)
                             }
-                            reject(error)
                         }
                     )
                 }else{
                     let result = func(trx)
                     if(!isExistingTrx){
-                        trx.commit()
+                        trx.commit().then( 
+                            () => resolve(result),
+                            (error) => reject(error)
+                        )
+                    } else {
+                        resolve(result)
                     }
-                    resolve(result)
                 }
             }catch(error){
                 if(!isExistingTrx){
-                    trx.rollback()
+                    trx.rollback().then(
+                        () => reject(error),
+                        () => reject(error)
+                    )
+                } else {
+                    reject(error)
                 }
-                reject(error)
             }
         }
 
