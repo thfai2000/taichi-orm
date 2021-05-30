@@ -11,10 +11,39 @@ export interface PropertyType {
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
 const autoIncrement = () =>  client().startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
-const jsonArrayAgg = () => client().startsWith('sqlite')? 'json_group_array': 'JSON_ARRAYAGG'
+const jsonArrayAgg = () => {
+    if( client().startsWith('sqlite') )
+        return 'JSON_GROUP_ARRAY'
+    else if (client().startsWith('mysql'))    
+        return 'JSON_ARRAYAGG'
+    else if (client().startsWith('pg'))
+        return 'JSON_AGG'
+    else
+        throw new Error('NYI')
+}
+const jsonObject = () => {
+    if( client().startsWith('sqlite') )
+        return 'JSON_OBJECT'
+    else if (client().startsWith('mysql'))    
+        return 'JSON_OBJECT'
+    else if (client().startsWith('pg'))
+        return 'JSON_BUILD_OBJECT'
+    else
+        throw new Error('NYI')   
+}
 
+const emptyJsonArray = () => {
+    if( client().startsWith('sqlite') )
+        return 'JSON_ARRAY()'
+    else if (client().startsWith('mysql'))    
+        return 'JSON_ARRAY()'
+    else if (client().startsWith('pg'))
+        return "'[]'::json"
+    else
+        throw new Error('NYI')
+}
 
-class PrimaryKey implements PropertyType {
+class PrimaryKeyType implements PropertyType {
 
     readTransform(query: SQLString, columns: string[]): SQLString {
         throw new Error("Method not implemented.")
@@ -59,7 +88,7 @@ class PrimaryKey implements PropertyType {
     }
 }
 
-class Number implements PropertyType {
+class NumberType implements PropertyType {
     
     constructor(private nullable: boolean = true, private options?: SimpleObject){}
         
@@ -84,7 +113,7 @@ class Number implements PropertyType {
     }
 }
 
-class Decimal implements PropertyType {
+class DecimalType implements PropertyType {
 
     constructor(private nullable: boolean = true, private precision?: number, private scale?: number, private options?: SimpleObject){}
   
@@ -113,7 +142,7 @@ class Decimal implements PropertyType {
         }
 }
 
-class Boolean implements PropertyType{
+class BooleanType implements PropertyType{
 
     constructor(private nullable: boolean = true, private options?: SimpleObject) {}
 
@@ -125,7 +154,7 @@ class Boolean implements PropertyType{
             if(propertyvalue === null && !this.nullable){
                 throw new Error(`The Property '${prop.name}' cannot be null.`)
             }
-            return propertyvalue
+            return propertyvalue === null? null: (propertyvalue? '1': '0')
         }
 
         create(prop: NamedProperty){
@@ -141,7 +170,7 @@ class Boolean implements PropertyType{
 
 }
 
-class String implements PropertyType{
+class StringType implements PropertyType{
     
     constructor(private nullable: boolean = true, private length?: number, private options?: SimpleObject) {}
 
@@ -169,7 +198,7 @@ class String implements PropertyType{
     }
 }
 
-class Date implements PropertyType{
+class DateType implements PropertyType{
 
     constructor(private nullable: boolean = true, private options?: SimpleObject) {}
 
@@ -196,7 +225,7 @@ class Date implements PropertyType{
     }
 }
 
-class DateTime implements PropertyType{
+class DateTimeType implements PropertyType{
 
     constructor(private nullable: boolean = true, private precision?: number, private options?: SimpleObject) {}
 
@@ -224,13 +253,13 @@ class DateTime implements PropertyType{
     }
 }
 
-class ObjectOf<I extends Entity> implements PropertyType{
+class ObjectOfType<I extends Entity> implements PropertyType{
 
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I), private nullable: boolean = true) {}
                 
     readTransform(query: SQLString, columns: string[]){
-        let jsonify =  `SELECT JSON_OBJECT(${
-                columns.map(c => `'(${c})', (${c})`).join(',')
+        let jsonify =  `SELECT ${jsonObject()}(${
+                columns.map(c => `'${c}', ${c}`).join(',')
             }) FROM (${query.toString()}) AS \`${makeid(5)}\``
         return jsonify
     }
@@ -266,14 +295,14 @@ class ObjectOf<I extends Entity> implements PropertyType{
     }
 }
 
-class ArrayOf<I extends Entity> implements PropertyType{
+class ArrayOfType<I extends Entity> implements PropertyType{
     
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I)) {}
 
     readTransform(query: SQLString, columns: string[]) {
-        let jsonify =  `SELECT IFNULL(${jsonArrayAgg()}(JSON_OBJECT(${
-                columns.map(c => `'(${c})', (${c})`).join(',')
-            })), JSON_ARRAY()) FROM (${query.toString()}) AS \`${makeid(5)}\` `
+        let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${jsonObject()}(${
+                columns.map(c => `'${c}', ${c}`).join(',')
+            })), ${emptyJsonArray()}) FROM (${query.toString()}) AS \`${makeid(5)}\` `
         return jsonify
     }
 
@@ -309,17 +338,16 @@ class ArrayOf<I extends Entity> implements PropertyType{
 }
 
 export default {
-    PrimaryKey,
-    Number,
-    Decimal,
-    Boolean,
-    String,
-    Date,
-    DateTime,
-    ObjectOf: ObjectOf,
-    ArrayOf: ArrayOf
+    PrimaryKey: PrimaryKeyType,
+    Number: NumberType,
+    Decimal: DecimalType,
+    Boolean: BooleanType,
+    String: StringType,
+    Date: DateType,
+    DateTime: DateTimeType,
+    ObjectOf: ObjectOfType,
+    ArrayOf: ArrayOfType
 }
-
 
 // NativeJSON(nullable: boolean = true): PropertyType {
     //     return {

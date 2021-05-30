@@ -16,6 +16,7 @@ services:
         #     driver: none
     postgres-db:
         image: postgres:13
+        command: -c shared_buffers=500MB -c fsync=off
         restart: always
         environment:
             - TZ=Asia/Hong_Kong

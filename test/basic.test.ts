@@ -1,7 +1,8 @@
 import {run, select, raw, configure, Schema, Entity, Types, models, getKnexInstance} from '../dist/'
-import {snakeCase} from 'lodash'
+import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
+jest.setTimeout(20000)
 
 const initializeDatabase = async () => {
     // configure the orm
@@ -71,15 +72,13 @@ afterEach(() => {
 // })
 
 describe('Basic Read and Write', () => {
-
   test('Create and Find Shop', async () => {
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
     }
     let shop1 = await models.Shop.createOne({
-      ...expectedShop1,
-      id: undefined
+      ...omit(expectedShop1, ['id'])
     })
     expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
 
@@ -88,8 +87,7 @@ describe('Basic Read and Write', () => {
       location: 'Yuen Long'
     }
     let shop2 = await models.Shop.createOne({
-      ...expectedShop2,
-      id: undefined
+      ...omit(expectedShop2, ['id'])
     })
     expect(shop2).toMatchObject(expect.objectContaining(expectedShop2))
  
@@ -99,8 +97,7 @@ describe('Basic Read and Write', () => {
       shopId: shop1.id
     }
     let product1 = await models.Product.createOne({
-      ...expectedProduct1,
-      id: undefined
+      ...omit(expectedProduct1, ['id'])
     })
 
     expect(product1).toMatchObject(expect.objectContaining(expectedProduct1))
@@ -111,8 +108,7 @@ describe('Basic Read and Write', () => {
       shopId: shop1.id
     }
     let product2 = await models.Product.createOne({
-      ...expectedProduct2,
-      id: undefined
+      ...omit(expectedProduct2, ['id'])
     })
 
     expect(product2).toMatchObject(expect.objectContaining(expectedProduct2))
@@ -123,8 +119,7 @@ describe('Basic Read and Write', () => {
       shopId: shop2.id
     }
     let product3 = await models.Product.createOne({
-      ...expectedProduct3,
-      id: undefined
+      ...omit(expectedProduct3, ['id'])
     })
 
     expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
@@ -160,7 +155,7 @@ describe('Basic Read and Write', () => {
     let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
-  });
+  }, 10000);
 
 })
 

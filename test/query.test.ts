@@ -2,6 +2,7 @@ import {run, select, raw, configure, Schema, Entity, Types, Relations, models} f
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
+jest.setTimeout(20000)
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},

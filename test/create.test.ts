@@ -1,6 +1,7 @@
 import {run, select, raw, startTransaction, configure, Schema, Entity, Types, models, getKnexInstance} from '../dist/'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+jest.setTimeout(20000)
 
 const initializeDatabase = async () => {
     // configure the orm

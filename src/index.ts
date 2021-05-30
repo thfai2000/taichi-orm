@@ -282,11 +282,15 @@ export class NamedProperty {
             }
         }
 
+    static convertFieldName(propName: string){
+        return config.propNameTofieldName ? config.propNameTofieldName(propName) : propName
+    }
+
     get fieldName(){
         if(this.options?.skipFieldNameConvertion){
             return this.name
         } else {
-            return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
+            return NamedProperty.convertFieldName(this.name)
         }
     }
 
@@ -464,8 +468,6 @@ export class NamedProperty {
 
         return makeFn(withTransform)
     }
-    
-
 }
 
 export const configure = async function(newConfig: Partial<Config>){
@@ -847,11 +849,8 @@ export class Database{
                 if(input.length > 1){
                     throw new Error('Unexpected Flow.')
                 }
-                let resultData = await Database.executeStatement(input[0].sqlString, trx)
-                let tmp = resultData[0]
-                let dualInstance = Database.parseRaw(Dual, tmp)
-                let str = "data" as keyof Dual
-                let rows = dualInstance[str]
+
+                let rows = await Database._find(Dual, input[0].sqlString, trx)
                 return rows
             })
     }
@@ -864,17 +863,17 @@ export class Database{
             sql = sql.slice(1, sql.length - 1)
         }
 
-        console.debug('==== before transpile ===')
-        console.debug(sql)
-        console.debug('=========================')
+        // console.debug('==== before transpile ===')
+        // console.debug(sql)
+        // console.debug('=========================')
 
         let ast: any = getSqlParser().astify(sql)
 
-        // console.log('aaaaa', JSON.stringify(ast) )
+        // console.log('json before', JSON.stringify(ast) )
 
         ast = this._transpileAst(ast, true)
 
-        // console.log('zzzzzzz', JSON.stringify(ast) )
+        // console.log('json after', JSON.stringify(ast) )
 
         let a = getSqlParser().sqlify(ast)
         return a
@@ -1138,7 +1137,8 @@ export class Database{
                 } else if (config.knexConfig.client.startsWith('pg')) {
                     let insertedId: number
                     const r = await this.executeStatement(input.sqlString.toString(), trx)
-                    insertedId = r[0].insertId
+                    
+                    insertedId = r.rows[0][ NamedProperty.convertFieldName(config.primaryKeyName)]
                     let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
                     return records[0] ?? null
 
@@ -1172,7 +1172,7 @@ export class Database{
         let stmt = getKnexInstance()(schema.tableName).insert(newData)
 
         if (config.knexConfig.client.startsWith('pg')) {
-           stmt = stmt.returning(config.primaryKeyName)
+           stmt = stmt.returning(NamedProperty.convertFieldName(config.primaryKeyName))
         }
 
         return {
@@ -1251,7 +1251,18 @@ export class Database{
         // console.debug("================================")
         let resultData: any = await Database.executeStatement(stmt, existingTrx)
 
-        let dualInstance = this.parseRaw(Dual, resultData[0] as SimpleObject)
+        let rowData = null
+        if(config.knexConfig.client.startsWith('mysql')){
+            rowData = resultData[0][0]
+        } else if(config.knexConfig.client.startsWith('sqlite')){
+            rowData = resultData[0]
+        } else if(config.knexConfig.client.startsWith('pg')){
+            rowData = resultData.rows[0]
+        } else {
+            throw new Error('NYI')
+        }
+
+        let dualInstance = this.parseRaw(Dual, rowData)
         let str = "data" as keyof Dual
         let rows = dualInstance[str] as Array<InstanceType<T>>
         return rows
@@ -1264,12 +1275,7 @@ export class Database{
             KnexStmt.transacting(existingTrx)
         }
         let result = await KnexStmt
-
-        if(config.knexConfig.client.startsWith('mysql')){
-            return result[0]
-        } else if(config.knexConfig.client.startsWith('sqlite')){
-            return result
-        }
+        return result
     }
 
     static parseRaw<T extends typeof Entity>(entityClass: T, row: SimpleObject): InstanceType<T>{
