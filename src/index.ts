@@ -1115,7 +1115,7 @@ export class Database{
                 if (config.knexConfig.client.startsWith('mysql')) {
                     let insertedId: number
                     const r = await this.executeStatement(input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                    insertedId = r[0].insertId
+                    insertedId = r[0][0].insertId
                     let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
                     return records[0] ?? null
 
