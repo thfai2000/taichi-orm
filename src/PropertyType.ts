@@ -260,7 +260,7 @@ class ObjectOfType<I extends Entity> implements PropertyType{
     readTransform(query: SQLString, columns: string[]){
         let jsonify =  `SELECT ${jsonObject()}(${
                 columns.map(c => `'${c}', ${c}`).join(',')
-            }) FROM (${query.toString()}) AS \`${makeid(5)}\``
+            }) FROM (${query.toString()}) AS ${quote(makeid(5))}`
         return jsonify
     }
     
@@ -302,7 +302,7 @@ class ArrayOfType<I extends Entity> implements PropertyType{
     readTransform(query: SQLString, columns: string[]) {
         let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${jsonObject()}(${
                 columns.map(c => `'${c}', ${c}`).join(',')
-            })), ${emptyJsonArray()}) FROM (${query.toString()}) AS \`${makeid(5)}\` `
+            })), ${emptyJsonArray()}) FROM (${query.toString()}) AS ${quote(makeid(5))} `
         return jsonify
     }
 
