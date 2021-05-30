@@ -12,6 +12,7 @@
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
     "test:sqlite": "jest --watch --setupFiles=./dist-test/setup-sqlite.js",
+    "test:pg": "jest --watch --setupFiles=./dist-test/setup-pg.js",
     "mysql": "docker-compose down && docker-compose up",
     "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" "
   },
@@ -41,6 +42,7 @@
     "jest": "^27.0.1",
     "mysql2": "^2.2.5",
     "nodemon": "^2.0.7",
+    "pg": "^8.6.0",
     "reflect-metadata": "^0.1.13",
     "sqlite3": "^5.0.2",
     "typescript": "^4.2.4",

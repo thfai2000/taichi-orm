@@ -1,5 +1,5 @@
 import {run, select, raw, configure, Schema, Entity, Types, Relations, models} from '../dist'
-import {snakeCase, omit} from 'lodash'
+import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
 
@@ -45,10 +45,10 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', Types.String(100))
-        schema.prop('location', Types.String(255))
-        schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+        schema.prop('name', new Types.String(true, 100))
+        schema.prop('location', new Types.String(true, 255))
+        schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
+        schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
             return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
@@ -58,19 +58,19 @@ const initializeDatabase = async () => {
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', Types.String(255, true))
-        schema.prop('createdAt', Types.DateTime(6, true))
-        schema.prop('shopId', Types.Number())
+        schema.prop('name', new Types.String(true, 255))
+        schema.prop('createdAt', new Types.DateTime(true, 6))
+        schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
+        schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
 
         schema.computedProp('colors', 
-          Types.Array(Color), 
+          new Types.ArrayOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
         )
         
         schema.computedProp('mainColor', 
-          Types.Object(Color), 
+          new Types.ObjectOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
             return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
           })
@@ -80,15 +80,15 @@ const initializeDatabase = async () => {
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', Types.String(50))
+        schema.prop('code', new Types.String(true, 50))
       }
     }
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('productId', Types.Number(false))
-        schema.prop('colorId', Types.Number(false))
-        schema.prop('type', Types.String(50, false))
+        schema.prop('productId', new Types.Number(false))
+        schema.prop('colorId', new Types.Number(false))
+        schema.prop('type', new Types.String(false, 50))
       }
     }
 

@@ -1,14 +1,12 @@
 // import { QueryBuilder } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { PropertyType, Types } from './PropertyType'
+import Types, { PropertyType } from './PropertyType'
 export { PropertyType, Types }
 import { Relations } from './Relations'
 export { Relations }
 import { v4 as uuidv4 } from 'uuid'
-// const sqlParser = require('js-sql-parser')
 import { AST, Column, Parser } from 'node-sql-parser'
-const sqlParser = new Parser();
 
 export type Config = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -45,24 +43,43 @@ export const config: Config = {
 
 const META_FIELD_DELIMITER = '___'
 
+export const client = (): string => config.knexConfig.client.toString()
+
+export const quote = (name: string) => {
+    let c = client()
+    if(c.startsWith('sqlite') || c.startsWith('mysql') ){
+        return `\`${name}\``
+    } else if (c.startsWith('pg')){
+        return `"${name}"`
+    }
+    throw new Error('Unsupport client')
+}
+
 let _globalKnexInstance: Knex | null = null
+
+let _sqlParser: Parser | null = null
+
+const getSqlParser = (): Parser => {
+    if(_sqlParser){
+        return _sqlParser
+    }
+    let pkg = 'node-sql-parser'
+    if(client().startsWith('pg')){
+        pkg = 'node-sql-parser/build/postgresql'
+    } else if(client().startsWith('mysql')){
+        pkg = 'node-sql-parser/build/mysql'
+    }
+
+    const {Parser} = require(pkg)
+    _sqlParser = new Parser()
+    return _sqlParser!
+}
 
 // a global knex instance
 export const getKnexInstance = (): Knex => {
     if(_globalKnexInstance){
         return _globalKnexInstance
     }
-
-    // multipleStatements must be true
-    // let newKnexConfig: Partial<Config> = {
-    //     client: config.client,
-    //     connection: config.connection,
-    //     useNullAsDefault: true,
-    // }
-
-    // if(config.pool){
-    //     newKnexConfig.pool = config.pool
-    // }
 
     let newKnexConfig = Object.assign({
         useNullAsDefault: true
@@ -76,6 +93,7 @@ export const getKnexInstance = (): Knex => {
         throw new Error('Configuration client only accept string')
     }
 
+    // multipleStatements must be true
     newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
     
     
@@ -180,13 +198,13 @@ export class Schema {
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
             config.primaryKeyName,
-            Types.PrimaryKey(),
+            new Types.PrimaryKey(),
             null
         )
         if(config.enableUuid){
             this.uuid = new NamedProperty(
                 config.uuidColumnName,
-                Types.String(255, false, {unique: true}),
+                new Types.String(false, 255, {unique: true}),
                 null
             )
             this.namedProperties = [this.primaryKey, this.uuid]
@@ -199,7 +217,7 @@ export class Schema {
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${
+            return `CREATE TABLE IF NOT EXISTS ${quote(this.tableName)} (\n${
                 this.namedProperties.filter(f => !f.computedFunc).map(f => {
                     return `${f.definition.create(f)}`  
                 }).flat().join(',\n')}\n)`;
@@ -259,8 +277,8 @@ export class NamedProperty {
             this.computedFunc = computedFunc
             this.options = options
 
-            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.endsWith('_') ){
-                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or endsWith '_'.`)
+            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
+                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
             }
         }
 
@@ -281,7 +299,7 @@ export class NamedProperty {
         let fieldName = this.fieldName
         let fieldAlias = metaFieldAlias(namedProperty)
 
-        return sealRaw(`(SELECT \`${tableAlias}\`.\`${fieldName}\` AS \`${fieldAlias}\`)`)
+        return sealRaw(`(SELECT ${quote(tableAlias)}.${quote(fieldName)} AS ${quote(fieldAlias)})`)
     }
 
     compileAs$(rootSelector: SelectorImpl, withTransform: boolean): CompiledFunction{
@@ -332,7 +350,7 @@ export class NamedProperty {
                     // // determine the column list
                     let ast!: AST
                     try{
-                        ast = sqlParser.astify(subqueryString) as AST
+                        ast = getSqlParser().astify(subqueryString) as AST
                     }catch(err){
                         console.log('')
                         console.log('\x1b[33m%s\x1b[0m', 'The constructed SQL is in invalid format that cannot be parsed.')
@@ -407,7 +425,7 @@ export class NamedProperty {
                         }) as string[]
                     
                         ast.columns = processedColumns
-                        subqueryString = sqlParser.sqlify(ast)
+                        subqueryString = getSqlParser().sqlify(ast)
                     } else {
                         throw new Error('Computed property must be started with Select')
                     }
@@ -562,7 +580,7 @@ const metaTableAlias = function(schema: Schema): string{
 }
 
 const breakdownMetaTableAlias = function(metaAlias: string) {
-    metaAlias = metaAlias.replace(/[\`\']/g, '')
+    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
     
     if(metaAlias.includes(META_FIELD_DELIMITER)){
         let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
@@ -579,7 +597,7 @@ const metaFieldAlias = function(p: NamedProperty): string{
 }
 
 const breakdownMetaFieldAlias = function(metaAlias: string){
-    metaAlias = metaAlias.replace(/[\`\']/g, '')
+    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
     if(metaAlias.includes(META_FIELD_DELIMITER)){
         let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
         let namedProperty = findGlobalNamedProperty(propAlias)
@@ -703,7 +721,7 @@ export class SelectorImpl{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
         }
-        return `\`${this.schema.tableName}\` AS \`${this.tableAlias}\``
+        return `${quote(this.schema.tableName)} AS ${quote(this.tableAlias)}`
     }
 
     // "abc.*"
@@ -810,7 +828,7 @@ export class Database{
                 let dualSelector = Dual.newSelector()
                 let prop = new NamedProperty(
                     'data',
-                    Types.Array(Dual),
+                    new Types.ArrayOf(Dual),
                     (dualSelector): Knex.QueryBuilder => {
                         return stmt
                     }
@@ -846,11 +864,11 @@ export class Database{
             sql = sql.slice(1, sql.length - 1)
         }
 
-        // console.debug('==== before transpile ===')
-        // console.debug(sql)
-        // console.debug('=========================')
+        console.debug('==== before transpile ===')
+        console.debug(sql)
+        console.debug('=========================')
 
-        let ast: any = sqlParser.astify(sql)
+        let ast: any = getSqlParser().astify(sql)
 
         // console.log('aaaaa', JSON.stringify(ast) )
 
@@ -858,7 +876,7 @@ export class Database{
 
         // console.log('zzzzzzz', JSON.stringify(ast) )
 
-        let a = sqlParser.sqlify(ast)
+        let a = getSqlParser().sqlify(ast)
         return a
     }
 
@@ -1117,6 +1135,13 @@ export class Database{
                         return null
                     }
 
+                } else if (config.knexConfig.client.startsWith('pg')) {
+                    let insertedId: number
+                    const r = await this.executeStatement(input.sqlString.toString(), trx)
+                    insertedId = r[0].insertId
+                    let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
+                    return records[0] ?? null
+
                 } else {
                     throw new Error('NYI')
                 }
@@ -1145,6 +1170,11 @@ export class Database{
             newData[config.uuidColumnName] = newUuid
         }
         let stmt = getKnexInstance()(schema.tableName).insert(newData)
+
+        if (config.knexConfig.client.startsWith('pg')) {
+           stmt = stmt.returning(config.primaryKeyName)
+        }
+
         return {
             sqlString: Database.transpile(stmt),
             uuid: newUuid
@@ -1198,7 +1228,7 @@ export class Database{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
-            Types.Array(entityClass),
+            new Types.ArrayOf(entityClass),
             () => {
                 let currentEntitySelector = entityClass.selector()
                 let stmt: Knex.QueryBuilder = sealSelect().from(currentEntitySelector.source)

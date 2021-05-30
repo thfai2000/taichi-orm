@@ -7,8 +7,8 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('name', Types.String(255, true))
-          schema.prop('location', Types.String(255, false))
+          schema.prop('name', new Types.String(true, 255))
+          schema.prop('location', new Types.String(false, 255))
       }
     }
 
@@ -83,7 +83,7 @@ describe('Test Create - with transaction', () => {
     expect(record).toEqual( expect.objectContaining({
       ...shopData
     }))
-    
+
     // try to find it again, to prove it is committed
     let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
     expect(found).toEqual( expect.objectContaining({

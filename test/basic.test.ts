@@ -8,29 +8,29 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', Types.String(255, false))
+          schema.prop('location', new Types.String(false, 255))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', Types.String(255, true))
-          schema.prop('isActive', Types.Boolean(true))
-          schema.prop('price', Types.Decimal(7, 2, true))
-          schema.prop('createdAt', Types.DateTime(6, true))
-          schema.prop('shopId', Types.Number(true))
+          schema.prop('name', new Types.String(true, 255))
+          schema.prop('isActive', new Types.Boolean(true))
+          schema.prop('price', new Types.Decimal(true, 7, 2))
+          schema.prop('createdAt', new Types.DateTime(true, 6))
+          schema.prop('shopId', new Types.Number(true))
       }
     }
 
     class StrictProduct extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', Types.String(255, false))
-          schema.prop('isActive', Types.Boolean(false))
-          schema.prop('price', Types.Decimal(5, 2, false))
-          schema.prop('createdAt', Types.DateTime(6, false))
-          schema.prop('shopId', Types.Number(false))
+          schema.prop('name', new Types.String(false, 255))
+          schema.prop('isActive', new Types.Boolean(false))
+          schema.prop('price', new Types.Decimal(false, 5, 2))
+          schema.prop('createdAt', new Types.DateTime(false))
+          schema.prop('shopId', new Types.Number(false))
       }
     }
 
@@ -203,6 +203,7 @@ describe('Type Parsing', () => {
 
   // TODO: not null checking: set null if the property cannot be null
   // TODO: test default value it null during creation
+  // TODO: test over length of string
 
 })
 

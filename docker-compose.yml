@@ -1,8 +1,9 @@
 version: '3'
 services:
-    mysqldb:
+    mysql-db:
         image: mysql:8.0
         command: --default-authentication-plugin=mysql_native_password
+        restart: always
         environment:
             - TZ=Asia/Hong_Kong
             - MYSQL_ROOT_PASSWORD=example
@@ -10,15 +11,25 @@ services:
             - MYSQL_PASSWORD=example
             - MYSQL_DATABASE=example
         ports:
-            - '3306:3306'
+            - 3306:3306
         # logging:
         #     driver: none
+    postgres-db:
+        image: postgres:13
+        restart: always
+        environment:
+            - TZ=Asia/Hong_Kong
+            - POSTGRES_USER=example
+            - POSTGRES_PASSWORD=example
+        ports:
+            - 5432:5432
+
     adminer:
         image: adminer
         ports:
             - '9000:8080'
         environment:
             - TZ=Asia/Hong_Kong
-            - ADMINER_DEFAULT_SERVER=mysqldb
+            - ADMINER_DEFAULT_SERVER=postgres-db
         logging:
             driver: none
