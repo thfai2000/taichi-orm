@@ -142,7 +142,30 @@ export const Types = {
 
         const create = (prop: NamedProperty) => [
             [`\`${prop.fieldName}\``, 
-            `DATETIME`,
+            `DATE`,
+            nullableText(nullable), 
+            (options?.default !== undefined?`DEFAULT ${parseProperty(options?.default, prop)}`:'') 
+            ].join(' ')
+        ]
+        return {create, parseRaw, parseProperty}
+
+    },
+    DateTime(precision: number = 6, nullable: boolean = true, options?: SimpleObject): PropertyType{
+
+        const parseRaw = (rawValue: any): any => {
+            //TODO: warning if nullable is false but value is null
+            return rawValue === null? null: new Date(rawValue)
+        }
+        const parseProperty = (propertyvalue: any, prop: NamedProperty): any => {
+            if(propertyvalue === null && !nullable){
+                throw new Error(`The Property '${prop.name}' cannot be null.`)
+            }
+            return propertyvalue
+        }
+
+        const create = (prop: NamedProperty) => [
+            [`\`${prop.fieldName}\``, 
+            `DATETIME(${precision})`,
             nullableText(nullable), 
             (options?.default !== undefined?`DEFAULT ${parseProperty(options?.default, prop)}`:'') 
             ].join(' ')
