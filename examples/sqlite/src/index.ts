@@ -1,4 +1,4 @@
-import {configure, Entity, Relations, Schema, Types, models, select, raw} from '../../../dist/'
+import {configure, Entity, Relations, Schema, Types, models, builder, raw} from '../../../dist/'
 import {snakeCase} from 'lodash'
 
 let shopData = [
@@ -45,12 +45,12 @@ let productColorData = [
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', Types.String(100))
-        schema.prop('location', Types.String(255))
-        schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+        schema.prop('name', new Types.String(true, 100))
+        schema.prop('location', new Types.String(true, 255))
+        schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
+        schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+            return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
       }
     }
@@ -58,19 +58,19 @@ let productColorData = [
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', Types.String(255, true))
-        schema.prop('createdAt', Types.Date())
-        schema.prop('shopId', Types.Number() )
+        schema.prop('name', new Types.String(true, 255))
+        schema.prop('createdAt', new Types.DateTime())
+        schema.prop('shopId', new Types.Number() )
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
+        schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
 
         schema.computedProp('colors', 
-          Types.Array(Color), 
+          new Types.ArrayOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
         )
         
         schema.computedProp('mainColor', 
-          Types.Object(Color), 
+          new Types.ObjectOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
             return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
           })
@@ -80,15 +80,15 @@ let productColorData = [
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', Types.String(50))
+        schema.prop('code', new Types.String(true, 50))
       }
     }
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('productId', Types.Number(false))
-        schema.prop('colorId', Types.Number(false))
-        schema.prop('type', Types.String(50, false))
+        schema.prop('productId', new Types.Number(false))
+        schema.prop('colorId', new Types.Number(false))
+        schema.prop('type', new Types.String(false, 50))
       }
     }
 
@@ -97,6 +97,7 @@ let productColorData = [
         createModels: true,
         entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
+        enableUuid: true,
         knexConfig: {
             client: 'sqlite',
             connection: {
@@ -124,16 +125,22 @@ let productColorData = [
     // let execContext = models.Shop.find( (stmt, s) => stmt.where(s._.id, '=',1))
 
     // console.log(records)
+    try{
+      let execContext = models.Shop.find( (stmt, root) => {
+          return stmt.select('*', root.$.products( (stmt, p) => {
+            return stmt.select('*', p.$.colors())
+          }))
+      })
+      execContext.then( () => {
 
-    let execContext = models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products( (stmt, p) => {
-          return stmt.select('*', p.$.colors())
-        }))
-    })
+      }, (error)=>{
+        console.log('xxxxx', error)
+      })
+      // console.log('results', records[0].products[0])
+    } catch(error){
+      console.error('hello world', error)
+    }
 
     // console.log('=========================', await execContext.toSQLString())
     
-    let records = await execContext
-    console.log('results', records[0].products[0])
-
 })()
