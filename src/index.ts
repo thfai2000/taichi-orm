@@ -809,6 +809,13 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         return this
     }
 
+    usingConnectionIfAvailable(trx: Knex.Transaction | null | undefined): ExecutionContext<I>{
+        if(trx){
+            this.trx = trx
+        }
+        return this
+    }
+
     async toSQLString(): Promise<SQLString[]> {
         return (await this.beforeAction()).map( ({sqlString}) => sqlString )
     }
@@ -857,6 +864,7 @@ export class Database{
 
     static transpile(stmt: SQLString): SQLString {
 
+        // console.time('transpile')
         let sql = stmt.toString()
 
         if(sql.startsWith('(') && sql.endsWith(')')){
@@ -876,6 +884,7 @@ export class Database{
         // console.log('json after', JSON.stringify(ast) )
 
         let a = getSqlParser().sqlify(ast)
+        // console.timeEnd('transpile')
         return a
     }
 
@@ -1107,7 +1116,7 @@ export class Database{
     }
 
     private static async _create<T extends typeof Entity>(inputs: BeforeExecutionOutput, entityClass: T, existingTrx: Knex.Transaction<any, any[]> | undefined) {
-        return await startTransaction< (InstanceType<T> | null)[]>(async (trx) => {
+        let fns = await startTransaction(async (trx) => {
             let allResults = await Promise.all(inputs.map(async ( input) => {
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
@@ -1116,9 +1125,8 @@ export class Database{
                     let insertedId: number
                     const r = await this.executeStatement(input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
                     insertedId = r[0][0].insertId
-                    let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
-                    return records[0] ?? null
-
+                    let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    return records
                 } else if (config.knexConfig.client.startsWith('sqlite')) {
                     const r = await this.executeStatement(input.sqlString.toString(), trx)
                     
@@ -1127,8 +1135,9 @@ export class Database{
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid])).usingConnection(trx)
-                            return records[0] ?? null
+                            let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid]))
+                            // return records[0] ?? null
+                            return records
                         }
                     } else {
                         return null
@@ -1139,8 +1148,8 @@ export class Database{
                     const r = await this.executeStatement(input.sqlString.toString(), trx)
                     
                     insertedId = r.rows[0][ NamedProperty.convertFieldName(config.primaryKeyName)]
-                    let records = await this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx)
-                    return records[0] ?? null
+                    let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    return records
 
                 } else {
                     throw new Error('NYI')
@@ -1150,6 +1159,14 @@ export class Database{
             return allResults
 
         }, existingTrx)
+
+        return await Promise.all(fns.map(async (exec) => {
+            if(exec === null){
+                return null
+            }
+            const context = exec().usingConnectionIfAvailable(existingTrx)
+            return (await context)[0] ?? null
+        }))
     }
 
     private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: SimpleObject, useUuid: boolean) {
