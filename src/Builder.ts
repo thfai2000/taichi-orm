@@ -11,6 +11,7 @@ export interface QueryBuilder extends Knex.QueryBuilder{
     __type: 'QueryBuilder'
     __selectItems: SelectItem[]
     __realSelect: Function
+    __realClearSelect: Function
 }
 
 export interface Column extends Knex.Raw {
@@ -101,12 +102,16 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
 
         this.__selectItems = this.__selectItems.concat(converted)
 
-        return this.__realSelect(...converted.map(c => c.raw))
+        let raws = converted.map(c => c.raw)
+
+        // console.log('abc abac acbacbc', raws.map( r => r.toString()))
+        return this.__realSelect(...raws)
     }
 
+    sealBuilder.__realClearSelect = sealBuilder.clearSelect
     sealBuilder.clearSelect = function(){
         this.__selectItems = []
-        return this.clearSelect()
+        return this.__realClearSelect()
     }
 
     //after the select is override, add default 'all'

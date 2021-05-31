@@ -336,22 +336,7 @@ export class NamedProperty {
                 }
                 let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
 
-
                 let process = (subquery: Knex.QueryBuilder): Column => {
-                    // let subqueryString = subquery.toString()
-                    // let definition = namedProperty.definition
-
-                    // if(withTransform && definition.readTransform){
-                    //     let transformedSql = definition.readTransform(subqueryString, extractColumns(subquery))
-                    //     // let seal = sealRaw(`(${}) AS ${quote(fieldAlias)}`)
-                        
-                    //     return makeColumn(rootSelector.interface!, namedProperty, transformedSql.toString())
-                    // } else {
-
-                    //     // return sealRaw(`(${subqueryString}) AS ${quote(fieldAlias)}`)
-                    //     return makeColumn(rootSelector.interface!, namedProperty, subqueryString)
-                    // }
-
                     return makeColumn(rootSelector.interface!, namedProperty, subquery)
                 }
 
