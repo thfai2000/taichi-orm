@@ -703,17 +703,20 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         : Promise<TResult1 | TResult2> {
 
         try{
+            let result = await this.action(await this.beforeAction(), this.trx)
             if(onfulfilled){
-                let result = await this.action(await this.beforeAction(), this.trx)
                 return onfulfilled(result)
+            } else {
+                return this.then(onfulfilled, onrejected)
             }
         }catch(error){
             if(onrejected){
                 return onrejected(error)
+            } else{
+                throw error
             }
         }
-
-        return this.then(onfulfilled, onrejected)
+        // return this.then(onfulfilled, onrejected)
     }
 
     usingConnection(trx: Knex.Transaction): ExecutionContext<I>{

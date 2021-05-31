@@ -10,6 +10,7 @@ type SelectItem = {
 export interface QueryBuilder extends Knex.QueryBuilder{
     __type: 'QueryBuilder'
     __selectItems: SelectItem[]
+    __realSelect: Function
 }
 
 export interface Column extends Knex.Raw {
@@ -41,9 +42,9 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
     
     // @ts-ignore
     sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-
+    sealBuilder.__type = 'QueryBuilder'
     sealBuilder.__selectItems = []
-
+    sealBuilder.__realSelect = sealBuilder.select
     // override the select methods
     sealBuilder.select = function(...args: any[]){
 
@@ -53,7 +54,7 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                 console.log('\x1b[33m%s\x1b[0m', 'Maybe you called any computed Property that is an Async Function but you haven\'t \'await\' it before placing it into the QueryBuilder.')
                 throw new Error('Invalid Select Item.')
             } else if(item === '*'){
-                throw new Error("Currently it doesn't support using '*'")
+                throw new Error("Currently it doesn't support using '*'. Please use Selector.star")
             } else if(item.__type === 'Column' ){
                 let casted = item as Column
                 let selector = casted.__selector
@@ -81,7 +82,7 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                 }{
                     if(prop === '*'){
                         return selector.all.map( col => {
-                            if(col.__namedProperty){
+                            if(col.__namedProperty === '*'){
                                 throw new Error('Unexpected Flow.')
                             }
                             return makeSelectItem(selector, col.__namedProperty)
@@ -100,7 +101,7 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
 
         this.__selectItems = this.__selectItems.concat(converted)
 
-        return this.select(...converted.map(c => c.raw))
+        return this.__realSelect(...converted.map(c => c.raw))
     }
 
     sealBuilder.clearSelect = function(){
@@ -135,11 +136,12 @@ export const makeColumn = (selector: Selector, prop: NamedProperty | '*', expres
         raw = `${tableAlias}.${fieldName}`
     }
 
-    let sealColumn: Column = makeRaw(raw) as Column
-    sealColumn.__expression = expression
-    sealColumn.__namedProperty = prop
-    sealColumn.__selector = selector
-    return sealColumn
+    let column: Column = makeRaw(raw) as Column
+    column.__type = 'Column'
+    column.__expression = expression
+    column.__namedProperty = prop
+    column.__selector = selector
+    return column
 }
 
 export const makeSource = (joinText: string | null, selector: Selector, leftColumn?: Column, operator?: string, rightColumn?: Column): Source => {
@@ -150,6 +152,8 @@ export const makeSource = (joinText: string | null, selector: Selector, leftColu
     let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${leftColumn} ${operator} ${rightColumn}`}`
 
     let target = makeRaw(raw) as Source
+    target.__type = 'Source'
+    target.__selector = selector
     target.__raw = raw
     
     target.innerJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
