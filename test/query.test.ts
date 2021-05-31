@@ -111,8 +111,8 @@ const initializeDatabase = async () => {
     await Promise.all(shopData.map( async(d) => {
       return await models.Shop.createOne(d)
     }))
-    
 
+    
     await Promise.all(productData.map( async(d) => {
       return await models.Product.createOne(d)
     }))
@@ -131,11 +131,11 @@ const clearDatabase = () => {
 
 }
 
-beforeEach( async () => {
+beforeAll( async () => {
     await initializeDatabase();
 });
 
-afterEach(() => {
+afterAll(() => {
     return clearDatabase();
 });
 
