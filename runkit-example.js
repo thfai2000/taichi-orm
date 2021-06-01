@@ -53,48 +53,6 @@ class ProductColor extends Entity{
   }
 }
 
-;(async() =>{
-
-    // configure database
-    await configure({
-      models: {Shop, Product, Color, ProductColor},
-      createModels: true,
-      enableUuid: true,
-      knexConfig: {
-          client: 'sqlite',
-          connection: {
-              filename: ':memory:'
-          }
-      }
-    })
-
-    await initData()
-
-    // computed fields are the relations
-    // you can do complicated query in one go
-    // Graph-like selecting Models "Shop > Product > Color"
-    let records = await Shop.find( (stmt, root) => {
-        return stmt.select(root.$.productCount(), root.$.products( (stmt, p) => {
-          return stmt.select(p.$.mainColor(), p.$.colors( (stmt, c) => {
-            return stmt.limit(2)
-          }))
-        }))
-    })
-
-    // Here you are
-    console.log('results', records)
-
-    // use computed fields for filtering
-    // for example: find all shops with Product Count over 2
-    let shopsWithAtLeast2Products = await Shop.find( (stmt, root) => {
-      return stmt.select(root.$.products()).whereRaw('?? >= 2', [root.$.productCount()])
-    })
-
-    // Great!
-    console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
-
-})()
-
 
 async function initData(){
 
@@ -152,6 +110,49 @@ async function initData(){
   await Promise.all(productColorData.map( async(d) => {
     return await ProductColor.createOne(d)
   }))
-
-
 }
+
+;(async() =>{
+
+    // configure database
+    await configure({
+      models: {Shop, Product, Color, ProductColor},
+      createModels: true,
+      enableUuid: true,
+      knexConfig: {
+          client: 'sqlite',
+          connection: {
+              filename: ':memory:'
+          }
+      }
+    })
+
+    // insert some data
+    await initData()
+
+    // computed fields are the relations
+    // you can do complicated query in one go
+    // Graph-like selecting Models "Shop > Product > Color"
+    let records = await Shop.find( (stmt, root) => {
+        return stmt.select(root.$.productCount(), root.$.products( (stmt, p) => {
+          return stmt.select(p.$.mainColor(), p.$.colors( (stmt, c) => {
+            return stmt.limit(2)
+          }))
+        }))
+    })
+
+    // Here you are
+    console.log('results', records)
+
+    // use computed fields for filtering
+    // for example: find all shops with Product Count over 2
+    let shopsWithAtLeast2Products = await Shop.find( (stmt, root) => {
+      return stmt.select(root.$.products()).whereRaw('?? >= 2', [root.$.productCount()])
+    })
+
+    // Great!
+    console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
+
+})()
+
+
