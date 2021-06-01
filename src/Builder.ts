@@ -1,5 +1,305 @@
-import knex, { Knex } from "knex"
-import { getKnexInstance, SQLString } from "."
+import { Knex}  from "knex"
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote } from "."
+
+
+type SelectItem = {
+    raw: Knex.Raw | any,
+    actualAlias: string
+}
+
+export interface QueryBuilder extends Knex.QueryBuilder{
+    __type: 'QueryBuilder'
+    __selectItems: SelectItem[]
+    __realSelect: Function
+    __realClearSelect: Function
+}
+
+export interface Column extends Knex.Raw {
+    __type: 'Column'
+    __selector: Selector
+    __namedProperty: NamedProperty | '*'
+    __expression: Knex.QueryBuilder | undefined | null
+}
+
+export interface Source extends Knex.Raw {
+    __type: 'Source'
+    __selector: Selector
+    __raw: string
+    innerJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
+    leftJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
+    rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
+}
+
+const castAsQueryBuilder = (builder: Knex.QueryBuilder) : QueryBuilder => {
+    //@ts-ignore
+    if(builder.__type === 'QueryBuilder' ){
+        return builder as QueryBuilder
+    }
+    throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
+}
+
+export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
+    let sealBuilder: QueryBuilder = getKnexInstance().clearSelect() as QueryBuilder
+    
+    // @ts-ignore
+    sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+    sealBuilder.__type = 'QueryBuilder'
+    sealBuilder.__selectItems = []
+    sealBuilder.__realSelect = sealBuilder.select
+    // override the select methods
+    sealBuilder.select = function(...args: any[]){
+
+        let converted: SelectItem[] = args.flatMap( item => {
+
+            if(item instanceof Promise){
+                console.log('\x1b[33m%s\x1b[0m', 'Maybe you called any computed Property that is an Async Function but you haven\'t \'await\' it before placing it into the QueryBuilder.')
+                throw new Error('Invalid Select Item.')
+            } else if(item === '*'){
+                throw new Error("Currently it doesn't support using '*'. Please use Selector.star")
+            } else if(Array.isArray(item) && item.every( subitem => subitem.__type === 'Column')){
+                throw new Error("Detected that array of 'Column' is placed into select expression. Please use ES6 spread syntax to place the columns.")
+            } else if(item.__type === 'Column' ){
+                let casted = item as Column
+                let selector = casted.__selector
+                let prop = casted.__namedProperty
+                let expression = casted.__expression
+
+                if(expression){
+                    if(prop === '*'){
+                        throw new Error('Unexpected Flow.')
+                    } else {
+                        let definition = prop.definition
+                        let finalExpr: string
+                        if(definition.readTransform){
+                            let extractedColumnNames = extractColumns(expression)
+                            if(extractedColumnNames.length === 0){
+                                throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
+                            }
+                            finalExpr = definition.readTransform(expression, extractedColumnNames).toString()
+                        } else {
+                            finalExpr = expression.toSQL().sql
+                        }
+                        let a = metaFieldAlias(prop)
+                        let raw = `(${finalExpr}) AS ${quote(a) }`
+                         return [{
+                            raw: makeRaw(raw),
+                            actualAlias: a
+                        }]
+                    }
+                }{
+                    if(prop === '*'){
+                        return selector.all.map( col => {
+                            if(col.__namedProperty === '*'){
+                                throw new Error('Unexpected Flow.')
+                            }
+                            return makeSelectItem(selector, col.__namedProperty)
+                        })
+                    } else {
+                        return [makeSelectItem(selector, prop)]
+                    }
+                }
+            }
+
+            return [{
+                raw: item,
+                actualAlias: parseName(item)
+            }]
+        })
+
+        //check exists in columns before
+        let pool = this.__selectItems.map(item => item.raw.toString())
+        let duplicated = converted.filter(item => pool.includes( item.raw.toString() ))
+        if( duplicated.length > 0 ){
+            throw new Error(`Duplicated Columns '${duplicated.map(d => d.actualAlias).join(',')}' are detected.`)
+        }
+
+        this.__selectItems = this.__selectItems.concat(converted)
+
+        let raws = converted.map(c => c.raw)
+        return this.__realSelect(...raws)
+    }
+
+    sealBuilder.__realClearSelect = sealBuilder.clearSelect
+    sealBuilder.clearSelect = function(){
+        this.__selectItems = []
+        return this.__realClearSelect()
+    }
+
+    //after the select is override, add default 'all'
+    if(mainSelector){
+        sealBuilder = sealBuilder.select(mainSelector.star).from(mainSelector.source) as QueryBuilder
+    }
+
+    return sealBuilder
+}
+
+export const makeRaw = (first: any, ...args: any[]) => {
+    let r = getKnexInstance().raw(first, ...args)
+    // @ts-ignore
+    r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+    return r
+}
+
+export const makeColumn = (selector: Selector, prop: NamedProperty | '*', expression?: Knex.QueryBuilder): Column => {
+
+
+    let raw: string
+    if(expression){
+        if(prop === '*'){
+            throw new Error('Unexpected Flow.')
+        }
+        raw = `(${expression})`
+    } else {
+        let tableAlias = quote(selector.tableAlias)
+        let fieldName: string = prop === '*'? prop : quote(prop.fieldName)
+        raw = `${tableAlias}.${fieldName}`
+    }
+    let column: Column = makeRaw(raw) as Column
+    column.__type = 'Column'
+    column.__expression = expression
+    column.__namedProperty = prop
+    column.__selector = selector
+    return column
+}
+
+export const makeSource = (joinText: string | null, selector: Selector, leftColumn?: Column, operator?: string, rightColumn?: Column): Source => {
+    let t = `${quote(selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
+
+    joinText  = (joinText ?? '').trim()
+
+    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${leftColumn} ${operator} ${rightColumn}`}`
+
+    let target = makeRaw(raw) as Source
+    target.__type = 'Source'
+    target.__selector = selector
+    target.__raw = raw
+    
+    target.innerJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
+        let s = makeSource(`${target.__raw} INNER JOIN`, source.__selector, leftColumn, operator, rightColumn)
+        return s
+    }
+
+    target.leftJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
+        let s = makeSource(`${target.__raw} LEFT JOIN`, source.__selector, leftColumn, operator, rightColumn)
+        return s
+    }
+
+    target.rightJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
+        let s = makeSource(`${target.__raw} RIGHT JOIN`, source.__selector, leftColumn, operator, rightColumn)
+        return s
+    }
+    return target
+}
+
+export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
+
+    let ourBuilder = castAsQueryBuilder(builder)
+
+    return ourBuilder.__selectItems.map(item => {
+        return item.actualAlias
+    })
+}
+
+const parseName = (item: any) => {
+    let text = item.toString().trim()
+
+    let e = /((?<![\\])[`'"])((?:.(?!(?<![\\])\1))*.?)\1/g
+    let r = e.exec(text)
+    if(r){
+        let last = r[0]
+        while( (r = e.exec(text) )){
+            last = r[0]
+        }
+        return last
+    } else {
+        let e = /\b[\. ]+([a-zA-Z0-9\_\$]*)$/
+        let r = e.exec(text)
+        if(r && r[1]){
+            return r[1]
+        }else {
+            return text
+        }
+    }
+}
+
+function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
+    let tableAlias = quote(selector.tableAlias)
+    let fieldName: string = quote(prop.fieldName)
+    let a = metaFieldAlias(prop)
+    let raw = `${tableAlias}.${fieldName} AS ${quote(a)}`
+    return {
+        raw: makeRaw(raw),
+        actualAlias: a
+    }
+}
+// const extractColumnName = () => {
+
+//     let columnsToBeTransformed: string[] = []
+//     if( ast.type === 'select'){
+//         let selectAst = ast
+//         let columns = ast.columns
+        
+//         // then handle select items... expand columns
+
+//         const handleColumns = (from: any[] | null, columns: any[] | Column[] | '*'): any[] | Column[] => {
+//             if(columns === '*'){
+//                 columns = [{
+//                     expr: {
+//                         type: 'column_ref',
+//                         table: null,
+//                         column: '*'
+//                     },
+//                     as: null
+//                 }]
+//             }
+
+//             return columns.flatMap( (col: Column) => {
+//                 if(col.expr.type === 'column_ref' && ( col.expr.column.includes('*') || col.expr.column.includes('$star') ) ){
+//                     // if it is *... expand the columns..
+//                     let moreColumns = Database._resolveStar(col, from)
+//                     return moreColumns
+//                     // @ts-ignore
+//                 } else if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
+//                     // @ts-ignore
+//                     col.as = col.expr.columns[0].as
+//                     if(!col.as){
+//                         throw new Error('Unexpected Flow.')
+//                     }
+//                     return col
+//                 } else {
+
+//                     if(!col.as){
+//                         col.as = makeid(5)
+//                     }
+//                     return col
+//                 }
+//             })
+            
+//         }
+
+//         let processedColumns = handleColumns(selectAst.from, columns) as Column[]
+
+//         //eliminate duplicated columns
+
+//         processedColumns = processedColumns.reduce( (acc: any[], item: SimpleObject) => {
+//             if( !acc.find( (x:any) => item.as === x.as ) ){
+//                 acc.push(item)
+//             }
+//             return acc
+//         },[] as any[])
+
+//         columnsToBeTransformed = processedColumns.flatMap( (col: any) => {
+//             return Database._extractColumnAlias(col) 
+//         }) as string[]
+    
+//         ast.columns = processedColumns
+//         subqueryString = getSqlParser().sqlify(ast)
+//     } else {
+//         throw new Error('Computed property must be started with Select')
+//     }
+
+
+// }
 
 // export type QueryBuilderAccessableField = string | CompiledNamedPropertyGetter | CompiledNamedProperty | CompiledNamedPropertyWithSubQuery
 
@@ -111,28 +411,28 @@ import { getKnexInstance, SQLString } from "."
 //     }
 // }
 
-export class MutationBuilder implements SQLString{
+// export class MutationBuilder implements SQLString{
 
-    stmt: any
+//     stmt: any
 
-    constructor(){
-    }
+//     constructor(){
+//     }
 
-    update(...args: any[]){
-        return this
-    }
+//     update(...args: any[]){
+//         return this
+//     }
 
-    from(...args: any[]){
-        return this
-    }
+//     from(...args: any[]){
+//         return this
+//     }
 
-    where(...args: any[]){
-        return this
-    }
+//     where(...args: any[]){
+//         return this
+//     }
 
-    toString(): string{
-        throw new Error('NYI')
-    }
-}
+//     toString(): string{
+//         throw new Error('NYI')
+//     }
+// }
 
 

@@ -1,4 +1,4 @@
-import {run, select, raw, configure, Schema, Entity, Types, models, getKnexInstance} from '../dist/'
+import {run, builder, raw, configure, Schema, Entity, Types, models} from '../dist/'
 import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
