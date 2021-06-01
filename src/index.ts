@@ -294,7 +294,7 @@ export class NamedProperty {
         return makeColumn(rootSelector.interface!, this)
     }
 
-    compileAs$(rootSelector: SelectorImpl, withTransform: boolean): CompiledFunction{
+    compileAs$(rootSelector: SelectorImpl): CompiledFunction{
         if(!this.computedFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
         }
@@ -302,7 +302,7 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        const makeFn = (withTransform: boolean) => {
+        const makeFn = () => {
             
             let callable: CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => {
                 const applyFilterFunc: ApplyNextQueryFunction = (stmt, selector) => {
@@ -361,7 +361,7 @@ export class NamedProperty {
             return callable
         }
 
-        return makeFn(withTransform)
+        return makeFn()
     }
 }
 
@@ -558,14 +558,14 @@ export class SelectorImpl{
         if(!selector){
             throw new Error('Unexpected')
         }
-        let withTransform = true
-        if (sKey.startsWith('_')) {
-            withTransform = false
-            sKey = sKey.slice(1)
-        }
+        // let withTransform = true
+        // if (sKey.startsWith('_')) {
+        //     withTransform = false
+        //     sKey = sKey.slice(1)
+        // }
         let prop = selector.getProperties().find((prop) => prop.name === sKey)
         selector.checkDollar(prop, sKey)
-        return prop!.compileAs$(selector, withTransform)
+        return prop!.compileAs$(selector)
     }
 
     getNormalCompiled(sKey: string) {
