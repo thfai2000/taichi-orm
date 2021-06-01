@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types } from "."
 
 
 type SelectItem = {
@@ -16,9 +16,13 @@ export interface QueryBuilder extends Knex.QueryBuilder{
 
 export interface Column extends Knex.Raw {
     __type: 'Column'
-    __selector: Selector
+    __selector: Selector | null
     __namedProperty: NamedProperty | '*'
-    __expression: Knex.QueryBuilder | undefined | null
+    __expression: Knex.QueryBuilder | null
+    // count(): Column
+    // exist(): Column
+    // is(operator: string, value: any): Column
+    // as(propName: string): Column        //rename
 }
 
 export interface Source extends Knex.Raw {
@@ -38,7 +42,7 @@ const castAsQueryBuilder = (builder: Knex.QueryBuilder) : QueryBuilder => {
     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
 }
 
-export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
+export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder {
     let sealBuilder: QueryBuilder = getKnexInstance().clearSelect() as QueryBuilder
     
     // @ts-ignore
@@ -87,15 +91,19 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                         }]
                     }
                 }{
+                    if(!selector){
+                        throw new Error('Unexpected Flow.')
+                    }
+                    let s = selector
                     if(prop === '*'){
-                        return selector.all.map( col => {
+                        return s.all.map( col => {
                             if(col.__namedProperty === '*'){
                                 throw new Error('Unexpected Flow.')
                             }
-                            return makeSelectItem(selector, col.__namedProperty)
+                            return makeSelectItem(s, col.__namedProperty)
                         })
                     } else {
-                        return [makeSelectItem(selector, prop)]
+                        return [makeSelectItem(s, prop)]
                     }
                 }
             }
@@ -140,16 +148,19 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeColumn = (selector: Selector, prop: NamedProperty | '*', expression?: Knex.QueryBuilder): Column => {
-
+export const makeColumn = (selector: Selector | null, prop: NamedProperty | '*', expression: Knex.QueryBuilder | null): Column => {
 
     let raw: string
+    if(expression && prop === '*'){
+        throw new Error('Unexpected Flow.')
+    }
+
     if(expression){
-        if(prop === '*'){
-            throw new Error('Unexpected Flow.')
-        }
         raw = `(${expression})`
     } else {
+        if(!selector){
+            throw new Error('Unexpected Flow.')
+        }
         let tableAlias = quote(selector.tableAlias)
         let fieldName: string = prop === '*'? prop : quote(prop.fieldName)
         raw = `${tableAlias}.${fieldName}`
@@ -232,6 +243,40 @@ function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
         actualAlias: a
     }
 }
+
+
+// const wrap = (col: Column | Promise<Column>) => {
+
+//     let w = {}
+//     w.count = () => {
+//         // if(!expression){
+//         //     throw new Error('only computedProp can use count()')
+//         // }
+//         // if(prop === '*'){
+//         //     throw new Error('only computedProp can use count()')
+//         // }
+
+//         let p = (col: Column) => makeColumn(null, new NamedProperty(`${prop.name}`, new Types.Number, null), 
+//             makeBuilder().count().from(makeRaw(expression)) )
+
+//         if(col instanceof Promise){
+//             return new Promise( (resolve, reject) => {
+//                 col.then(column => {
+//                     resolve(p(column))
+//                 })
+//             })
+//         }else{
+//             return p(col)
+//         }
+        
+        
+//     }
+
+//     return w
+// }
+
+    
+
 // const extractColumnName = () => {
 
 //     let columnsToBeTransformed: string[] = []

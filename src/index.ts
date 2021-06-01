@@ -291,7 +291,7 @@ export class NamedProperty {
         if(this.computedFunc){
             throw new Error('Computed Property cannot be compiled as normal field.')
         } 
-        return makeColumn(rootSelector.interface!, this)
+        return makeColumn(rootSelector.interface!, this, null)
     }
 
     compileAs$(rootSelector: SelectorImpl): CompiledFunction{
@@ -337,7 +337,7 @@ export class NamedProperty {
                 let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
 
                 let process = (subquery: Knex.QueryBuilder): Column => {
-                    return makeColumn(rootSelector.interface!, namedProperty, subquery)
+                    return makeColumn(null, namedProperty, subquery)
                 }
 
                 if(subquery instanceof Promise){
@@ -620,7 +620,7 @@ export class SelectorImpl{
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [star] for selection.`)
         }
         // return `${this.tableAlias}.$star`
-        return makeColumn(this.interface!, '*')
+        return makeColumn(this.interface!, '*', null)
     }
 
     get all(): Column[] {

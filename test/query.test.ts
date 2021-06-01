@@ -2,7 +2,6 @@ import {run, builder, raw, configure, Schema, Entity, Types, Relations, models} 
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
-jest.setTimeout(20000)
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -52,7 +51,14 @@ const initializeDatabase = async () => {
         schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
             return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+            // return shop.$.products().count()
         })
+        // schema.computedProp('hasProduct', new Types.Boolean(),  (shop, applyFilters) => {
+        //     return shop.$.products().exist()
+        // })
+        // schema.computedProp('hasOver2Products', new Types.Boolean(),  (shop, applyFilters) => {
+        //     return shop.$.productCount().is('>', 2)
+        // })
       }
     }
     
