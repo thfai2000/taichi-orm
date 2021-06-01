@@ -1,5 +1,5 @@
 require('sqlite3')
-const {configure, Entity, Relations, Types, builder, raw} = require('llorm')
+const {configure, Entity, Relations, Types, builder, raw} = require('bricky-orm')
 
 
 // declare some entities here:
