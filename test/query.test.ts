@@ -139,7 +139,7 @@ afterAll(() => {
     return clearDatabase();
 });
 
-describe.only('Using with Knex', () => {
+describe('Using with Knex', () => {
 
   test('Query with limit', async () => {
     let limit = 2
@@ -153,10 +153,10 @@ describe.only('Using with Knex', () => {
 
 })
 
-describe.skip('Computed Fields using Standard Relations', () => {
+describe('Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products())
+        return stmt.select(root.star, root.$.products())
     })
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
@@ -167,7 +167,7 @@ describe.skip('Computed Fields using Standard Relations', () => {
 
   test('Query computed fields - belongsTo', async () => {
     let records = await models.Product.find( (stmt, root) => {
-        return stmt.select('*', root.$.shop())
+        return stmt.select(root.star, root.$.shop())
     })
     expect(records).toHaveLength(productData.length)
     expect(records).toEqual(productData.map(product => expect.objectContaining({
@@ -180,8 +180,8 @@ describe.skip('Computed Fields using Standard Relations', () => {
 
   test('Query computed fields - hasThrough + multiple level', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products( (stmt, p) => {
-          return stmt.select('*', p.$.colors(), p.$.mainColor() )
+        return stmt.select(root.star, root.$.products( (stmt, p) => {
+          return stmt.select(p.star, p.$.colors(), p.$.mainColor() )
         }))
     })
     expect(records).toHaveLength(shopData.length)
@@ -210,11 +210,11 @@ describe.skip('Computed Fields using Standard Relations', () => {
 })
 
 
-describe.skip('custom Computed Fields', () => {
+describe('custom Computed Fields', () => {
 
   test('Query computed field', async () => {
     let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select('*', root.$.productCount()).where(root.pk, '=', 2)
+        return stmt.select(root.star, root.$.productCount()).where(root.pk, '=', 2)
     })
     expect(record.productCount).toBe(2)
   });

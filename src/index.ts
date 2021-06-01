@@ -716,8 +716,8 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         return this
     }
 
-    async toSQLString(): Promise<SQLString[]> {
-        return (await this.beforeAction()).map( ({sqlString}) => sqlString )
+    async toSQLString(): Promise<string[]> {
+        return (await this.beforeAction()).map( ({sqlString}) => sqlString.toString() )
     }
 }
 export class Database{
@@ -745,7 +745,7 @@ export class Database{
                 dualSelector.registerProp(prop)
 
                 return [{
-                    sqlString: Database.transpile(await dualSelector.$.data()),
+                    sqlString: builder().select(await dualSelector.$.data()),
                     uuid: null
                 }]
             },
@@ -761,213 +761,6 @@ export class Database{
                 return rows
             })
     }
-
-    static transpile(stmt: SQLString): SQLString {
-
-        // console.time('transpile')
-        let sql = stmt.toString()
-
-        if(sql.startsWith('(') && sql.endsWith(')')){
-            sql = sql.slice(1, sql.length - 1)
-        }
-
-        console.debug('==== before transpile ===')
-        console.debug(sql)
-        console.debug('=========================')
-
-        // let ast: any = getSqlParser().astify(sql)
-
-        // console.log('json before', JSON.stringify(ast) )
-
-        // ast = this._transpileAst(ast, true)
-
-        // console.log('json after', JSON.stringify(ast) )
-
-        // let a = getSqlParser().sqlify(ast)
-        // console.timeEnd('transpile')
-        return sql
-    }
-
-    // static _transpileAst(ast: SimpleObject, withAlias: boolean): SimpleObject{
-    //     if(!ast){
-    //         return ast
-    //     }
-    //     if(typeof ast === 'string'){
-    //         return ast
-    //     } else if( Array.isArray(ast)){
-    //         ast = ast.map(item => this._transpileAst(item, withAlias))
-    //         return ast
-    //     } else if( ast.expr && ast.expr.type === 'select'){
-    //         let expr = ast.expr
-    //         // handle where first, no dependences
-            
-    //         if (expr.where) {
-    //             expr.where = this._transpileAst(expr.where, false)
-    //         }
-
-    //         // must handle the 'from' before 'selectitem'... because of dependencies
-    //         if (expr.from) {
-    //             // console.log('bbbbbbbb', expr.from[0].expr.ast)
-    //             expr.from = this._transpileAst(expr.from, true)
-    //         }
-            
-    //         // let rand = makeid(5)
-    //         // console.debug('-> subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-            
-    //         expr.columns = expr.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
-
-    //         // console.debug('<-- subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-    //         // remove double nested sql
-            
-    //         if(expr.columns.length === 1){
-    //             let item = expr.columns[0]
-    //             if(item.expr.type === 'select'){
-    //                 if(!withAlias){
-    //                     item.as = null
-    //                 }
-    //                 return item
-    //             } else if(item.expr.type === 'column_ref'){
-
-    //                 if(!withAlias){
-    //                     item.as = null
-    //                 }
-    //                 return item
-    //             }
-
-    //         }
-
-    //         return ast
-            
-    //     } else if( !withAlias && ast.type === 'select' ) {
-
-    //         if (ast.where) {
-    //             ast.where = this._transpileAst(ast.where, false)
-    //         }
-
-    //         // must handle the 'from' before 'selectitem'... because of dependencies
-    //         if (ast.from) {
-    //             ast.from = this._transpileAst(ast.from, true)
-    //         }
-
-    //         ast.columns = ast.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
-
-    //         if(ast.columns.length === 1){
-    //             let item = ast.columns[0]
-    //             if(item.expr.type === 'select'){
-    //                 return item.expr
-    //             } else if(item.expr.type === 'column_ref'){
-    //                 return item.expr
-    //             }
-    //         }
-            
-    //         return ast
-            
-    //     } else if ( (ast as SimpleObject) instanceof Object){
-    //         let newReturn = Object.keys(ast).reduce((acc, key)=>{
-
-    //             if(['ast', 'columns', 'column', 'where', 'from', 'on', 'expr', 'left', 'right'].includes(key)){
-
-    //                 if(key === 'left' || key === 'right'){
-    //                     withAlias = false
-    //                 }
-    //                 acc[key] = this._transpileAst(ast[key], withAlias)
-    //             }
-    //             else {
-    //                 acc[key] = ast[key]
-    //             }
-
-    //             return acc
-    //         },{} as SimpleObject)
-    //         return newReturn
-    //     }
-
-    //     return ast
-    // }
-
-    // static _extractColumnAlias(col: Column | '*'): string | null {
-    //     let found = this._extractColumnName(col)
-    //     if(found){
-    //         return found[0]
-    //     }
-    //     return null
-    // }
-
-    // static _extractColumnName(col: Column | '*'): Array<string | null> {
-    //     if(col === '*'){
-    //         return ['*']
-    //     }
-    //     let v = col.as
-    //     if(v){
-    //         return [v]
-    //     } else if(!v && col.expr.type === 'column_ref'){
-    //         v = col.expr.column
-    //         return [v, col.expr.table || null]
-    //     }
-    //     return []
-    // }
-
-    // static _resolveStar(ast: Column | '*', from: any[] | null): any {
-
-    //     let [name, targetTable] = this._extractColumnName(ast)
-
-    //     if(from === null){
-    //         throw new Error('Not expected')
-    //     }
-
-    //     return from.flatMap( (obj: SimpleObject ) => {
-
-    //         let tableNameOrTableAlias = obj.as
-
-            
-    //         if(tableNameOrTableAlias){
-
-    //             //if there is no target table refered or the target table matched the name
-    //             if(!targetTable || targetTable === tableNameOrTableAlias){
-
-    //                 if(obj.table){
-    //                     let schema = breakdownMetaTableAlias(tableNameOrTableAlias)
-    //                     if(!schema)
-    //                         throw new Error(`Schema is not found.`)
-                            
-    //                     let all = schema.namedProperties.filter(p => !p.computedFunc).map(p => {
-    //                         let alias = metaFieldAlias(p)
-    //                         return {
-    //                             expr: {
-    //                                 type: "column_ref",
-    //                                 table: tableNameOrTableAlias,
-    //                                 column: p.fieldName
-    //                             },
-    //                             as: alias
-    //                         }
-    //                     })
-    //                     return all
-    //                 }else {
-    //                     let ast: AST = obj.expr.ast
-    //                     if(ast.type === 'select'){
-    //                         let selectAst = ast
-    //                         if( selectAst.columns === '*'){
-    //                             throw new Error('Unexpected flow is reached.') 
-    //                         } else {
-    //                             return selectAst.columns.map( (c: SimpleObject) => ({
-    //                                 expr: {
-    //                                     type: "column_ref",
-    //                                     table: tableNameOrTableAlias,
-    //                                     column: c.as ?? c.column
-    //                                 },
-    //                                 as: c.as
-    //                             }))
-    //                         }
-    //                     }
-    //                     else throw new Error('Unexpected flow is reached.')
-    //                 }
-
-    //             }
-
-    //             return []
-    //         } else throw new Error('Unexpected flow is reached.')
-    //     })
-
-    // }
 
     static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject ): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
@@ -1093,7 +886,7 @@ export class Database{
         }
 
         return {
-            sqlString: Database.transpile(stmt),
+            sqlString: stmt,
             uuid: newUuid
         }
     }
@@ -1148,7 +941,7 @@ export class Database{
             new Types.ArrayOf(entityClass),
             () => {
                 let currentEntitySelector = entityClass.selector()
-                let stmt: Knex.QueryBuilder = builder().from(currentEntitySelector.source)
+                let stmt: Knex.QueryBuilder = builder(currentEntitySelector)
                 let result = stmt
                 if (applyFilter) {
                     return applyFilter(stmt, currentEntitySelector)

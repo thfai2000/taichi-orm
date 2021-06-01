@@ -7,7 +7,7 @@ export const Relations = {
     has: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, applyFilter: ApplyNextQueryFunction) => {
             let relatedSelector = entityClass.newSelector()
-            let stmt = makeBuilder().select().from(relatedSelector.source).whereRaw("?? = ??", [rootSelector._.id, relatedSelector._[propName] ])
+            let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [rootSelector._.id, relatedSelector._[propName] ])
 
             if(!customFilter){
                 return applyFilter(stmt, relatedSelector)
@@ -26,7 +26,7 @@ export const Relations = {
             //     .joinRaw(`INNER JOIN ${throughSelector.sourceRaw} ON ${throughSelector._[relationPropName]} = ${relatedSelector._.id}`)
             //     .whereRaw("?? = ??", [rootSelector._.id, throughSelector._[ownerPropName]])
 
-            let stmt = makeBuilder().select(relatedSelector.all).from(
+            let stmt = makeBuilder().select(relatedSelector.star).from(
                     relatedSelector.source.innerJoin(
                         throughSelector.source, 
                         throughSelector._[relationPropName],
@@ -47,7 +47,7 @@ export const Relations = {
     belongsTo: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, applyFilter: ApplyNextQueryFunction) => {
             let relatedSelector = entityClass.newSelector()
-            let stmt = makeBuilder().from(relatedSelector.source).whereRaw("?? = ??", [relatedSelector._.id, rootSelector._[propName] ])
+            let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [relatedSelector._.id, rootSelector._[propName] ])
 
             if(!customFilter){
                 return applyFilter(stmt, relatedSelector)

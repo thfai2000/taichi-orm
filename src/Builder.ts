@@ -56,6 +56,8 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                 throw new Error('Invalid Select Item.')
             } else if(item === '*'){
                 throw new Error("Currently it doesn't support using '*'. Please use Selector.star")
+            } else if(Array.isArray(item) && item.every( subitem => subitem.__type === 'Column')){
+                throw new Error("Detected that array of 'Column' is placed into select expression. Please use ES6 spread syntax to place the columns.")
             } else if(item.__type === 'Column' ){
                 let casted = item as Column
                 let selector = casted.__selector
@@ -69,7 +71,11 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                         let definition = prop.definition
                         let finalExpr: string
                         if(definition.readTransform){
-                            finalExpr = definition.readTransform(expression, extractColumns(expression)).toString()
+                            let extractedColumnNames = extractColumns(expression)
+                            if(extractedColumnNames.length === 0){
+                                throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
+                            }
+                            finalExpr = definition.readTransform(expression, extractedColumnNames).toString()
                         } else {
                             finalExpr = expression.toSQL().sql
                         }
@@ -114,7 +120,7 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
 
     //after the select is override, add default 'all'
     if(mainSelector){
-        sealBuilder = sealBuilder.select(mainSelector.all) as QueryBuilder
+        sealBuilder = sealBuilder.select(mainSelector.star).from(mainSelector.source) as QueryBuilder
     }
 
     return sealBuilder

@@ -125,22 +125,12 @@ let productColorData = [
     // let execContext = models.Shop.find( (stmt, s) => stmt.where(s._.id, '=',1))
 
     // console.log(records)
-    try{
-      let execContext = models.Shop.find( (stmt, root) => {
-          return stmt.select('*', root.$.products( (stmt, p) => {
-            return stmt.select('*', p.$.colors())
-          }))
-      })
-      execContext.then( () => {
-
-      }, (error)=>{
-        console.log('xxxxx', error)
-      })
-      // console.log('results', records[0].products[0])
-    } catch(error){
-      console.error('hello world', error)
-    }
-
+    
+    let records = await models.Shop.find( (stmt, root) => {
+        return stmt.select(root.star, root.$.products( (stmt, p) => {
+          return stmt.select(p.star, p.$.colors())
+        }))
+    })
     // console.log('=========================', await execContext.toSQLString())
     
 })()
