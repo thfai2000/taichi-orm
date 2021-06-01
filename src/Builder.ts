@@ -106,6 +106,13 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
             }]
         })
 
+        //check exists in columns before
+        let pool = this.__selectItems.map(item => item.raw.toString())
+        let duplicated = converted.filter(item => pool.includes( item.raw.toString() ))
+        if( duplicated.length > 0 ){
+            throw new Error(`Duplicated Columns '${duplicated.map(d => d.actualAlias).join(',')}' are detected.`)
+        }
+
         this.__selectItems = this.__selectItems.concat(converted)
 
         let raws = converted.map(c => c.raw)

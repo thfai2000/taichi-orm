@@ -127,8 +127,8 @@ let productColorData = [
     // console.log(records)
     
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select(root.star, root.$.products( (stmt, p) => {
-          return stmt.select(p.star, p.$.colors())
+        return stmt.select(root.$.products( (stmt, p) => {
+          return stmt.select(p.$.colors())
         }))
     })
     // console.log('=========================', await execContext.toSQLString())
