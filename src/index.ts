@@ -1,14 +1,13 @@
-// import { QueryBuilder } from './Builder'
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { PropertyType, Types } from './PropertyType'
+import Types, { PropertyType } from './PropertyType'
 export { PropertyType, Types }
+import {makeBuilder as builder, makeRaw as raw, makeColumn, Source, makeSource, Column} from './Builder'
+export {builder, raw}
 import { Relations } from './Relations'
 export { Relations }
-// import { v4 as uuidv4 } from 'uuid'
-// const sqlParser = require('js-sql-parser')
-import { AST, Column, Parser } from 'node-sql-parser'
-const sqlParser = new Parser();
+import { v4 as uuidv4 } from 'uuid'
+// import { AST, Column, Parser } from 'node-sql-parser'
 
 export type Config = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -25,14 +24,17 @@ export type Config = {
     propNameTofieldName?: (params:string) => string,
     // fieldNameToPropName?: (params:string) => string,
     suppressErrorOnPropertyNotFound?: string,
-    // guidColumnName?: string
     useNullAsDefault?: boolean
     primaryKeyName: string
+    enableUuid: boolean
+    uuidColumnName: string
 }
 
 // the new orm config
 export const config: Config = {
     primaryKeyName: 'id',
+    enableUuid: false,
+    uuidColumnName: 'uuid',
     createModels: false,
     models: {},
     knexConfig: {
@@ -40,24 +42,47 @@ export const config: Config = {
     }
 }
 
+const META_FIELD_DELIMITER = '___'
+
+export const client = (): string => config.knexConfig.client.toString()
+
+export const quote = (name: string) => {
+    let c = client()
+    if(c.startsWith('sqlite') || c.startsWith('mysql') ){
+        //TODO: escape `
+        return `\`${name}\``
+    } else if (c.startsWith('pg')){
+        //TODO: escape "
+        return `"${name}"`
+    }
+    throw new Error('Unsupport client')
+}
+
 let _globalKnexInstance: Knex | null = null
+
+// let _sqlParser: Parser | null = null
+
+// const getSqlParser = (): Parser => {
+//     if(_sqlParser){
+//         return _sqlParser
+//     }
+//     let pkg = 'node-sql-parser'
+//     if(client().startsWith('pg')){
+//         pkg = 'node-sql-parser/build/postgresql'
+//     } else if(client().startsWith('mysql')){
+//         pkg = 'node-sql-parser/build/mysql'
+//     }
+
+//     const {Parser} = require(pkg)
+//     _sqlParser = new Parser()
+//     return _sqlParser!
+// }
 
 // a global knex instance
 export const getKnexInstance = (): Knex => {
     if(_globalKnexInstance){
         return _globalKnexInstance
     }
-
-    // multipleStatements must be true
-    // let newKnexConfig: Partial<Config> = {
-    //     client: config.client,
-    //     connection: config.connection,
-    //     useNullAsDefault: true,
-    // }
-
-    // if(config.pool){
-    //     newKnexConfig.pool = config.pool
-    // }
 
     let newKnexConfig = Object.assign({
         useNullAsDefault: true
@@ -71,6 +96,7 @@ export const getKnexInstance = (): Knex => {
         throw new Error('Configuration client only accept string')
     }
 
+    // multipleStatements must be true
     newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
     
     
@@ -79,51 +105,67 @@ export const getKnexInstance = (): Knex => {
     return _globalKnexInstance
 }
 
-const sealRaw = (first:any, ...args: any[]) => {
-    let sealRaw = getKnexInstance().raw(first, ...args)
-    // @ts-ignore
-    sealRaw.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-    return sealRaw
-}
 
-export const raw = sealRaw
-
-
-const startTransaction = async(func: (trx: Knex.Transaction) => any, existingTrx?: Knex.Transaction ): Promise<any> => {
+export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction ): Promise<T> => {
     let knex = getKnexInstance()
     return await new Promise((resolve, reject)=> {
-        const useTrx = (trx: Knex.Transaction) => {
+        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
             try{
                 const AsyncFunction = (async () => {}).constructor;
                 if(func instanceof AsyncFunction){
-                    func(trx).then(
-                        (result: any) => {
-                            trx.commit()
-                            resolve(result)
+                    let called = func(trx) as Promise<T>
+                    called.then(
+                        (result: T) => {
+                            if(!isExistingTrx){
+                                trx.commit().then( 
+                                    () => resolve(result),
+                                    (error) => reject(error)
+                                )
+                            } else {
+                                resolve(result)
+                            }
                         },
                         (error: any) => {
-                            trx.rollback()
-                            reject(error)
+                            if(!isExistingTrx){
+                                trx.rollback().then(
+                                    () => reject(error),
+                                    () => reject(error)
+                                )
+                            } else {
+                                reject(error)
+                            }
                         }
                     )
                 }else{
                     let result = func(trx)
-                    trx.commit()
-                    resolve(result)
+                    if(!isExistingTrx){
+                        trx.commit().then( 
+                            () => resolve(result),
+                            (error) => reject(error)
+                        )
+                    } else {
+                        resolve(result)
+                    }
                 }
             }catch(error){
-                trx.rollback()
-                reject(error)
+                if(!isExistingTrx){
+                    trx.rollback().then(
+                        () => reject(error),
+                        () => reject(error)
+                    )
+                } else {
+                    reject(error)
+                }
             }
         }
 
         if(existingTrx){
             // use existing
-            useTrx(existingTrx)
+            useTrx(existingTrx, true)
         } else {
             // use new 
             knex.transaction( (trx) => {
-                useTrx(trx)
+                useTrx(trx, false)
             })
         }
     })
@@ -143,22 +185,33 @@ export class Schema {
     entityName: string
     namedProperties: NamedProperty[]
     primaryKey: NamedProperty
-    // guid: NamedProperty
+    uuid: NamedProperty | null
 
     constructor(entityName: string){
         this.entityName = entityName
         this.tableName = config.entityNameToTableName?config.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
             config.primaryKeyName,
-            Types.PrimaryKey(),
+            new Types.PrimaryKey(),
             null
         )
-        this.namedProperties = [this.primaryKey]
+        if(config.enableUuid){
+            this.uuid = new NamedProperty(
+                config.uuidColumnName,
+                new Types.String(false, 255, {unique: true}),
+                null
+            )
+            this.namedProperties = [this.primaryKey, this.uuid]
+        } else {
+            this.uuid = null
+            this.namedProperties = [this.primaryKey]
+        }
+        
     }
 
     createTableStmt(){
         if(this.tableName.length > 0){
-            return `CREATE TABLE IF NOT EXISTS \`${this.tableName}\` (\n${
+            return `CREATE TABLE IF NOT EXISTS ${quote(this.tableName)} (\n${
                 this.namedProperties.filter(f => !f.computedFunc).map(f => {
                     return `${f.definition.create(f)}`  
                 }).flat().join(',\n')}\n)`;
@@ -190,8 +243,7 @@ export function makeid(length: number) {
     var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
     var charactersLength = characters.length;
     for ( var i = 0; i < length; i++ ) {
-      result.push(characters.charAt(Math.floor(Math.random() * 
- charactersLength)));
+      result.push(characters.charAt(Math.floor(Math.random() * charactersLength)));
    }
    return result.join('');
 }
@@ -211,23 +263,27 @@ export class NamedProperty {
     constructor(
         public name: string,
         public definition: PropertyType,
-        public computedFunc: ComputedFunction | null,
+        public computedFunc?: ComputedFunction | null,
         public options?: NamedPropertyOptions){
             this.name = name
             this.definition = definition
             this.computedFunc = computedFunc
             this.options = options
 
-            if( /[\.`' ]/.test(name) || name.includes('___') || name.startsWith('_')){
-                throw new Error('The name of the NamedProperty is invalid')
+            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
+                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
             }
         }
+
+    static convertFieldName(propName: string){
+        return config.propNameTofieldName ? config.propNameTofieldName(propName) : propName
+    }
 
     get fieldName(){
         if(this.options?.skipFieldNameConvertion){
             return this.name
         } else {
-            return config.propNameTofieldName ? config.propNameTofieldName(this.name) : this.name
+            return NamedProperty.convertFieldName(this.name)
         }
     }
 
@@ -235,34 +291,29 @@ export class NamedProperty {
         if(this.computedFunc){
             throw new Error('Computed Property cannot be compiled as normal field.')
         } 
-        let namedProperty = this
-        let tableAlias = rootSelector.tableAlias
-        let fieldName = this.fieldName
-        let fieldAlias = metaFieldAlias(namedProperty)
-
-        return sealRaw(`(SELECT \`${tableAlias}\`.\`${fieldName}\` AS \`${fieldAlias}\`)`)
+        return makeColumn(rootSelector.interface!, this)
     }
 
-    compileAs$(rootSelector: SelectorImpl, withTransform: boolean): CompiledFunction{
+    compileAs$(rootSelector: SelectorImpl): CompiledFunction{
         if(!this.computedFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
         }
         let computedFunc = this.computedFunc
         let namedProperty = this
-        let fieldAlias = metaFieldAlias(namedProperty)
+        // let fieldAlias = metaFieldAlias(namedProperty)
 
-        const makeFn = (withTransform: boolean) => {
+        const makeFn = () => {
             
             let callable: CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => {
                 const applyFilterFunc: ApplyNextQueryFunction = (stmt, selector) => {
                     let process = (stmt: Knex.QueryBuilder) => {
                         // console.log('stmt', stmt.toString())
 
-                        // If the function object placed into the QueryBuilder, 
-                        // QueryBuilder will call it and pass itself as the parameter
+                        // If the function object placed into the Knex.QueryBuilder, 
+                        // Knex.QueryBuilder will call it and pass itself as the parameter
                         // That's why we can say likely our compiled function didn't be called.
                         if(queryFunction && !(queryFunction instanceof Function)){
-                            console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into QueryBuilder.')
+                            console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
                             throw new Error('The QueryFunction is not instanceof Function.')
                         }
                         const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
@@ -283,112 +334,16 @@ export class NamedProperty {
                         return process(stmt)
                     }     
                 }
-                let subquery: SQLString | Promise<SQLString> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
+                let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
 
-
-                let process = (subquery: SQLString): Knex.Raw => {
-                    let subqueryString = subquery.toString()
-                    // subqueryString = 'select * from `1_98aecefe_f2e9_4513_bb88_8328a6d7e38e_product` as `Product___X1Gcj` where (SELECT `Shop___pa1aS`.`id` AS `id___vmrmv`) = (SELECT `Product___X1Gcj`.`shop_id` AS `shopId___0Feve`)'
-                    // console.log('sssss', subqueryString)
-                    
-                    // // determine the column list
-                    let ast!: AST
-                    try{
-                        ast = sqlParser.astify(subqueryString) as AST
-                    }catch(err){
-                        console.log('')
-                        console.log('\x1b[33m%s\x1b[0m', 'The constructed SQL is in invalid format that cannot be parsed.')
-                        console.log('')
-                        console.log('\x1b[33m%s\x1b[0m', 'Possible reasons:')
-                        console.log('')
-                        console.log('\x1b[33m%s\x1b[0m', '1. Maybe you called any computed Property that is an Async Function but you haven\'t \'await\' it before placing it into the QueryBuilder.')
-                        console.log('')
-                        console.log('\x1b[33m%s\x1b[0m', '2. Maybe you placed any invalid Raw SQL \'Knex.Raw\' in the QueryBuilder. You can use \'QueryBuilder.toString()\' to inspect the constructed SQL.')
-                        console.log('')
-                        console.log(subqueryString)
-                        throw err
-                    }
-                    // let ast = mainNode.value
-
-                    let columnsToBeTransformed: string[] = []
-                    if( ast.type === 'select'){
-                        let selectAst = ast
-                        let columns = ast.columns
-                        
-                        // then handle select items... expand columns
-
-                        const handleColumns = (from: any[] | null, columns: any[] | Column[] | '*'): any[] | Column[] => {
-                            if(columns === '*'){
-                                columns = [{
-                                    expr: {
-                                        type: 'column_ref',
-                                        table: null,
-                                        column: '*'
-                                    },
-                                    as: null
-                                }]
-                            }
-
-                            return columns.flatMap( (col: Column) => {
-                                if(col.expr.type === 'column_ref' && ( col.expr.column.includes('*') || col.expr.column.includes('$star') ) ){
-                                    // if it is *... expand the columns..
-                                    let moreColumns = Database._resolveStar(col, from)
-                                    return moreColumns
-                                    // @ts-ignore
-                                } else if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
-                                    // @ts-ignore
-                                    col.as = col.expr.columns[0].as
-                                    if(!col.as){
-                                        throw new Error('Unexpected Flow.')
-                                    }
-                                    return col
-                                } else {
-
-                                    if(!col.as){
-                                        col.as = makeid(5)
-                                    }
-                                    return col
-                                }
-                            })
-                            
-                        }
-
-                        let processedColumns = handleColumns(selectAst.from, columns) as Column[]
-
-                        //eliminate duplicated columns
-
-                        processedColumns = processedColumns.reduce( (acc: any[], item: SimpleObject) => {
-                            if( !acc.find( (x:any) => item.as === x.as ) ){
-                                acc.push(item)
-                            }
-                            return acc
-                        },[] as any[])
-
-                        columnsToBeTransformed = processedColumns.flatMap( (col: any) => {
-                            return Database._extractColumnAlias(col) 
-                        }) as string[]
-                    
-                        ast.columns = processedColumns
-                        subqueryString = sqlParser.sqlify(ast)
-                    } else {
-                        throw new Error('Computed property must be started with Select')
-                    }
-
-                    let definition = namedProperty.definition
-
-                    if(withTransform && definition.readTransform){
-                        let transformedSql = definition.readTransform(subqueryString, columnsToBeTransformed)
-                        return sealRaw(`(SELECT (${transformedSql.toString()}) AS ${fieldAlias})`)
-                    } else {
-
-                        return sealRaw(`(SELECT (${subqueryString}) AS ${fieldAlias})`)
-                    }
+                let process = (subquery: Knex.QueryBuilder): Column => {
+                    return makeColumn(rootSelector.interface!, namedProperty, subquery)
                 }
 
                 if(subquery instanceof Promise){
-                    return new Promise<Knex.Raw>( (resolve, reject)=> {
+                    return new Promise<Column>( (resolve, reject)=> {
                         if(subquery instanceof Promise){
-                            subquery.then((query: SQLString)=>{
+                            subquery.then((query: Knex.QueryBuilder)=>{
                                 resolve(process(query))
                             },reject)
                         } else {
@@ -406,10 +361,8 @@ export class NamedProperty {
             return callable
         }
 
-        return makeFn(withTransform)
+        return makeFn()
     }
-    
-
 }
 
 export const configure = async function(newConfig: Partial<Config>){
@@ -487,14 +440,6 @@ export const configure = async function(newConfig: Partial<Config>){
     return sqlStmts
 }
 
-export const sealSelect = function(...args: Array<any>) : Knex.QueryBuilder {
-    let sealSelect = getKnexInstance().select(...args)
-    // @ts-ignore
-    sealSelect.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-    return sealSelect
-}
-export const select = sealSelect
-
 export type SimpleObject = { [key:string]: any}
 
 const map1 = new Map<NamedProperty, string>()
@@ -520,13 +465,14 @@ const findGlobalNamedProperty = function(propAlias: string): NamedProperty{
 
 
 const metaTableAlias = function(schema: Schema): string{
-    return schema.entityName + '___' + makeid(5)
+    return schema.entityName + META_FIELD_DELIMITER + makeid(5)
 }
 
 const breakdownMetaTableAlias = function(metaAlias: string) {
-    metaAlias = metaAlias.replace(/[\`\']/g, '')
-    if(/^[^\_]*\_\_\_[^\_]*$/.test(metaAlias)){
-        let [entityName, randomNumber] = metaAlias.split('___')
+    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
+    
+    if(metaAlias.includes(META_FIELD_DELIMITER)){
+        let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
         let found = schemas[entityName]
         return found
     } else {
@@ -534,15 +480,15 @@ const breakdownMetaTableAlias = function(metaAlias: string) {
     }
 }
 
-const metaFieldAlias = function(p: NamedProperty): string{
+export const metaFieldAlias = function(p: NamedProperty): string{
     let propAlias = registerGlobalNamedProperty(p)
-    return `${p.name}___${propAlias}`
+    return `${p.name}${META_FIELD_DELIMITER}${propAlias}`
 }
 
-const breakdownMetaFieldAlias = function(metaAlias: string){
-    metaAlias = metaAlias.replace(/[\`\']/g, '')
-    if( /^[^\_]*\_\_\_[^\_]*$/.test(metaAlias) ){
-        let [propName, propAlias] = metaAlias.split('___')
+export const breakdownMetaFieldAlias = function(metaAlias: string){
+    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
+    if(metaAlias.includes(META_FIELD_DELIMITER)){
+        let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
         let namedProperty = findGlobalNamedProperty(propAlias)
         return {propName, namedProperty}
     } else {
@@ -556,17 +502,19 @@ export interface Selector {
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty>
-    _: {[key: string] : Knex.Raw}
+    _: {[key: string] : Column}
     $: {[key: string] : CompiledFunction}
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
-    all: string
-    source: string
-    sourceRaw: string
-    id: Knex.Raw
+    all: Column[]
+    star: Column
+    source: Source
+    // sourceRaw: string
+    pk: Column
+    uuid: Column | null
     // [key: string]: any
     tableAlias: string
-    register(namedProperty: NamedProperty): void
+    registerProp(namedProperty: NamedProperty): CompiledFunction
     getProperties(): NamedProperty[]
 }
 
@@ -576,7 +524,7 @@ export class SelectorImpl{
     entityClass: typeof Entity
     schema: Schema
     derivedProps: Array<NamedProperty> = []
-    _: {[key: string] : Knex.Raw}
+    _: {[key: string] : Column}
     $: {[key: string] : CompiledFunction}
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
@@ -596,10 +544,10 @@ export class SelectorImpl{
             get: (oTarget, sKey: string) => {
                 return selector.getNormalCompiled(sKey)
             }
-        }) as {[key: string] : Knex.Raw}
+        }) as {[key: string] : Column}
 
         this.$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledFunction | Knex.Raw => {
+            get: (oTarget, sKey: string): CompiledFunction | Column => {
                 return selector.getComputedCompiled(sKey)
             }
         }) 
@@ -610,14 +558,14 @@ export class SelectorImpl{
         if(!selector){
             throw new Error('Unexpected')
         }
-        let withTransform = true
-        if (sKey.startsWith('_')) {
-            withTransform = false
-            sKey = sKey.slice(1)
-        }
+        // let withTransform = true
+        // if (sKey.startsWith('_')) {
+        //     withTransform = false
+        //     sKey = sKey.slice(1)
+        // }
         let prop = selector.getProperties().find((prop) => prop.name === sKey)
         selector.checkDollar(prop, sKey)
-        return prop!.compileAs$(selector, withTransform)
+        return prop!.compileAs$(selector)
     }
 
     getNormalCompiled(sKey: string) {
@@ -652,33 +600,48 @@ export class SelectorImpl{
     }
 
     // "table AS abc"
-    get source(): string{
+    get source(): Source{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
         }
-        return `${this.schema.tableName} AS ${this.tableAlias}`
+        return makeSource(null, this.interface!)
     }
 
-    get sourceRaw(): string{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
-        }
-        return `\`${this.schema.tableName}\` AS \`${this.tableAlias}\``
-    }
+    // get sourceRaw(): string{
+    //     if(this.schema.tableName.length === 0){
+    //         throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
+    //     }
+    //     return `${quote(this.schema.tableName)} AS ${quote(this.tableAlias)}`
+    // }
 
     // "abc.*"
-    get all(): string{
+    get star(): Column{
         if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [star] for selection.`)
         }
-        return `${this.tableAlias}.$star`
+        // return `${this.tableAlias}.$star`
+        return makeColumn(this.interface!, '*')
     }
 
-    get id(): Knex.Raw{
+    get all(): Column[] {
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
         }
-        return this._.id
+        return this.getProperties().filter(p => !p.computedFunc).map(p => this.getNormalCompiled(p.name))
+    }
+
+    get pk(): Column{
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+        }
+        return this._[this.schema.primaryKey.name]
+    }
+
+    get uuid(): Column | null {
+        if(this.schema.tableName.length === 0){
+            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
+        }
+        return this._[this.schema.uuid?.name ?? '']
     }
 
     getProperties(): NamedProperty[]{
@@ -686,46 +649,59 @@ export class SelectorImpl{
         return [...this.derivedProps, ...this.schema.namedProperties]
     }
 
-    register(namedProperty: NamedProperty){
+    registerProp(namedProperty: NamedProperty): CompiledFunction{
         this.derivedProps.push(namedProperty)
+        if(!namedProperty.computedFunc){
+            throw new Error('Only the Computed Property can be registered after the schema is created.')
+        } else {
+            return this.getComputedCompiled(namedProperty.fieldName)
+        }
     }
 }
 
-export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Knex.Raw | Promise<Knex.Raw>
+export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Column | Promise<Column>
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-type ExecutionContextAction<I> =  (stmt: SQLString, trx?: Knex.Transaction) => Promise<I>
-type PrepareSQLStatementAction = () => Promise<SQLString>
+type ExecutionContextAction<I> =  (beforeExecutionOutput: BeforeExecutionOutput, trx?: Knex.Transaction) => Promise<I>
+type BeforeExecutionAction = () => Promise<BeforeExecutionOutput>
+type BeforeExecutionOutput = Array<{
+    sqlString: SQLString,
+    uuid: string | null
+}>
 
 export class ExecutionContext<I> implements PromiseLike<I>{
-    prepareStmt: PrepareSQLStatementAction
+    beforeAction: BeforeExecutionAction
     trx?: Knex.Transaction
     action: ExecutionContextAction<I>
 
-    constructor(prepareStmt: PrepareSQLStatementAction, action: ExecutionContextAction<I>){
-        this.prepareStmt = prepareStmt
+    constructor(beforeAction: BeforeExecutionAction, action: ExecutionContextAction<I>){
+        this.beforeAction = beforeAction
         this.action = action
     }
+
     async then<TResult1, TResult2 = never>(
         onfulfilled: ((value: I) => TResult1 | PromiseLike<TResult1>) | null, 
         onrejected: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null)
         : Promise<TResult1 | TResult2> {
 
         try{
+            let result = await this.action(await this.beforeAction(), this.trx)
             if(onfulfilled){
-                let result = await this.action(await this.prepareStmt(), this.trx)
                 return onfulfilled(result)
+            } else {
+                return this.then(onfulfilled, onrejected)
             }
         }catch(error){
             if(onrejected){
                 return onrejected(error)
+            } else{
+                throw error
             }
         }
-
-        return this.then(onfulfilled, onrejected)
+        // return this.then(onfulfilled, onrejected)
     }
 
     usingConnection(trx: Knex.Transaction): ExecutionContext<I>{
@@ -733,8 +709,15 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         return this
     }
 
-    async toSQLString(): Promise<SQLString> {
-        return this.prepareStmt()
+    usingConnectionIfAvailable(trx: Knex.Transaction | null | undefined): ExecutionContext<I>{
+        if(trx){
+            this.trx = trx
+        }
+        return this
+    }
+
+    async toSQLString(): Promise<string[]> {
+        return (await this.beforeAction()).map( ({sqlString}) => sqlString.toString() )
     }
 }
 export class Database{
@@ -754,275 +737,158 @@ export class Database{
                 let dualSelector = Dual.newSelector()
                 let prop = new NamedProperty(
                     'data',
-                    Types.Array(Dual),
+                    new Types.ArrayOf(Dual),
                     (dualSelector): Knex.QueryBuilder => {
                         return stmt
                     }
                 )
-                dualSelector.register(prop)
+                dualSelector.registerProp(prop)
 
-                return Database.transpile(await dualSelector.$.data())
+                return [{
+                    sqlString: builder().select(await dualSelector.$.data()),
+                    uuid: null
+                }]
             },
-            async(stmt: SQLString, trx?: Knex.Transaction) => {
+            async(input: BeforeExecutionOutput, trx?: Knex.Transaction) => {
                 // console.debug("======== run ========")
                 // console.debug(stmt.toString())
                 // console.debug("=====================")
-                let resultData = await Database.executeStatement(stmt, trx)
-                let tmp = resultData[0]
-                let dualInstance = Database.parseRaw(Dual, tmp)
-                let str = "data" as keyof Dual
-                let rows = dualInstance[str]
+                if(input.length > 1){
+                    throw new Error('Unexpected Flow.')
+                }
+
+                let rows = await Database._find(Dual, input[0].sqlString, trx)
                 return rows
             })
     }
 
-    static transpile(stmt: SQLString): SQLString {
-
-        let sql = stmt.toString()
-
-        if(sql.startsWith('(') && sql.endsWith(')')){
-            sql = sql.slice(1, sql.length - 1)
-        }
-
-        // console.debug('==== before transpile ===')
-        // console.debug(sql)
-        // console.debug('=========================')
-
-        let ast: any = sqlParser.astify(sql)
-
-        // console.log('aaaaa', JSON.stringify(ast) )
-
-        ast = this._transpileAst(ast, true)
-
-        // console.log('zzzzzzz', JSON.stringify(ast) )
-
-        let a = sqlParser.sqlify(ast)
-        return a
-    }
-
-    static _transpileAst(ast: SimpleObject, withAlias: boolean): SimpleObject{
-        if(!ast){
-            return ast
-        }
-        if(typeof ast === 'string'){
-            return ast
-        } else if( Array.isArray(ast)){
-            ast = ast.map(item => this._transpileAst(item, withAlias))
-            return ast
-        } else if( ast.expr && ast.expr.type === 'select'){
-            let expr = ast.expr
-            // handle where first, no dependences
-            
-            if (expr.where) {
-                expr.where = this._transpileAst(expr.where, false)
-            }
-
-            // must handle the 'from' before 'selectitem'... because of dependencies
-            if (expr.from) {
-                // console.log('bbbbbbbb', expr.from[0].expr.ast)
-                expr.from = this._transpileAst(expr.from, true)
-            }
-            
-            // let rand = makeid(5)
-            // console.debug('-> subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-            
-            expr.columns = expr.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
-
-            // console.debug('<-- subquery', rand, ast.alias, astValue.selectItems.value.length, astValue.from)
-            // remove double nested sql
-            
-            if(expr.columns.length === 1){
-                let item = expr.columns[0]
-                if(item.expr.type === 'select'){
-                    if(!withAlias){
-                        item.as = null
-                    }
-                    return item
-                } else if(item.expr.type === 'column_ref'){
-
-                    if(!withAlias){
-                        item.as = null
-                    }
-                    return item
-                }
-
-            }
-
-            return ast
-            
-        } else if( !withAlias && ast.type === 'select' ) {
-
-            if (ast.where) {
-                ast.where = this._transpileAst(ast.where, false)
-            }
-
-            // must handle the 'from' before 'selectitem'... because of dependencies
-            if (ast.from) {
-                ast.from = this._transpileAst(ast.from, true)
-            }
-
-            ast.columns = ast.columns.map( (item: SimpleObject) => this._transpileAst(item, true) )
-
-            if(ast.columns.length === 1){
-                let item = ast.columns[0]
-                if(item.expr.type === 'select'){
-                    return item.expr
-                } else if(item.expr.type === 'column_ref'){
-                    return item.expr
-                }
-            }
-            
-            return ast
-            
-        } else if ( (ast as SimpleObject) instanceof Object){
-            let newReturn = Object.keys(ast).reduce((acc, key)=>{
-
-                if(['ast', 'columns', 'column', 'where', 'from', 'on', 'expr', 'left', 'right'].includes(key)){
-
-                    if(key === 'left' || key === 'right'){
-                        withAlias = false
-                    }
-                    acc[key] = this._transpileAst(ast[key], withAlias)
-                }
-                else {
-                    acc[key] = ast[key]
-                }
-
-                return acc
-            },{} as SimpleObject)
-            return newReturn
-        }
-
-        return ast
-    }
-
-    static _extractColumnAlias(col: Column | '*'): string | null {
-        let found = this._extractColumnName(col)
-        if(found){
-            return found[0]
-        }
-        return null
-    }
-
-    static _extractColumnName(col: Column | '*'): Array<string | null> {
-        if(col === '*'){
-            return ['*']
-        }
-        let v = col.as
-        if(v){
-            return [v]
-        } else if(!v && col.expr.type === 'column_ref'){
-            v = col.expr.column
-            return [v, col.expr.table || null]
-        }
-        return []
-    }
-
-    static _resolveStar(ast: Column | '*', from: any[] | null): any {
-
-        let [name, targetTable] = this._extractColumnName(ast)
-
-        if(from === null){
-            throw new Error('Not expected')
-        }
-
-        return from.flatMap( (obj: SimpleObject ) => {
-
-            let tableNameOrTableAlias = obj.as
-
-            
-            if(tableNameOrTableAlias){
-
-                //if there is no target table refered or the target table matched the name
-                if(!targetTable || targetTable === tableNameOrTableAlias){
-
-                    if(obj.table){
-                        let schema = breakdownMetaTableAlias(tableNameOrTableAlias)
-                        if(!schema)
-                            throw new Error(`Schema is not found.`)
-                            
-                        let all = schema.namedProperties.filter(p => !p.computedFunc).map(p => {
-                            let alias = metaFieldAlias(p)
-                            return {
-                                expr: {
-                                    type: "column_ref",
-                                    table: tableNameOrTableAlias,
-                                    column: p.fieldName
-                                },
-                                as: alias
-                            }
-                        })
-                        return all
-                    }else {
-                        let ast: AST = obj.expr.ast
-                        if(ast.type === 'select'){
-                            let selectAst = ast
-                            if( selectAst.columns === '*'){
-                                throw new Error('Unexpected flow is reached.') 
-                            } else {
-                                return selectAst.columns.map( (c: SimpleObject) => ({
-                                    expr: {
-                                        type: "column_ref",
-                                        table: tableNameOrTableAlias,
-                                        column: c.as ?? c.column
-                                    },
-                                    as: c.as
-                                }))
-                            }
-                        }
-                        else throw new Error('Unexpected flow is reached.')
-                    }
-
-                }
-
-                return []
-            } else throw new Error('Unexpected flow is reached.')
-        })
-
-    }
-
-    static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject): ExecutionContext< InstanceType<T> >{
+    static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject ): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
             async() => {
-                const schema = entityClass.schema
-                const knex = getKnexInstance()
-                data = Object.keys(data).reduce((acc, propName)=>{
-                    let prop = schema.namedProperties.find(p => {
-                        return p.name === propName
-                    })
-                    if(!prop){
-                        throw new Error(`The Property [${propName}] doesn't exist`)
+                let addUuid: boolean = !!config.enableUuid
+                if (config.knexConfig.client.startsWith('sqlite')) {
+                    if (!config.enableUuid ){
+                        throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
                     }
-                    acc[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop)
-                    return acc
-                }, {} as SimpleObject)
-                let stmt = knex(schema.tableName).insert(data)
-                return Database.transpile(stmt)
+                }
+                let prepared = Database._prepareCreate<T>(entityClass, data, addUuid)
+                return [prepared]
             },
-            async (stmt: SQLString, existingTrx?: Knex.Transaction) => {
+            async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction) => {
+                let result = await Database._create<T>(input, entityClass, existingTrx)
+                if(!result[0]){
+                    throw new Error('Unexpected Error. Cannot find the entity after creation.')
+                }
+                return result[0]
+            }
+        )
+    }
+
+    static create<T extends typeof Entity>(entityClass: T, arrayOfData: SimpleObject[] ): ExecutionContext< InstanceType<T>[] >{
+        return new ExecutionContext< InstanceType<T>[] >(
+            async() => {
+                let addUUID: boolean = !!config.enableUuid
+                if (config.knexConfig.client.startsWith('sqlite')) {
+                    if (!config.enableUuid ){
+                        throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
+                    }
+                }
+                return arrayOfData.map( (data) => {
+                    return Database._prepareCreate<T>(entityClass, data, addUUID)
+                })
+            },
+            async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction) => {
+                let result = await Database._create<T>(input, entityClass, existingTrx)
+                return result.map( data => {
+                    if(data === null){
+                        throw new Error('Unexpected Flow.')
+                    }
+                    return data
+                })
+            })
+    }
+
+    private static async _create<T extends typeof Entity>(inputs: BeforeExecutionOutput, entityClass: T, existingTrx: Knex.Transaction<any, any[]> | undefined) {
+        let fns = await startTransaction(async (trx) => {
+            let allResults = await Promise.all(inputs.map(async ( input) => {
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
                 // console.debug('========================')
-                let result = await startTransaction( async (trx) => {
-                    // await stmt //execute sql
-                    // return this.findOne( (stmt, t) => stmt.where({[guidColumnName()]: guid})).usingConnection(trx)
+                if (config.knexConfig.client.startsWith('mysql')) {
                     let insertedId: number
-                    if(config.knexConfig.client.startsWith('mysql')){
-                        const r = await this.executeStatement( stmt.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
-                        insertedId = r[1][0].id
-                    } else if(config.knexConfig.client?.startsWith('sqlite')){
-                        await this.executeStatement( stmt.toString(), trx)
-                        const r = await this.executeStatement('SELECT last_insert_rowid() AS id', trx)
-                        insertedId = r[0].id
-                    } else{
-                        throw new Error('NYI')
+                    const r = await this.executeStatement(input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id ', trx)
+                    insertedId = r[0][0].insertId
+                    let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    return records
+                } else if (config.knexConfig.client.startsWith('sqlite')) {
+                    const r = await this.executeStatement(input.sqlString.toString(), trx)
+                    
+                    if(config.enableUuid){
+                        if(input.uuid === null){
+                            throw new Error('Unexpected Flow.')
+                        } else {
+                            let uuid = input.uuid
+                            let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid]))
+                            // return records[0] ?? null
+                            return records
+                        }
+                    } else {
+                        return null
                     }
-                    let records = await this.find(entityClass, (stmt, t) => stmt.where(t._.id, '=', insertedId)).usingConnection(trx)
-                    return records[0] ?? null
 
-                }, existingTrx)
-                return result
+                } else if (config.knexConfig.client.startsWith('pg')) {
+                    let insertedId: number
+                    const r = await this.executeStatement(input.sqlString.toString(), trx)
+                    
+                    insertedId = r.rows[0][ NamedProperty.convertFieldName(config.primaryKeyName)]
+                    let records = () => this.find(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    return records
+
+                } else {
+                    throw new Error('NYI')
+                }
+                
+            }))
+            return allResults
+
+        }, existingTrx)
+
+        return await Promise.all(fns.map(async (exec) => {
+            if(exec === null){
+                return null
+            }
+            const context = exec().usingConnectionIfAvailable(existingTrx)
+            return (await context)[0] ?? null
+        }))
+    }
+
+    private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: SimpleObject, useUuid: boolean) {
+        const schema = entityClass.schema
+        let newUuid = uuidv4()
+        let newData = Object.keys(data).reduce((acc, propName) => {
+            let prop = schema.namedProperties.find(p => {
+                return p.name === propName
             })
+            if (!prop) {
+                throw new Error(`The Property [${propName}] doesn't exist`)
+            }
+            acc[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop)
+            return acc
+        }, {} as SimpleObject)
+
+        if(useUuid){
+            newData[config.uuidColumnName] = newUuid
+        }
+        let stmt = getKnexInstance()(schema.tableName).insert(newData)
+
+        if (config.knexConfig.client.startsWith('pg')) {
+           stmt = stmt.returning(NamedProperty.convertFieldName(config.primaryKeyName))
+        }
+
+        return {
+            sqlString: stmt,
+            uuid: newUuid
+        }
     }
 
     /**
@@ -1033,11 +899,17 @@ export class Database{
      static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  InstanceType<T> >{
          return new ExecutionContext< InstanceType<T> >(
             async() => {
-                return await Database._prepareFind(entityClass, applyFilter)
+                return [{
+                    sqlString: await Database._prepareFind(entityClass, applyFilter),
+                    uuid: null
+                }]
             },
-            async (stmt: SQLString, existingTrx?: Knex.Transaction
+            async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction
             ) => {
-                let rows = await Database._find<T>(entityClass, stmt, existingTrx)
+                if(input.length > 1){
+                    throw new Error('Unexpected Flow.')
+                }
+                let rows = await Database._find<T>(entityClass, input[0].sqlString, existingTrx)
             return rows[0] ?? null
         })
      }
@@ -1050,11 +922,14 @@ export class Database{
     static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
             async() => {
-                return await Database._prepareFind(entityClass, applyFilter)
+                return [{
+                    sqlString: await Database._prepareFind(entityClass, applyFilter),
+                    uuid: null
+                }]
             },
-            async (stmt: SQLString, existingTrx?: Knex.Transaction
+            async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction
             ) => {
-                let rows = await Database._find<T>(entityClass, stmt, existingTrx)
+                let rows = await Database._find<T>(entityClass, input[0].sqlString, existingTrx)
             return rows
         })
     }
@@ -1063,10 +938,10 @@ export class Database{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
-            Types.Array(entityClass),
+            new Types.ArrayOf(entityClass),
             () => {
                 let currentEntitySelector = entityClass.selector()
-                let stmt: Knex.QueryBuilder = sealSelect().from(currentEntitySelector.source)
+                let stmt: Knex.QueryBuilder = builder(currentEntitySelector)
                 let result = stmt
                 if (applyFilter) {
                     return applyFilter(stmt, currentEntitySelector)
@@ -1075,10 +950,9 @@ export class Database{
                 }
             }
         )
-        dualSelector.register(prop)
-        return Database.transpile(await dualSelector.$.data())
+        dualSelector.registerProp(prop)
+        return builder().select(await dualSelector.$.data())
     }
-
 
     private static async _find<T extends typeof Entity>(entityClass: T, stmt: SQLString, existingTrx?: Knex.Transaction<any, any[]>) {
        
@@ -1087,7 +961,17 @@ export class Database{
         // console.debug("================================")
         let resultData: any = await Database.executeStatement(stmt, existingTrx)
 
-        let dualInstance = this.parseRaw(Dual, resultData[0] as SimpleObject)
+        let rowData = null
+        if(config.knexConfig.client.startsWith('mysql')){
+            rowData = resultData[0][0]
+        } else if(config.knexConfig.client.startsWith('sqlite')){
+            rowData = resultData[0]
+        } else if(config.knexConfig.client.startsWith('pg')){
+            rowData = resultData.rows[0]
+        } else {
+            throw new Error('NYI')
+        }
+        let dualInstance = this.parseRaw(Dual, rowData)
         let str = "data" as keyof Dual
         let rows = dualInstance[str] as Array<InstanceType<T>>
         return rows
@@ -1099,13 +983,13 @@ export class Database{
         if (existingTrx) {
             KnexStmt.transacting(existingTrx)
         }
-        let result = await KnexStmt
-
-        if(config.knexConfig.client.startsWith('mysql')){
-            return result[0]
-        } else if(config.knexConfig.client.startsWith('sqlite')){
-            return result
+        let result = null
+        try{
+            result = await KnexStmt
+        }catch(error){
+            throw error
         }
+        return result
     }
 
     static parseRaw<T extends typeof Entity>(entityClass: T, row: SimpleObject): InstanceType<T>{
@@ -1207,7 +1091,7 @@ export class Entity {
                         sqlArgs.push(value[key])
                     }
                 })
-                return sealRaw( accSqls.join(' AND '), sqlArgs)
+                return raw( accSqls.join(' AND '), sqlArgs)
             } else if(Array.isArray(value)){
                 return value.map( v => selectorImpl.getNormalCompiled(v) )
             } else return value
@@ -1248,14 +1132,17 @@ export class Entity {
         return selector
     }
 
+    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: SimpleObject[]): ExecutionContext<I[]>{
+        return Database.create(this, arrayOfData)
+    }
+
     static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: SimpleObject): ExecutionContext<I>{
-        // let tester = new this()
-        // let entityClass = config.models[tester.constructor.name]
-        // if (!entityClass) {
-        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
-        // }
         return Database.createOne(this, data)
     }
+
+    // static createOneOnly<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: SimpleObject): ExecutionContext<void>{
+    //     return Database.createOneOnly(this, data)
+    // }
 
     /**
      * find one record
@@ -1263,13 +1150,7 @@ export class Entity {
      * @returns the found record
      */
     static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction): ExecutionContext<I>{
-        // let tester = new this()
-        // let entityClass = config.models[tester.constructor.name]
-        // if (!entityClass) {
-        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
-        // }
         return Database.findOne(this, applyFilter)
-        // return r[0] as I
     }
 
     /**
@@ -1278,13 +1159,7 @@ export class Entity {
      * @returns the found record
      */
     static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction): ExecutionContext<Array<I>>{
-        // let tester = new this()
-        // let entityClass = config.models[tester.constructor.name]
-        // if (!entityClass) {
-        //     throw new Error(`Cannot find the class ${tester.constructor.name}`)
-        // }
         return Database.find(this, applyFilter)
-        // return records as Array<I>
     }
 
     static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: SimpleObject): I{

@@ -1,35 +1,37 @@
-import {run, select, raw, configure, Schema, Entity, Types, models, getKnexInstance} from '../dist/'
-import {snakeCase} from 'lodash'
+import {run, builder, raw, configure, Schema, Entity, Types, models} from '../dist/'
+import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+// import {clearSysFields} from './util'
+jest.setTimeout(20000)
 
 const initializeDatabase = async () => {
     // configure the orm
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', Types.String(255))
+          schema.prop('location', new Types.String(false, 255))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', Types.String(255, true))
-          schema.prop('isActive', Types.Boolean(true))
-          schema.prop('price', Types.Decimal(5, 2, true))
-          schema.prop('createdAt', Types.Date(true))
-          schema.prop('shopId', Types.Number(true))
+          schema.prop('name', new Types.String(true, 255))
+          schema.prop('isActive', new Types.Boolean(true))
+          schema.prop('price', new Types.Decimal(true, 7, 2))
+          schema.prop('createdAt', new Types.DateTime(true, 6))
+          schema.prop('shopId', new Types.Number(true))
       }
     }
 
     class StrictProduct extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', Types.String(255, false))
-          schema.prop('isActive', Types.Boolean(false))
-          schema.prop('price', Types.Decimal(5, 2, false))
-          schema.prop('createdAt', Types.Date(false))
-          schema.prop('shopId', Types.Number(false))
+          schema.prop('name', new Types.String(false, 255))
+          schema.prop('isActive', new Types.Boolean(false))
+          schema.prop('price', new Types.Decimal(false, 5, 2))
+          schema.prop('createdAt', new Types.DateTime(false))
+          schema.prop('shopId', new Types.Number(false))
       }
     }
 
@@ -42,6 +44,7 @@ const initializeDatabase = async () => {
     await configure({
         models: {Shop, Product, StrictProduct},
         createModels: true,
+        enableUuid: config.client.startsWith('sqlite'),
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
@@ -63,28 +66,30 @@ afterEach(() => {
     return clearDatabase();
 });
 
-describe('Basic Read and Write', () => {
+// test('test jest', () => {
+//   expect([1,2,3]).toEqual([1,3,2]);
 
+// })
+
+describe('Basic Read and Write', () => {
   test('Create and Find Shop', async () => {
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
     }
     let shop1 = await models.Shop.createOne({
-      ...expectedShop1,
-      id: undefined
+      ...omit(expectedShop1, ['id'])
     })
-    expect(shop1).toMatchObject(expectedShop1)
+    expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
 
     let expectedShop2 = {
       id: 2,
       location: 'Yuen Long'
     }
     let shop2 = await models.Shop.createOne({
-      ...expectedShop2,
-      id: undefined
+      ...omit(expectedShop2, ['id'])
     })
-    expect(shop2).toMatchObject(expectedShop2)
+    expect(shop2).toMatchObject(expect.objectContaining(expectedShop2))
  
     let expectedProduct1 = {
       id: 1,
@@ -92,11 +97,10 @@ describe('Basic Read and Write', () => {
       shopId: shop1.id
     }
     let product1 = await models.Product.createOne({
-      ...expectedProduct1,
-      id: undefined
+      ...omit(expectedProduct1, ['id'])
     })
 
-    expect(product1).toMatchObject(expectedProduct1)
+    expect(product1).toMatchObject(expect.objectContaining(expectedProduct1))
 
     let expectedProduct2 = {
       id: 2,
@@ -104,11 +108,10 @@ describe('Basic Read and Write', () => {
       shopId: shop1.id
     }
     let product2 = await models.Product.createOne({
-      ...expectedProduct2,
-      id: undefined
+      ...omit(expectedProduct2, ['id'])
     })
 
-    expect(product2).toMatchObject(expectedProduct2)
+    expect(product2).toMatchObject(expect.objectContaining(expectedProduct2))
 
     let expectedProduct3 = {
       id: 3,
@@ -116,42 +119,45 @@ describe('Basic Read and Write', () => {
       shopId: shop2.id
     }
     let product3 = await models.Product.createOne({
-      ...expectedProduct3,
-      id: undefined
+      ...omit(expectedProduct3, ['id'])
     })
 
-    expect(product3).toMatchObject(expectedProduct3)
+    expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
     let foundShop1ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop1.id})))
     let foundShop1ByLocation = await models.Shop.findOne( (stmt, s) => stmt.where(s({location: expectedShop1.location})))
 
-    expect(foundShop1ById).toMatchObject(foundShop1ByLocation)
-    expect(foundShop1ById).toMatchObject(expectedShop1)
+    expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
+    expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
     let foundShop2ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop2.id})))
-    expect(foundShop2ById).toMatchObject(expectedShop2)
+    expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
     let foundShopNotExists =  await models.Shop.findOne( (stmt, s) => stmt.where(s({id: 100000})))
     expect(foundShopNotExists).toBeNull()
 
     let foundAllShop = await models.Shop.find()
-    expect(foundAllShop).toEqual( expect.arrayContaining([expectedShop1, expectedShop2]))
+    expect(foundAllShop).toEqual(
+      [
+        expect.objectContaining(expectedShop1), 
+        expect.objectContaining(expectedShop2)
+      ] 
+    )
 
     let foundProductsByShopId1 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop1.id})) )
     expect(foundProductsByShopId1).toEqual( 
-      expect.arrayContaining([
+      [
         expect.objectContaining(expectedProduct1), 
         expect.objectContaining(expectedProduct2)
-      ])
+      ]
     )
 
     let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
-    expect(foundProductsByShopId2).toEqual( expect.arrayContaining([expect.objectContaining(expectedProduct3)]) )
+    expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
-  });
+  }, 10000);
 
 })
-
 
 describe('Type Parsing', () => {
 
@@ -168,7 +174,7 @@ describe('Type Parsing', () => {
       ...expectedProduct1
     })
 
-    expect(product1).toStrictEqual(expect.objectContaining(expectedProduct1))
+    expect(product1).toEqual(expect.objectContaining(expectedProduct1))
   })
 
 
@@ -186,12 +192,13 @@ describe('Type Parsing', () => {
       ...expectedProduct2
     })
 
-    expect(product2).toStrictEqual(expect.objectContaining(expectedProduct2))
+    expect(product2).toEqual(expect.objectContaining(expectedProduct2))
 
   })
 
   // TODO: not null checking: set null if the property cannot be null
   // TODO: test default value it null during creation
+  // TODO: test over length of string
 
 })
 

@@ -44,7 +44,7 @@ async function basic(){
      * find records in coding style 1
      */
     let records1 = await Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 2).limit(3)
+        return stmt.where(root._.id, '>', 2).limit(3)
     })
     console.log('queried1:', records1)
 
@@ -83,9 +83,9 @@ async function basic(){
 async function advanced(){
 
     // Try Using Promise
-    let records0 = await Shop.find( (stmt, {prop}) => {
+    let records0 = await Shop.find( (stmt, root ) => {
         return new Promise( (resolve) =>{
-            resolve(stmt.where(prop({id: 1})))
+            resolve(stmt.where(root({id: 1})))
         })
     })
     console.log('queried0:', records0)
@@ -96,16 +96,16 @@ async function advanced(){
     })
     console.log('queried1:', records1)
 
-    let records2 = await Product.find( (stmt, {prop} ) => {
+    let records2 = await Product.find( (stmt, root ) => {
         return new Promise( (resolve) => {
-            resolve(stmt.where(prop({shopId: 1})))
+            resolve(stmt.where(root({shopId: 1})))
         })
     })
     console.log('queried2:', records2)
 
     let records3 = await run(Shop, Product, (s, p) => {
 
-        let a = select( s.all, s._location, s.$.products(), s.$.productCount(), p.all ).from(s.source)
+        let a = select( s.all, s._.location, s.$.products(), s.$.productCount(), p.all ).from(s.source)
         let b = a.joinRaw(`JOIN ${p.source} ON ${s._.id} = ${p._.shopId}`)
         return b
     })

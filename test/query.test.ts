@@ -1,6 +1,8 @@
-import {run, select, raw, configure, Schema, Entity, Types, Relations, models} from '../dist'
+import {run, builder, raw, configure, Schema, Entity, Types, Relations, models} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+// import {clearSysFields} from './util'
+jest.setTimeout(20000)
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -44,12 +46,12 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', Types.String(100))
-        schema.prop('location', Types.String(255))
-        schema.computedProp('products', Types.Array(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
+        schema.prop('name', new Types.String(true, 100))
+        schema.prop('location', new Types.String(true, 255))
+        schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
+        schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+            return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
       }
     }
@@ -57,19 +59,19 @@ const initializeDatabase = async () => {
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', Types.String(255, true))
-        schema.prop('createdAt', Types.Date())
-        schema.prop('shopId', Types.Number())
+        schema.prop('name', new Types.String(true, 255))
+        schema.prop('createdAt', new Types.DateTime(true, 6))
+        schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.computedProp('shop', Types.Object(Shop), Relations.belongsTo(Shop, 'shopId') )
+        schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
 
         schema.computedProp('colors', 
-          Types.Array(Color), 
+          new Types.ArrayOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
         )
         
         schema.computedProp('mainColor', 
-          Types.Object(Color), 
+          new Types.ObjectOf(Color), 
           Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
             return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
           })
@@ -79,15 +81,15 @@ const initializeDatabase = async () => {
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', Types.String(50))
+        schema.prop('code', new Types.String(true, 50))
       }
     }
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('productId', Types.Number(false))
-        schema.prop('colorId', Types.Number(false))
-        schema.prop('type', Types.String(50, false))
+        schema.prop('productId', new Types.Number(false))
+        schema.prop('colorId', new Types.Number(false))
+        schema.prop('type', new Types.String(false, 50))
       }
     }
 
@@ -100,6 +102,7 @@ const initializeDatabase = async () => {
     await configure({
         models: {Shop, Product, Color, ProductColor},
         createModels: true,
+        enableUuid: config.client.startsWith('sqlite'),
         entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
@@ -108,8 +111,8 @@ const initializeDatabase = async () => {
     await Promise.all(shopData.map( async(d) => {
       return await models.Shop.createOne(d)
     }))
-    
 
+    
     await Promise.all(productData.map( async(d) => {
       return await models.Product.createOne(d)
     }))
@@ -128,11 +131,11 @@ const clearDatabase = () => {
 
 }
 
-beforeEach( async () => {
+beforeAll( async () => {
     await initializeDatabase();
 });
 
-afterEach(() => {
+afterAll(() => {
     return clearDatabase();
 });
 
@@ -141,10 +144,10 @@ describe('Using with Knex', () => {
   test('Query with limit', async () => {
     let limit = 2
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.where(root.id, '>', 2).limit(limit)
+        return stmt.where(root.pk, '>', 2).limit(limit)
     })
+
     expect(records).toHaveLength(limit)
-    // expect(records).toBe(expect.)
   });
 
 })
@@ -152,53 +155,65 @@ describe('Using with Knex', () => {
 describe('Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products())
+        return stmt.select(root.$.products())
     })
     expect(records).toHaveLength(shopData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
-      ...shop,
-      products: expect.arrayContaining(
-        productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
-      )
-    }))))
+    expect(records).toEqual(expect.arrayContaining(
+      shopData.map(shop => expect.objectContaining({
+        ...shop,
+        products: expect.arrayContaining(
+          productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
+        )
+      })))
+    )
   });
 
   test('Query computed fields - belongsTo', async () => {
     let records = await models.Product.find( (stmt, root) => {
-        return stmt.select('*', root.$.shop())
+        return stmt.select(root.$.shop())
     })
     expect(records).toHaveLength(productData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(productData.map(product => expect.objectContaining({
+    expect(records).toEqual(
+      expect.arrayContaining(
+        productData.map(product => expect.objectContaining({
       ...product,
       shop: expect.objectContaining(
         shopData.find(shop => product.shopId === shop.id)
       )
-    }))))
+        }))
+      )
+    )
   });
 
   test('Query computed fields - hasThrough + multiple level', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select('*', root.$.products( (stmt, p) => {
-          return stmt.select('*', p.$.colors(), p.$.mainColor() )
+        return stmt.select(root.$.products( (stmt, p) => {
+          return stmt.select(p.$.colors(), p.$.mainColor() )
         }))
     })
     expect(records).toHaveLength(shopData.length)
-    expect(records).toStrictEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
+    expect(records).toEqual(
+      expect.arrayContaining( 
+        shopData.map(shop => expect.objectContaining({
       ...shop,
       products: expect.arrayContaining(
         productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining({
           ...product,
           colors: expect.arrayContaining(
-            productColorData.filter( pc => pc.productId === product.id ).map( pc => colorData.find(c => c.id === pc.colorId) ?? null )
-          ),
+            productColorData.filter( pc => pc.productId === product.id ).map( 
+                pc => {
+                  let item = colorData.find(c => c.id === pc.colorId)
+                  return item? expect.objectContaining(item): null
+                }
+          )),
           mainColor: 
             colorData.filter(c => c.id === productColorData.find( pc => pc.productId === product.id && pc.type === 'main' )?.colorId)
             .map(c => expect.objectContaining(c) )[0] ?? null
-          
+
         }))
       )
-    }))))
-
+    })))
+    )
   });
 
 })
@@ -208,14 +223,9 @@ describe('custom Computed Fields', () => {
 
   test('Query computed field', async () => {
     let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select('*', root.$.productCount()).where(root.id, '=', 2)
+        return stmt.select(root.$.productCount()).where(root.pk, '=', 2)
     })
     expect(record.productCount).toBe(2)
   });
 
 })
-
-
-
-
-
