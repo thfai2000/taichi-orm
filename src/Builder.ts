@@ -103,8 +103,6 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
         this.__selectItems = this.__selectItems.concat(converted)
 
         let raws = converted.map(c => c.raw)
-
-        // console.log('abc abac acbacbc', raws.map( r => r.toString()))
         return this.__realSelect(...raws)
     }
 
@@ -131,16 +129,18 @@ export const makeRaw = (first: any, ...args: any[]) => {
 
 export const makeColumn = (selector: Selector, prop: NamedProperty | '*', expression?: Knex.QueryBuilder): Column => {
 
-    let tableAlias = quote(selector.tableAlias)
-    let fieldName: string = prop === '*'? prop : quote(prop.fieldName)
-    
+
     let raw: string
     if(expression){
+        if(prop === '*'){
+            throw new Error('Unexpected Flow.')
+        }
         raw = `(${expression})`
-    }{
+    } else {
+        let tableAlias = quote(selector.tableAlias)
+        let fieldName: string = prop === '*'? prop : quote(prop.fieldName)
         raw = `${tableAlias}.${fieldName}`
     }
-
     let column: Column = makeRaw(raw) as Column
     column.__type = 'Column'
     column.__expression = expression

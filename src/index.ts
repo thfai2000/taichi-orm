@@ -1158,7 +1158,7 @@ export class Database{
             }
         )
         dualSelector.registerProp(prop)
-        return Database.transpile(await dualSelector.$.data())
+        return builder().select(await dualSelector.$.data())
     }
 
     private static async _find<T extends typeof Entity>(entityClass: T, stmt: SQLString, existingTrx?: Knex.Transaction<any, any[]>) {
@@ -1178,7 +1178,6 @@ export class Database{
         } else {
             throw new Error('NYI')
         }
-
         let dualInstance = this.parseRaw(Dual, rowData)
         let str = "data" as keyof Dual
         let rows = dualInstance[str] as Array<InstanceType<T>>
