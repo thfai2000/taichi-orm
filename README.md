@@ -1,11 +1,7 @@
+A new way to deal with your Data Logic. Build your ORM by Data Brick.
 
-
-A new way to deal with your Data Logic.
-
-
-!!!!!!!! Don't Use it !!!!!!!!
-It is still under heavy development. 
-Please feel free to express your ideas.
+WARNING: Don't use it for productio
+It is still under heavy development. The API specification can be changed in the future.
 
 # Introduction
 
@@ -28,24 +24,35 @@ class Shop extends Entity{
   static register(schema: Schema){
 
     // Normal Property that map to real table field
-    schema.prop('location', Types.String(255))
+    schema.prop('location', new Types.String(true, 255))
 
     // Define a Computed Property using common relation template
-    schema.computedProp('products', Types.Array(Product), 
-      (shop, applyFilters) => shop.hasMany(Product, 'shopId', applyFilters) )
+    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
 
-    // Define a Computed Property
-    schema.computedProp('productCount', Types.Number(), (shop) => {
+    // Define a Computed Property using builder
+    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
         let p = Product.selector()
-        return select('COUNT(*)').from(p.source).where(shop.id, '=', p.shopId)
+        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+    })
+
+    schema.prop('location', new Types.String(true, 255))
+    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
+    // Define a Computed Property
+    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
+        let p = Product.selector()
+        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
     })
   }
 
 }
 
 class Product extends Entity{
-  static register(schema: Schema){
-    ...
+
+  static register(schema){
+    schema.prop('name', new Types.String(true, 255))
+    schema.prop('shopId', new Types.Number() )
+    schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
+
   }
 }
 
@@ -53,8 +60,8 @@ class Product extends Entity{
 await Shop.find( (stmt, root) => {
     // stmt is an instance of QueryBuilder. 
     // Now, we query both properties 'product' and 'productCount'
-    return stmt.select(root.all, root.$.products(), root.$.productCount())
-           .where(root.id, '=', 1)
+    return stmt.select(root.$.products(), root.$.productCount())
+           .where(root._.id, '=', 1)
 })
 // Output: [ Shop:{products:[...], productCount:5}, Shop:{products:[...], productCount:3} ...]
 ```
@@ -70,7 +77,7 @@ The data logics of Computed Property is **extensible**. Let's change the Compute
 // Define a Computed Property which accept "applyFilters"
 schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
     let p = Product.selector()
-    return applyFilters(p.count().where(shop.id, '=', p.shopId))
+    return applyFilters(p.count().where(shop._.id, '=', p.shopId))
 })
 ...
 
@@ -79,7 +86,7 @@ await Shop.find( (stmt, root) => {
     // stmt is an instance of QueryBuilder
     return stmt.select(root.$.productCount( (pStmt, pRoot) => {
       pStmt.where(pRoot.category, '=', 'Food') 
-    })).where(root.id, '=', 1)
+    })).where(root._.id, '=', 1)
 })
 
 ```
@@ -147,7 +154,7 @@ The npm package doesn't work now. It is out-dated. **The release target is Q4 of
 
 1. Install the package
 ```bash
-npm install --save llorm
+npm install --save bricky-orm
 ```
 
 2. define your Data Models (or in separates files)
@@ -155,22 +162,30 @@ npm install --save llorm
 
 ```javascript
 // #index.js
-import {configure, Entity, Schema, Types} from 'llorm'
+import {configure, Entity, Schema, Types, builder, raw} from 'bricky-orm'
 
 class Shop extends Entity{
-    static register(schema: Schema){
-        schema.prop('location', Types.String(255))
-        schema.computedProp('products', Types.Array(Product), (shop, injectFunc) => shop.hasMany(Product, 'shopId', injectFunc) )
-    }
+
+  static register(schema){
+    schema.prop('name', new Types.String(true, 100))
+    schema.prop('location', new Types.String(true, 255))
+    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
+    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
+        let p = Product.selector()
+        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+    })
+  }
 }
 
 class Product extends Entity{
-    static register(schema: Schema){
-		schema.prop('name', Types.String(255, true))
-		schema.prop('createdAt', Types.Date())
-        schema.prop('shopId', Types.Number() )
-		schema.computedProp('shop', Types.Object(Shop), (product, applyFilters) => product.belongsTo(Shop, 'shopId', applyFilters) )
-	}
+
+  static register(schema){
+    schema.prop('name', new Types.String(true, 255))
+    schema.prop('createdAt', new Types.DateTime())
+    schema.prop('shopId', new Types.Number() )
+    // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
+    schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
+  }
 }
 
 (async() =>{
@@ -205,17 +220,16 @@ node index.js
 ## Basic Usage
 ```javascript
 //Basic query
-await Shop.find() // result: [Shop, Shop]
+await Shop.find() // result: [Shop, Shop ...]
 
-// find records in coding Nested Style
+// find records in normal coding style
 let records1 = await Shop.find( (stmt, root) => {
-    return stmt.where(root.id, '>', 1).limit(5)
+    return stmt.where(root.pk, '>', 1).limit(5)
 })
 
-// find records in coding Normal Style
+// find records in another style
 let s = Shop.selector()
-let records2 = await select(s.all).where(s.id, '>', 1)
-
+let records2 = await builder(s).select(s.$.products).where(s.pk, '>', 1)
 
 /**
   * find records with relations (computed field)
@@ -223,7 +237,7 @@ let records2 = await select(s.all).where(s.id, '>', 1)
   * 'root.$' can access one computedField named 'products' which are predefined in the entity schema
   */
 await Shop.find( (stmt, root) => {
-    return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+    return stmt.select(root.$.products()).where(root.pk, '=', 1)
 })
 
 /**
@@ -231,9 +245,15 @@ await Shop.find( (stmt, root) => {
   * The Shop relates Product and Product relates Color.
   */
 await Shop.find( (stmt, shop) => {
-    return stmt.select(shop.all, shop.$.products( (stmt2, prd) => {
-        return stmt2.select(prd.all, prd.$.colors()).limit(2)
-    })).where(shop.id, '=', 1)
+    return stmt.select(shop.$.products( (stmt2, prd) => {
+        return stmt2.select(prd.$.colors()).limit(2)
+    })).where(shop.pk, '=', 1)
+})
+
+// use computed fields for filtering
+// for example: find all shops with Product Count over 2
+let shopsWithAtLeast2Products = await Shop.find( (stmt, root) => {
+  return stmt.select(root.$.products()).whereRaw('?? >= 2', [root.$.productCount()])
 })
 
 ```
@@ -307,9 +327,8 @@ let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCo
   - It can be a real table field or a virtual field `ComputedProperty`.
   
 - `ComputedProperty`
-  - It is a subClass of `NamedProperty`. 
   - It is virtual field.
-  - But it embedded `ComputedFunction`
+  - It embedded `ComputedFunction`
 
 - `CompiledNamedProperty`
   - It is a compiled version of `NamedProperty`. A `NamedProperty` is not ready for query before it is compiled.
@@ -319,12 +338,13 @@ let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCo
   - It is a dictionary that access runtime information and schema of a Entity. 
   - In below example, `root` is the selector instance of `Shop`
    - `root.all`: all properties of `Shop`
-   - `root.id`: the primary key of `Shop`
+   - `root._`: dictionary of `namedProperty` of `Shop`
+   - `root.pk`: the primary key of `Shop`
    - `root.$`: dictionary of `computedProperty` of `Shop`
    - `root.$.products()` include the `computedProperty` named `products`
   ```javascript
   await Shop.find( (stmt, root) => {
-    return stmt.select(root.all, root.$.products()).where(root.id, '=', 1)
+    return stmt.select(root.$.products()).where(root.id, '=', 1)
   })
   ```
 
@@ -344,13 +364,10 @@ git clone ...
 # Start the project. It is built by typescript
 npm run dev
 
-# Start another terminal.  Work on the example and the ORM at the same time
-cd examples/basic
-npm run dev
-
 # Start one more terminal. It starts a database server
 docker-compose up
+
+# Start another terminal. Run the unit tests
+npm run test
+
 ```
-
-
-

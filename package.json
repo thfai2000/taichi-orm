@@ -1,7 +1,7 @@
 {
-  "name": "llorm",
+  "name": "bricky-orm",
   "version": "0.0.8",
-  "description": "Low-level Object Relation Mapper",
+  "description": "Low-level Object Relation Mapper. Build Data Logic like Brick",
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,14 +18,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thfai2000/llorm.git"
+    "url": "git+https://github.com/thfai2000/bricky-orm.git"
   },
   "author": "Eddie Tang",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/thfai2000/llorm/issues"
+    "url": "https://github.com/thfai2000/bricky-orm/issues"
   },
-  "homepage": "https://github.com/thfai2000/llorm#readme",
+  "homepage": "https://github.com/thfai2000/bricky-orm#readme",
   "runkitExampleFilename": "runkit-example.js",
   "engines": {
     "node": ">=10"
