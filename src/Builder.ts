@@ -1,5 +1,6 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid } from "."
+import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, StringType } from "./PropertyType"
 
 
 type SelectItem = {
@@ -14,11 +15,15 @@ export interface QueryBuilder extends Knex.QueryBuilder{
     __realClearSelect: Function
 }
 
-export interface Column extends Knex.Raw {
+export interface Column<T = any> extends Knex.Raw {
     __type: 'Column'
-    __selector: Selector
+    __selector: Selector | null
     __namedProperty: NamedProperty | '*'
-    __expression: Knex.QueryBuilder | undefined | null
+    __expression: Knex.QueryBuilder | Knex.Raw | null
+    count(): Column<NumberType> 
+    exists(): Column<BooleanType> 
+    is(operator: string, value: any): Column<BooleanType> 
+    as(propName: string): Column<T>         //rename
 }
 
 export interface Source extends Knex.Raw {
@@ -30,7 +35,7 @@ export interface Source extends Knex.Raw {
     rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
 }
 
-const castAsQueryBuilder = (builder: Knex.QueryBuilder) : QueryBuilder => {
+const castAsQueryBuilder = (builder: any) : QueryBuilder => {
     //@ts-ignore
     if(builder.__type === 'QueryBuilder' ){
         return builder as QueryBuilder
@@ -38,7 +43,7 @@ const castAsQueryBuilder = (builder: Knex.QueryBuilder) : QueryBuilder => {
     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
 }
 
-export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
+export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder {
     let sealBuilder: QueryBuilder = getKnexInstance().clearSelect() as QueryBuilder
     
     // @ts-ignore
@@ -59,7 +64,7 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
             } else if(Array.isArray(item) && item.every( subitem => subitem.__type === 'Column')){
                 throw new Error("Detected that array of 'Column' is placed into select expression. Please use ES6 spread syntax to place the columns.")
             } else if(item.__type === 'Column' ){
-                let casted = item as Column
+                let casted = item as Column<any>
                 let selector = casted.__selector
                 let prop = casted.__namedProperty
                 let expression = casted.__expression
@@ -71,11 +76,19 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                         let definition = prop.definition
                         let finalExpr: string
                         if(definition.readTransform){
-                            let extractedColumnNames = extractColumns(expression)
-                            if(extractedColumnNames.length === 0){
-                                throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
+
+                            // @ts-ignore
+                            if(expression.__type === 'QueryBuilder'){
+                                let castedExpression = expression as QueryBuilder
+                                let extractedColumnNames = extractColumns(castedExpression)
+                                if(extractedColumnNames.length === 0){
+                                    throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
+                                }
+                                finalExpr = definition.readTransform(castedExpression, extractedColumnNames).toString()
+                            } else {
+                                finalExpr = definition.readTransform(expression, null).toString()
                             }
-                            finalExpr = definition.readTransform(expression, extractedColumnNames).toString()
+
                         } else {
                             finalExpr = expression.toSQL().sql
                         }
@@ -87,15 +100,19 @@ export const makeBuilder = function(mainSelector?: Selector) : QueryBuilder {
                         }]
                     }
                 }{
+                    if(!selector){
+                        throw new Error('Unexpected Flow.')
+                    }
+                    let s = selector
                     if(prop === '*'){
-                        return selector.all.map( col => {
+                        return s.all.map( col => {
                             if(col.__namedProperty === '*'){
                                 throw new Error('Unexpected Flow.')
                             }
-                            return makeSelectItem(selector, col.__namedProperty)
+                            return makeSelectItem(s, col.__namedProperty)
                         })
                     } else {
-                        return [makeSelectItem(selector, prop)]
+                        return [makeSelectItem(s, prop)]
                     }
                 }
             }
@@ -140,25 +157,55 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeColumn = (selector: Selector, prop: NamedProperty | '*', expression?: Knex.QueryBuilder): Column => {
-
+export const makeColumn = <T = any>(selector: Selector | null, prop: NamedProperty | '*', expression: Knex.QueryBuilder | Knex.Raw | null): Column<T> => {
 
     let raw: string
+    if(expression && prop === '*'){
+        throw new Error('Unexpected Flow.')
+    }
+
     if(expression){
-        if(prop === '*'){
-            throw new Error('Unexpected Flow.')
-        }
         raw = `(${expression})`
     } else {
+        if(!selector){
+            throw new Error('Unexpected Flow.')
+        }
         let tableAlias = quote(selector.tableAlias)
         let fieldName: string = prop === '*'? prop : quote(prop.fieldName)
         raw = `${tableAlias}.${fieldName}`
     }
-    let column: Column = makeRaw(raw) as Column
+    let column: Column<any> = makeRaw(raw) as Column<any>
     column.__type = 'Column'
     column.__expression = expression
     column.__namedProperty = prop
     column.__selector = selector
+
+    column.count = (): Column<NumberType> => {
+        if(!expression || prop === '*'){
+            throw new Error('Only Dataset can apply count')
+        }
+        return makeColumn<NumberType>(null, new NamedProperty(`${prop.name}`, new Types.Number, null),
+            makeBuilder().count().from(makeRaw(`(${expression}) AS ${quote(makeid(5))}`)) )
+    }
+
+    column.exists = (): Column<BooleanType> => {
+        if(!expression || prop === '*'){
+            throw new Error('Only Dataset can apply exists')
+        }
+
+        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean, null),
+            makeRaw(`EXISTS (${expression})`) )
+    }
+
+    column.is = (operator: string, value: any): Column<BooleanType> => {
+        if(!expression || prop === '*'){
+            throw new Error('Only Dataset can apply count')
+        }
+
+        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean, null),
+            makeRaw(`(${expression}) ${operator} ?`, [value]) )
+    }
+    
     return column
 }
 
@@ -191,10 +238,9 @@ export const makeSource = (joinText: string | null, selector: Selector, leftColu
     return target
 }
 
-export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
-
-    let ourBuilder = castAsQueryBuilder(builder)
-
+export const extractColumns = (builderOrRaw: Knex.QueryBuilder): string[] => {
+    
+    let ourBuilder = castAsQueryBuilder(builderOrRaw)
     return ourBuilder.__selectItems.map(item => {
         return item.actualAlias
     })
@@ -232,6 +278,40 @@ function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
         actualAlias: a
     }
 }
+
+
+// const wrap = (col: Column | Promise<Column>) => {
+
+//     let w = {}
+//     w.count = () => {
+//         // if(!expression){
+//         //     throw new Error('only computedProp can use count()')
+//         // }
+//         // if(prop === '*'){
+//         //     throw new Error('only computedProp can use count()')
+//         // }
+
+//         let p = (col: Column) => makeColumn(null, new NamedProperty(`${prop.name}`, new Types.Number, null), 
+//             makeBuilder().count().from(makeRaw(expression)) )
+
+//         if(col instanceof Promise){
+//             return new Promise( (resolve, reject) => {
+//                 col.then(column => {
+//                     resolve(p(column))
+//                 })
+//             })
+//         }else{
+//             return p(col)
+//         }
+        
+        
+//     }
+
+//     return w
+// }
+
+    
+
 // const extractColumnName = () => {
 
 //     let columnsToBeTransformed: string[] = []

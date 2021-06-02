@@ -2,7 +2,6 @@ import {run, builder, raw, configure, Schema, Entity, Types, models} from '../di
 import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
-jest.setTimeout(20000)
 
 const initializeDatabase = async () => {
     // configure the orm

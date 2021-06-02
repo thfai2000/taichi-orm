@@ -2,7 +2,6 @@ import {run, builder, raw, configure, Schema, Entity, Types, Relations, models} 
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
-jest.setTimeout(20000)
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -16,7 +15,8 @@ let productData = [
   { id: 1, name: 'Product 1a', shopId: 1},
   { id: 2, name: 'Product 1b', shopId: 1},
   { id: 3, name: 'Product 2a', shopId: 2},
-  { id: 4, name: 'Product 2b', shopId: 2}
+  { id: 4, name: 'Product 2b', shopId: 2},
+  { id: 5, name: 'Product 2b', shopId: 2}
 ]
 
 let colorData = [
@@ -49,9 +49,19 @@ const initializeDatabase = async () => {
         schema.prop('name', new Types.String(true, 100))
         schema.prop('location', new Types.String(true, 255))
         schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
-            let p = Product.selector()
-            return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+        schema.computedProp('productCount', new Types.Number(), (shop, applyFilters) => {
+            // let p = Product.selector()
+            // return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+            return shop.$.products().count()
+        })
+        schema.computedProp('hasProducts', new Types.Boolean(), (shop, applyFilters) => {
+            return shop.$.products().exists()
+        })
+        schema.computedProp('hasNoProducts', new Types.Boolean(), (shop, applyFilters) => {
+          return shop.$.products().exists().is('=', false)
+        })
+        schema.computedProp('hasOver2Products', new Types.Boolean(), (shop, applyFilters) => {
+            return shop.$.productCount().is('>', 2)
         })
       }
     }
@@ -155,15 +165,20 @@ describe('Using with Knex', () => {
 describe('Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select(root.$.products())
+        return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
     })
+
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(expect.arrayContaining(
       shopData.map(shop => expect.objectContaining({
         ...shop,
         products: expect.arrayContaining(
           productData.filter(product => product.shopId === shop.id).map(product => expect.objectContaining(product))
-        )
+        ),
+        productCount: productData.filter(product => product.shopId === shop.id).length,
+        hasProducts: productData.filter(product => product.shopId === shop.id).length > 0,
+        hasNoProducts: productData.filter(product => product.shopId === shop.id).length === 0,
+        hasOver2Products: productData.filter(product => product.shopId === shop.id).length > 2
       })))
     )
   });
@@ -175,12 +190,12 @@ describe('Computed Fields using Standard Relations', () => {
     expect(records).toHaveLength(productData.length)
     expect(records).toEqual(
       expect.arrayContaining(
-        productData.map(product => expect.objectContaining({
-      ...product,
-      shop: expect.objectContaining(
-        shopData.find(shop => product.shopId === shop.id)
-      )
-        }))
+          productData.map(product => expect.objectContaining({
+            ...product,
+            shop: expect.objectContaining(
+              shopData.find(shop => product.shopId === shop.id)
+            )
+          }))
       )
     )
   });
@@ -222,10 +237,11 @@ describe('Computed Fields using Standard Relations', () => {
 describe('custom Computed Fields', () => {
 
   test('Query computed field', async () => {
+    let id = 2
     let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select(root.$.productCount()).where(root.pk, '=', 2)
+        return stmt.select(root.$.productCount()).where(root.pk, '=', id)
     })
-    expect(record.productCount).toBe(2)
+    expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
   });
 
 })

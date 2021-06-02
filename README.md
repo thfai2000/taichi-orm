@@ -6,7 +6,7 @@ It is still under heavy development. The API specification can be changed in the
 # Introduction
 
 - Introduce a concept `ComputedProperty`for Data Model
-  - It is a Entity's property. It consist of data logics defined using SQL builder
+  - It is a Entity's property. It consist of data logics defined using SQL builder (`Knex`)
   - Once you orgazine your data logics in form of `ComputedProp` that is highly resuable and extensible
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
   - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`.
@@ -347,6 +347,9 @@ let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCo
     return stmt.select(root.$.products()).where(root.id, '=', 1)
   })
   ```
+
+# Acknowledgement
+Thanks Knex. The project is heavily using Knex.
 
 # Development?
 
