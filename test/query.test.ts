@@ -149,7 +149,27 @@ afterAll(() => {
     return clearDatabase();
 });
 
-describe('Using with Knex', () => {
+describe('Simple Query', () => {
+
+  test('Query by object filter', async () => {
+    let id = 2
+    let record = await models.Shop.findOne({id})
+
+    expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
+  })
+
+  test('Query by object filter + select computed fields', async () => {
+    let id = 2
+    let record = await models.Shop.findOne({id}, 'products', 'productCount')
+
+    expect(record).toEqual( expect.objectContaining({
+      ...shopData.find(s => s.id === id),
+      products: expect.arrayContaining(
+          productData.filter(p => p.shopId === id).map( p => expect.objectContaining(p) )
+      ),
+      productCount: productData.filter(p => p.shopId === id).length
+    }))
+  })
 
   test('Query with limit', async () => {
     let limit = 2
