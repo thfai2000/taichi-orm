@@ -3,7 +3,7 @@ import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty }
 export interface PropertyType {
     // isPrimitive: boolean
     create(prop: NamedProperty) : string[]
-    readTransform?(query: SQLString, columns: string[]): SQLString
+    readTransform?(query: SQLString, columns: string[] | null): SQLString
     writeTransform?(query: SQLString, columns: string[]):SQLString
     parseRaw(rawValue: any, prop: NamedProperty): any
     parseProperty(propertyvalue: any, prop: NamedProperty):any
@@ -43,14 +43,7 @@ const emptyJsonArray = () => {
         throw new Error('NYI')
 }
 
-class PrimaryKeyType implements PropertyType {
-
-    readTransform(query: SQLString, columns: string[]): SQLString {
-        throw new Error("Method not implemented.")
-    }
-    writeTransform(query: SQLString, columns: string[]): SQLString {
-        throw new Error("Method not implemented.")
-    }
+export class PrimaryKeyType implements PropertyType {
 
     parseRaw(rawValue: any, prop: NamedProperty): any {
         return rawValue === null? null : parseInt(rawValue)
@@ -88,12 +81,17 @@ class PrimaryKeyType implements PropertyType {
     }
 }
 
-class NumberType implements PropertyType {
+export class NumberType implements PropertyType {
     
     constructor(private nullable: boolean = true, private options?: SimpleObject){}
         
     parseRaw(rawValue: any): any {
-        return rawValue === null? null : parseInt(rawValue)
+        if(rawValue === null)
+            return null
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue)
+        }
+        throw new Error('Cannot parse Raw into Boolean')
     }
     parseProperty(propertyvalue: any, prop: NamedProperty): any {
         if(propertyvalue === null && !this.nullable){
@@ -113,7 +111,7 @@ class NumberType implements PropertyType {
     }
 }
 
-class DecimalType implements PropertyType {
+export class DecimalType implements PropertyType {
 
     constructor(private nullable: boolean = true, private precision?: number, private scale?: number, private options?: SimpleObject){}
   
@@ -142,13 +140,22 @@ class DecimalType implements PropertyType {
         }
 }
 
-class BooleanType implements PropertyType{
+export class BooleanType implements PropertyType{
 
     constructor(private nullable: boolean = true, private options?: SimpleObject) {}
 
         parseRaw(rawValue: any): any {
             //TODO: warning if nullable is false but value is null
-            return rawValue === null? null: parseInt(rawValue) > 0
+            if(rawValue === null)
+                return null
+            else if(rawValue === true)
+                return true
+            else if(rawValue === false)
+                return false
+            else if(Number.isInteger(rawValue)){
+                return parseInt(rawValue) > 0
+            }
+            throw new Error('Cannot parse Raw into Boolean')
         }
         parseProperty(propertyvalue: any, prop: NamedProperty): any {
             if(propertyvalue === null && !this.nullable){
@@ -170,7 +177,7 @@ class BooleanType implements PropertyType{
 
 }
 
-class StringType implements PropertyType{
+export class StringType implements PropertyType{
     
     constructor(private nullable: boolean = true, private length?: number, private options?: SimpleObject) {}
 
@@ -198,7 +205,7 @@ class StringType implements PropertyType{
     }
 }
 
-class DateType implements PropertyType{
+export class DateType implements PropertyType{
 
     constructor(private nullable: boolean = true, private options?: SimpleObject) {}
 
@@ -225,7 +232,7 @@ class DateType implements PropertyType{
     }
 }
 
-class DateTimeType implements PropertyType{
+export class DateTimeType implements PropertyType{
 
     constructor(private nullable: boolean = true, private precision?: number, private options?: SimpleObject) {}
 
@@ -253,11 +260,14 @@ class DateTimeType implements PropertyType{
     }
 }
 
-class ObjectOfType<I extends Entity> implements PropertyType{
+export class ObjectOfType<I extends Entity> implements PropertyType{
 
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I), private nullable: boolean = true) {}
                 
-    readTransform(query: SQLString, columns: string[]){
+    readTransform(query: SQLString, columns: string[] | null){
+        if(columns === null){
+            throw new Error('Only Dataset can be the type of \'ObjectOf\'')
+        }
         let jsonify =  `SELECT ${jsonObject()}(${
                 columns.map(c => `'${c}', ${quote(c)}`).join(',')
             }) FROM (${query.toString()}) AS ${quote(makeid(5))}`
@@ -295,11 +305,14 @@ class ObjectOfType<I extends Entity> implements PropertyType{
     }
 }
 
-class ArrayOfType<I extends Entity> implements PropertyType{
+export class ArrayOfType<I extends Entity> implements PropertyType{
     
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I)) {}
 
-    readTransform(query: SQLString, columns: string[]) {
+    readTransform(query: SQLString, columns: string[] | null) {
+        if(columns === null){
+            throw new Error('Only Dataset can be the type of \'ArrayOf\'')
+        }
         let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${jsonObject()}(${
                 columns.map(c => `'${c}', ${quote(c)}`).join(',')
             })), ${emptyJsonArray()}) FROM (${query.toString()}) AS ${quote(makeid(5))} `

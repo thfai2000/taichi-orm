@@ -302,66 +302,87 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        const makeFn = () => {
-            
-            let callable: CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => {
-                const applyFilterFunc: ApplyNextQueryFunction = (stmt, selector) => {
-                    let process = (stmt: Knex.QueryBuilder) => {
-                        // console.log('stmt', stmt.toString())
+        return (queryFunction?: QueryFunction, ...args: any[]) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryFunction, computedFunc, rootSelector, args)
 
-                        // If the function object placed into the Knex.QueryBuilder, 
-                        // Knex.QueryBuilder will call it and pass itself as the parameter
-                        // That's why we can say likely our compiled function didn't be called.
-                        if(queryFunction && !(queryFunction instanceof Function)){
-                            console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
-                            throw new Error('The QueryFunction is not instanceof Function.')
-                        }
-                        const x = (queryFunction && queryFunction(stmt, selector) ) || stmt
-                        return x
-                    }
-
-                    if(stmt instanceof Promise){
-                        return new Promise<Knex.QueryBuilder>( (resolve, reject)=> {
-                            if(stmt instanceof Promise){
-                                stmt.then((query: Knex.QueryBuilder)=>{
-                                    resolve(process(query))
-                                },reject)
-                            } else {
-                                throw new Error('Unexpected flow. Subquery is updated.')
-                            }
-                        })
-                    } else {
-                        return process(stmt)
-                    }     
-                }
-                let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
-
-                let process = (subquery: Knex.QueryBuilder): Column => {
-                    return makeColumn(null, namedProperty, subquery)
-                }
-
-                if(subquery instanceof Promise){
-                    return new Promise<Column>( (resolve, reject)=> {
-                        if(subquery instanceof Promise){
-                            subquery.then((query: Knex.QueryBuilder)=>{
-                                resolve(process(query))
-                            },reject)
-                        } else {
-                            throw new Error('Unexpected flow. Subquery is updated.')
-                        }
-                    })
-                } else {
-                    return process(subquery)
-                }
+            let process = (subquery: Knex.QueryBuilder): Column => {
+                return makeColumn(null, namedProperty, subquery)
             }
 
-            // TODO: add some information for debug
-            // callable.namedProperty =
+            if(subquery instanceof Promise){
+                throw new Error(`Computed Function of Property '${namedProperty.name}' which used Async function/Promise has to use Selector.$p to access`)
+            } else {
+                return process(subquery)
+            }
+        }
+    }
 
-            return callable
+    compileAs$p(rootSelector: SelectorImpl): CompiledFunctionPromise {
+        if(!this.computedFunc){
+            throw new Error('Normal Property cannot be compiled as computed field.')
+        }
+        let computedFunc = this.computedFunc
+        let namedProperty = this
+        // let fieldAlias = metaFieldAlias(namedProperty)
+
+        return (queryFunction?: QueryFunction, ...args: any[]) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryFunction, computedFunc, rootSelector, args)
+
+            let process = (subquery: Knex.QueryBuilder): Column => {
+                return makeColumn(null, namedProperty, subquery)
+            }
+
+            if(subquery instanceof Promise){
+                return new Promise<Column>( (resolve, reject)=> {
+                    if(subquery instanceof Promise){
+                        subquery.then((query: Knex.QueryBuilder)=>{
+                            resolve(process(query))
+                        },reject)
+                    } else {
+                        throw new Error('Unexpected flow. Subquery is updated.')
+                    }
+                })
+            } else {
+                throw new Error(`Computed Function of Property '${namedProperty.name}' has to use Selector.$ to access`)
+            }
         }
 
-        return makeFn()
+
+    }
+
+    
+
+    private executeComputeFunc(queryFunction: QueryFunction | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
+        const applyFilterFunc: ApplyNextQueryFunction = (stmt, selector) => {
+            let process = (stmt: Knex.QueryBuilder) => {
+                // console.log('stmt', stmt.toString())
+                // If the function object placed into the Knex.QueryBuilder, 
+                // Knex.QueryBuilder will call it and pass itself as the parameter
+                // That's why we can say likely our compiled function didn't be called.
+                if (queryFunction && !(queryFunction instanceof Function)) {
+                    console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
+                    throw new Error('The QueryFunction is not instanceof Function.')
+                }
+                const x = (queryFunction && queryFunction(stmt, selector)) || stmt
+                return x
+            }
+
+            if (stmt instanceof Promise) {
+                return new Promise<Knex.QueryBuilder>((resolve, reject) => {
+                    if (stmt instanceof Promise) {
+                        stmt.then((query: Knex.QueryBuilder) => {
+                            resolve(process(query))
+                        }, reject)
+                    } else {
+                        throw new Error('Unexpected flow. Subquery is updated.')
+                    }
+                })
+            } else {
+                return process(stmt)
+            }
+        }
+        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, applyFilterFunc, ...args)
+        return subquery
     }
 }
 
@@ -504,6 +525,7 @@ export interface Selector {
     derivedProps: Array<NamedProperty>
     _: {[key: string] : Column}
     $: {[key: string] : CompiledFunction}
+    
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
     all: Column[]
@@ -526,6 +548,7 @@ export class SelectorImpl{
     derivedProps: Array<NamedProperty> = []
     _: {[key: string] : Column}
     $: {[key: string] : CompiledFunction}
+    $p: {[key: string] : CompiledFunctionPromise}
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
     [key: string]: any
@@ -547,10 +570,26 @@ export class SelectorImpl{
         }) as {[key: string] : Column}
 
         this.$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledFunction | Column => {
+            get: (oTarget, sKey: string): CompiledFunction => {
                 return selector.getComputedCompiled(sKey)
             }
-        }) 
+        })
+
+        this.$p = new Proxy( {} ,{
+            get: (oTarget, sKey: string): CompiledFunctionPromise => {
+                return selector.getComputedCompiledPromise(sKey)
+            }
+        })
+    }
+
+    getComputedCompiledPromise(sKey: string) {
+        let selector = this
+        if(!selector){
+            throw new Error('Unexpected')
+        }
+        let prop = selector.getProperties().find((prop) => prop.name === sKey)
+        selector.checkDollar(prop, sKey)
+        return prop!.compileAs$p(selector)
     }
 
     getComputedCompiled(sKey: string) {
@@ -659,7 +698,9 @@ export class SelectorImpl{
     }
 }
 
-export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Column | Promise<Column>
+export type CompiledFunction = (queryFunction?: QueryFunction, ...args: any[]) => Column
+
+export type CompiledFunctionPromise = (queryFunction?: QueryFunction, ...args: any[]) => Promise<Column>
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
@@ -673,13 +714,15 @@ type BeforeExecutionOutput = Array<{
 }>
 
 export class ExecutionContext<I> implements PromiseLike<I>{
-    beforeAction: BeforeExecutionAction
-    trx?: Knex.Transaction
-    action: ExecutionContextAction<I>
+    private beforeAction: BeforeExecutionAction
+    private trx?: Knex.Transaction
+    private action: ExecutionContextAction<I>
+    private withLogFlag: boolean
 
     constructor(beforeAction: BeforeExecutionAction, action: ExecutionContextAction<I>){
         this.beforeAction = beforeAction
         this.action = action
+        this.withLogFlag = false
     }
 
     async then<TResult1, TResult2 = never>(
@@ -688,7 +731,11 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         : Promise<TResult1 | TResult2> {
 
         try{
-            let result = await this.action(await this.beforeAction(), this.trx)
+            let beforeExecutionOutput = await this.beforeAction()
+            if(this.withLogFlag){
+                beforeExecutionOutput.forEach( ({sqlString}) => console.log('\x1b[33m%s\x1b[0m', sqlString.toString()) )
+            }
+            let result = await this.action(beforeExecutionOutput, this.trx)
             if(onfulfilled){
                 return onfulfilled(result)
             } else {
@@ -713,6 +760,11 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         if(trx){
             this.trx = trx
         }
+        return this
+    }
+
+    withLog(){
+        this.withLogFlag = true
         return this
     }
 

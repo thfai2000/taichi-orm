@@ -153,6 +153,10 @@ async function initData(){
     // Great!
     console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
 
+    // make query with Console.log the sql statements
+    let shops = await Shop.find( (stmt, root) => stmt.select(root.$.products())).withLog()
+     console.log('shops', shops)
+
 })()
 
 
