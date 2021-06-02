@@ -154,7 +154,7 @@ The npm package doesn't work now. It is out-dated. **The release target is Q4 of
 
 1. Install the package
 ```bash
-npm install --save bricky-orm
+npm install --save taichi-orm
 ```
 
 2. define your Data Models (or in separates files)
@@ -162,7 +162,7 @@ npm install --save bricky-orm
 
 ```javascript
 // #index.js
-import {configure, Entity, Schema, Types, builder, raw} from 'bricky-orm'
+import {configure, Entity, Schema, Types, builder, raw} from 'taichi-orm'
 
 class Shop extends Entity{
 

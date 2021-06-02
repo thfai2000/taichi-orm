@@ -49,19 +49,22 @@ const initializeDatabase = async () => {
         schema.prop('name', new Types.String(true, 100))
         schema.prop('location', new Types.String(true, 255))
         schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', new Types.Number(), (shop, applyFilters) => {
+        schema.computedProp('productCount', new Types.Number(), (shop) => {
             // let p = Product.selector()
             // return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
             return shop.$.products().count()
         })
-        schema.computedProp('hasProducts', new Types.Boolean(), (shop, applyFilters) => {
+        schema.computedProp('hasProducts', new Types.Boolean(), (shop) => {
             return shop.$.products().exists()
         })
-        schema.computedProp('hasNoProducts', new Types.Boolean(), (shop, applyFilters) => {
+        schema.computedProp('hasNoProducts', new Types.Boolean(), (shop) => {
           return shop.$.products().exists().is('=', false)
         })
-        schema.computedProp('hasOver2Products', new Types.Boolean(), (shop, applyFilters) => {
+        schema.computedProp('hasOver2Products', new Types.Boolean(), (shop) => {
             return shop.$.productCount().is('>', 2)
+        })
+        schema.computedProp('hasProductsAsync', new Types.Boolean(), async (shop) => {
+            return await shop.$.products().exists()
         })
       }
     }
@@ -160,14 +163,18 @@ describe('Simple Query', () => {
 
   test('Query by object filter + select computed fields', async () => {
     let id = 2
-    let record = await models.Shop.findOne({id}, 'products', 'productCount')
+    let record = await models.Shop.findOne({
+      select: ['products', 'productCount', 'hasProductsAsync'],
+      where: {id}
+    })
 
     expect(record).toEqual( expect.objectContaining({
       ...shopData.find(s => s.id === id),
       products: expect.arrayContaining(
           productData.filter(p => p.shopId === id).map( p => expect.objectContaining(p) )
       ),
-      productCount: productData.filter(p => p.shopId === id).length
+      productCount: productData.filter(p => p.shopId === id).length,
+      hasProductsAsync: productData.filter(p => p.shopId === id).length > 0
     }))
   })
 
@@ -253,7 +260,6 @@ describe('Computed Fields using Standard Relations', () => {
 
 })
 
-
 describe('custom Computed Fields', () => {
 
   test('Query computed field', async () => {
@@ -263,5 +269,33 @@ describe('custom Computed Fields', () => {
     })
     expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
   });
+})
 
+
+describe('Mixed Query', () => {
+
+  test('Query computed field', async () => {
+
+    let records = await models.Shop.find( (stmt, root) => 
+      stmt.select(root.$.productCount(), root.$.products({
+        select: ['colors']
+      }))
+    )
+
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.map( shop => expect.objectContaining({
+          ...shop,
+          products: expect.arrayContaining(
+            productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
+              ...p,
+              colors: expect.arrayContaining( productColorData.filter(pc => pc.productId === p.id)
+                .map( pc => expect.objectContaining( colorData.find(c => c.id === pc.colorId))) )
+            }))
+          ),
+          productCount: productData.filter(p => p.shopId === shop.id).length
+        })
+      )
+    ))
+
+  });
 })

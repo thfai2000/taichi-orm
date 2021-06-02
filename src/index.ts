@@ -2,7 +2,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import Types, { PropertyType } from './PropertyType'
 export { PropertyType, Types }
-import {makeBuilder as builder, makeRaw as raw, makeColumn, Source, makeSource, Column} from './Builder'
+import {makeBuilder as builder, isRow, makeRaw as raw, makeColumn, Source, makeSource, Column} from './Builder'
 export {builder, raw}
 import { Relations } from './Relations'
 export { Relations }
@@ -316,8 +316,8 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryFunction?: QueryFunction | SimpleObject, ...args: any[]) => {
-            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryFunction, computedFunc, rootSelector, args)
+        return (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
                 return makeColumn(null, namedProperty, subquery)
@@ -338,8 +338,8 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryFunction?: QueryFunction | SimpleObject, ...args: any[]) => {
-            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryFunction, computedFunc, rootSelector, args)
+        return (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
                 return makeColumn(null, namedProperty, subquery)
@@ -361,40 +361,82 @@ export class NamedProperty {
         }
     }
 
-    private simpleQuery(stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryFunction: SimpleObject, args: any[]) {
-        if (args.length > 0) {
+    private simpleQuery(stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryOptions) {
 
-            let names: string[] = args.map(a => {
+        let onbjectIsWhere = true
+        if(queryOptions.where){
+            stmt = stmt.where(selector(queryOptions.where))
+            onbjectIsWhere = false
+        }
+        if(queryOptions.limit){
+            stmt = stmt.limit(queryOptions.limit)
+            onbjectIsWhere = false
+        }
+        if(queryOptions.offset){
+            stmt = stmt.offset(queryOptions.offset)
+            onbjectIsWhere = false
+        }
+        if(queryOptions.select){
+            onbjectIsWhere = false
+        }
+
+        if(onbjectIsWhere){
+            stmt = stmt.where(selector(queryOptions))
+        }
+
+        if (queryOptions.select && queryOptions.select.length > 0) {
+            let names: string[] = queryOptions.select.map( (a: any) => {
                 if (typeof a !== 'string') {
                     throw new Error('Only string are allowed as arguments for Simple Filtering Approach.')
                 }
                 return a
             })
             // let props = selector.getProperties().map(p => p.computedFunc)
-            stmt = stmt.select(...names.map((a) => {
-                return selector.$[a]()
-            }))
+            let newStmt = names.reduce((stmt, a) => {
+
+                let result = selector.$$[a]()
+                if(result instanceof Promise || stmt instanceof Promise){
+                    return new Promise( async (resolve, reject) => {
+                        try{
+                            let c = (await result) as Column
+                            let builder = await stmt
+                            builder.select(c)
+                            resolve(builder)
+                        }catch(error){
+                            reject(error)
+                        }
+                    })
+                } else {
+                    return stmt.select(result)
+                }
+            }, stmt as Knex.QueryBuilder | Promise<Knex.QueryBuilder>)
+            return newStmt
+        } else {
+            return stmt
         }
-        return stmt.where(selector(queryFunction))
     }
 
-    private executeComputeFunc(queryFunction: QueryFunction | SimpleObject | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
-        const applyFilterFunc: ApplyNextQueryFunction = (stmt, selector) => {
+    private executeComputeFunc(queryObject: QueryFunction | QueryOptions | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
+        const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
             let process = (stmt: Knex.QueryBuilder) => {
                 // console.log('stmt', stmt.toString())
                 // If the function object placed into the Knex.QueryBuilder, 
                 // Knex.QueryBuilder will call it and pass itself as the parameter
                 // That's why we can say likely our compiled function didn't be called.
-                if (queryFunction && !(queryFunction instanceof Function) && !(queryFunction instanceof SimpleObjectConstructor)) {
+                if (queryObject && !(queryObject instanceof Function) && !(queryObject instanceof SimpleObjectConstructor)) {
                     console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
                     throw new Error('The QueryFunction is not instanceof Function.')
                 }
-                if(!queryFunction){
+                if(!queryObject){
                     return stmt
-                } else if(queryFunction instanceof Function){
-                    return queryFunction(stmt, selector)
-                } else if(queryFunction instanceof SimpleObjectConstructor){
-                    return this.simpleQuery(stmt, selector, queryFunction, args)
+                } else if(queryObject instanceof Function){
+                    let queryFunction = queryObject as QueryFunction
+                    return queryFunction(stmt, firstSelector, ...restSelectors)
+                } else if(queryObject instanceof SimpleObjectConstructor){
+                    if(!isRow(stmt)){
+                        throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
+                    }
+                    return this.simpleQuery(stmt, firstSelector, queryObject)
                 }
                 throw new Error('It is not support. Only Function and Object can be passed as filters.')
             }
@@ -734,9 +776,16 @@ export class SelectorImpl{
     }
 }
 
-export type CompiledFunction = (queryFunction?: QueryFunction | SimpleObject, ...args: any[]) => Column
+export type CompiledFunction = (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => Column
 
-export type CompiledFunctionPromise = (queryFunction?: QueryFunction | SimpleObject, ...args: any[]) => Promise<Column>
+export type CompiledFunctionPromise = (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => Promise<Column> | Column
+
+export type QueryOptions = {
+    select?: string[],
+    where?: SimpleObject,
+    limit?: number,
+    offset?: number
+} | SimpleObject
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
@@ -984,7 +1033,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | SimpleObject, ...args: any[]): ExecutionContext<  InstanceType<T> >{
+     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<  InstanceType<T> >{
          return new ExecutionContext< InstanceType<T> >(
             async() => {
                 return [{
@@ -1007,7 +1056,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | SimpleObject, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
             async() => {
                 return [{
@@ -1022,7 +1071,7 @@ export class Database{
         })
     }
 
-    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | SimpleObject, ...args: any[]): Promise<SQLString>{
+    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): Promise<SQLString>{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1030,6 +1079,10 @@ export class Database{
             (root, applyFilter) => {
                 let currentEntitySelector = entityClass.selector()
                 let stmt: Knex.QueryBuilder = builder(currentEntitySelector)
+
+                //@ts-ignore
+                stmt.__source = 'ABC'
+
                 return applyFilter(stmt, currentEntitySelector)
             }
         )
@@ -1234,7 +1287,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | SimpleObject, ...args: any[]): ExecutionContext<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<I>{
         return Database.findOne(this, applyFilter, ...args)
     }
 
@@ -1243,7 +1296,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | SimpleObject, ...args: any[]): ExecutionContext<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<Array<I>>{
         return Database.find(this, applyFilter, ...args)
     }
 
