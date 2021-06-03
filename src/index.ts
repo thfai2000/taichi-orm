@@ -865,13 +865,7 @@ export class Database{
     static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject ): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
             async() => {
-                let addUuid: boolean = !!config.enableUuid
-                if (config.knexConfig.client.startsWith('sqlite')) {
-                    if (!config.enableUuid ){
-                        throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
-                    }
-                }
-                let prepared = Database._prepareCreate<T>(entityClass, data, addUuid)
+                let prepared = Database._prepareCreate<T>(entityClass, data)
                 return [prepared]
             },
             async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction) => {
@@ -887,14 +881,8 @@ export class Database{
     static create<T extends typeof Entity>(entityClass: T, arrayOfData: SimpleObject[] ): ExecutionContext< InstanceType<T>[] >{
         return new ExecutionContext< InstanceType<T>[] >(
             async() => {
-                let addUUID: boolean = !!config.enableUuid
-                if (config.knexConfig.client.startsWith('sqlite')) {
-                    if (!config.enableUuid ){
-                        throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
-                    }
-                }
                 return arrayOfData.map( (data) => {
-                    return Database._prepareCreate<T>(entityClass, data, addUUID)
+                    return Database._prepareCreate<T>(entityClass, data)
                 })
             },
             async (input: BeforeExecutionOutput, existingTrx?: Knex.Transaction) => {
@@ -962,9 +950,17 @@ export class Database{
         }))
     }
 
-    private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: SimpleObject, useUuid: boolean) {
+    private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: SimpleObject) {
         const schema = entityClass.schema
-        let newUuid = uuidv4()
+
+        let useUuid: boolean = !!config.enableUuid
+        if (config.knexConfig.client.startsWith('sqlite')) {
+            if (!config.enableUuid ){
+                throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
+            }
+        }
+
+        let newUuid = null
         let newData = Object.keys(data).reduce((acc, propName) => {
             let prop = schema.namedProperties.find(p => {
                 return p.name === propName
@@ -977,6 +973,7 @@ export class Database{
         }, {} as SimpleObject)
 
         if(useUuid){
+            newUuid = uuidv4()
             newData[config.uuidColumnName] = newUuid
         }
         let stmt = getKnexInstance()(schema.tableName).insert(newData)
