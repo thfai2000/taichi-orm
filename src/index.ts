@@ -9,7 +9,7 @@ export { Relations }
 import { v4 as uuidv4 } from 'uuid'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
-const SimpleObjectConstructor = ({}).constructor
+const SimpleObjectClass = ({}).constructor
 
 export type Config = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -316,7 +316,7 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => {
+        return (queryObject?: QueryObject, ...args: any[]) => {
             let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
@@ -338,7 +338,7 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => {
+        return (queryObject?: QueryObject, ...args: any[]) => {
             let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
@@ -416,14 +416,14 @@ export class NamedProperty {
         }
     }
 
-    private executeComputeFunc(queryObject: QueryFunction | QueryOptions | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
+    private executeComputeFunc(queryObject: QueryObject | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
         const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
             let process = (stmt: Knex.QueryBuilder) => {
                 // console.log('stmt', stmt.toString())
                 // If the function object placed into the Knex.QueryBuilder, 
                 // Knex.QueryBuilder will call it and pass itself as the parameter
                 // That's why we can say likely our compiled function didn't be called.
-                if (queryObject && !(queryObject instanceof Function) && !(queryObject instanceof SimpleObjectConstructor)) {
+                if (queryObject && !(queryObject instanceof Function) && !(queryObject instanceof SimpleObjectClass)) {
                     console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
                     throw new Error('The QueryFunction is not instanceof Function.')
                 }
@@ -432,7 +432,7 @@ export class NamedProperty {
                 } else if(queryObject instanceof Function){
                     let queryFunction = queryObject as QueryFunction
                     return queryFunction(stmt, firstSelector, ...restSelectors)
-                } else if(queryObject instanceof SimpleObjectConstructor){
+                } else if(queryObject instanceof SimpleObjectClass){
                     if(!isRow(stmt)){
                         throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
                     }
@@ -776,9 +776,9 @@ export class SelectorImpl{
     }
 }
 
-export type CompiledFunction = (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => Column
+export type CompiledFunction = (queryObject?: QueryObject, ...args: any[]) => Column
 
-export type CompiledFunctionPromise = (queryObject?: QueryFunction | QueryOptions, ...args: any[]) => Promise<Column> | Column
+export type CompiledFunctionPromise = (queryObject?: QueryObject, ...args: any[]) => Promise<Column> | Column
 
 export type QueryOptions = {
     select?: string[],
@@ -788,6 +788,8 @@ export type QueryOptions = {
 } | SimpleObject
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
+
+export type QueryObject = QueryFunction | QueryOptions | null
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
@@ -858,46 +860,7 @@ export class ExecutionContext<I> implements PromiseLike<I>{
     }
 }
 export class Database{
-
-    static run(...args: Array<typeof Entity | ((...args: Array<Selector>) => Knex.QueryBuilder )> ) : ExecutionContext<Dual[]> {
-        return new ExecutionContext<Dual[]>(
-            async() => {
-                if(args.length < 1){
-                    throw new Error('At least one selector callback should be given.')
-                }
-            
-                let callback = args[args.length -1] as (...args: Array<Selector>) => Knex.QueryBuilder
-                let entities = args.slice(0, args.length -1) as Array<typeof Dual>
-                let selectors = entities.map(entity => entity.selector())
-                let stmt = callback(...selectors)
-
-                let dualSelector = Dual.newSelector()
-                let prop = new NamedProperty(
-                    'data',
-                    new Types.ArrayOf(Dual),
-                    async (dualSelector, applyFilter): Promise<Knex.QueryBuilder> => {
-                        return applyFilter( await stmt, dualSelector)
-                    }
-                )
-                dualSelector.registerProp(prop)
-
-                return [{
-                    sqlString: builder().select(await dualSelector.$$.data()),
-                    uuid: null
-                }]
-            },
-            async(input: BeforeExecutionOutput, trx?: Knex.Transaction) => {
-                // console.debug("======== run ========")
-                // console.debug(stmt.toString())
-                // console.debug("=====================")
-                if(input.length > 1){
-                    throw new Error('Unexpected Flow.')
-                }
-
-                let rows = await Database._find(Dual, input[0].sqlString, trx)
-                return rows
-            })
-    }
+    
 
     static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject ): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
@@ -1033,7 +996,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<  InstanceType<T> >{
+     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]): ExecutionContext<  InstanceType<T> >{
          return new ExecutionContext< InstanceType<T> >(
             async() => {
                 return [{
@@ -1056,7 +1019,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
             async() => {
                 return [{
@@ -1071,7 +1034,7 @@ export class Database{
         })
     }
 
-    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryFunction | QueryOptions, ...args: any[]): Promise<SQLString>{
+    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]): Promise<SQLString>{
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1287,7 +1250,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryObject, ...args: any[]): ExecutionContext<I>{
         return Database.findOne(this, applyFilter, ...args)
     }
 
@@ -1296,7 +1259,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryFunction | QueryOptions, ...args: any[]): ExecutionContext<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryObject, ...args: any[]): ExecutionContext<Array<I>>{
         return Database.find(this, applyFilter, ...args)
     }
 
@@ -1316,8 +1279,6 @@ export class Dual extends Entity {
     }
 }
 
-
-export const run = Database.run
 export const models = registeredModels
 
 /**

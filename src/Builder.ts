@@ -3,17 +3,23 @@ import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProp
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, StringType } from "./PropertyType"
 
 
+declare module "knex" {
+    export namespace Knex {
+        interface QueryBuilder {
+            __type: 'Row'
+            __selectItems: SelectItem[]
+            __realSelect: Function
+            __realClearSelect: Function
+        }
+    }
+}
+
 type SelectItem = {
     raw: Knex.Raw | any,
     actualAlias: string
 }
 
-export interface Row extends Knex.QueryBuilder{
-    __type: 'Row'
-    __selectItems: SelectItem[]
-    __realSelect: Function
-    __realClearSelect: Function
-}
+
 
 export interface Column<T = any> extends Knex.Raw {
     __type: 'Column'
@@ -35,13 +41,13 @@ export interface Source extends Knex.Raw {
     rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
 }
 
-const castAsRow = (builder: any) : Row => {
-    //@ts-ignore
-    if(builder.__type === 'Row' ){
-        return builder as Row
-    }
-    throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
-}
+// const castAsRow = (builder: any) : Row => {
+//     //@ts-ignore
+//     if(builder.__type === 'Row' ){
+//         return builder as Row
+//     }
+//     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
+// }
 
 export const isRow = (builder: any) : boolean => {
     //@ts-ignore
@@ -52,7 +58,7 @@ export const isRow = (builder: any) : boolean => {
 }
 
 export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder {
-    let sealBuilder: Row = getKnexInstance().clearSelect() as Row
+    let sealBuilder = getKnexInstance().clearSelect()
     
     // @ts-ignore
     sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
@@ -87,14 +93,13 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
 
                             // @ts-ignore
                             if(expression.__type === 'Row'){
-                                let castedExpression = expression as Row
+                                let castedExpression = expression as Knex.QueryBuilder
                                 let extractedColumnNames = extractColumns(castedExpression)
                                 if(extractedColumnNames.length === 0){
                                     throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
                                 }
                                 finalExpr = definition.readTransform(castedExpression, extractedColumnNames).toString()
                             } else {
-                                console.log('xxxxxxxxx', prop.name, definition, expression.toString())
                                 finalExpr = definition.readTransform(expression, null).toString()
                             }
 
@@ -153,7 +158,7 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
 
     //after the select is override, add default 'all'
     if(mainSelector){
-        sealBuilder = sealBuilder.select(mainSelector.star).from(mainSelector.source) as Row
+        sealBuilder = sealBuilder.select(mainSelector.star).from(mainSelector.source)
     }
 
     return sealBuilder
@@ -218,39 +223,39 @@ export const makeColumn = <T = any>(selector: Selector | null, prop: NamedProper
     return column
 }
 
-export const makeSource = (joinText: string | null, selector: Selector, leftColumn?: Column, operator?: string, rightColumn?: Column): Source => {
+export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<Column | string>): Source => {
     let t = `${quote(selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
 
     joinText  = (joinText ?? '').trim()
 
-    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${leftColumn} ${operator} ${rightColumn}`}`
+    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${items.join(' ')}`}`
 
     let target = makeRaw(raw) as Source
     target.__type = 'Source'
     target.__selector = selector
     target.__raw = raw
     
-    target.innerJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
-        let s = makeSource(`${target.__raw} INNER JOIN`, source.__selector, leftColumn, operator, rightColumn)
+    target.innerJoin = (source: Source, ...items: Array<Column | string>) => {
+        let s = makeSource(`${target.__raw} INNER JOIN`, source.__selector, ...items)
         return s
     }
 
-    target.leftJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
-        let s = makeSource(`${target.__raw} LEFT JOIN`, source.__selector, leftColumn, operator, rightColumn)
+    target.leftJoin = (source: Source, ...items: Array<Column | string>) => {
+        let s = makeSource(`${target.__raw} LEFT JOIN`, source.__selector, ...items)
         return s
     }
 
-    target.rightJoin = (source: Source, leftColumn: Column, operator: string, rightColumn: Column) => {
-        let s = makeSource(`${target.__raw} RIGHT JOIN`, source.__selector, leftColumn, operator, rightColumn)
+    target.rightJoin = (source: Source, ...items: Array<Column | string>) => {
+        let s = makeSource(`${target.__raw} RIGHT JOIN`, source.__selector, ...items)
         return s
     }
     return target
 }
 
-export const extractColumns = (builderOrRaw: Knex.QueryBuilder): string[] => {
+export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
     
-    let ourBuilder = castAsRow(builderOrRaw)
-    return ourBuilder.__selectItems.map(item => {
+    // let ourBuilder = castAsRow(builderOrRaw)
+    return builder.__selectItems.map(item => {
         return item.actualAlias
     })
 }
