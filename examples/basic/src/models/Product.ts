@@ -1,4 +1,4 @@
-import {Entity, Schema, select, Types, Relations} from '../../../../dist';
+import {Entity, Schema, Types, Relations} from '../../../../dist';
 import Shop from './Shop';
 import Color from './Color';
 

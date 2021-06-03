@@ -1,5 +1,5 @@
 // import { Knex } from 'knex';
-import {Entity, Types, Schema, select, raw, Relations} from '../../../../dist';
+import {Entity, Types, builder, Schema, raw, Relations} from '../../../../dist';
 import Product from './Product';
 // import 'reflect-metadata'
 
@@ -12,7 +12,7 @@ export default class Shop extends Entity{
         
         schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
             let p = Product.selector()
-            return applyFilters( select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+            return applyFilters( builder().select(raw('COUNT(*)')).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
         })
 
         // When Entity.create, Entity.update, Entity.delete is called

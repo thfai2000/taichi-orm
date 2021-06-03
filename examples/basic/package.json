@@ -16,6 +16,9 @@
   "bugs": {
     "url": "https://github.com/thfai2000/lorm-examples/issues"
   },
+  "engines": {
+    "node": ">= 14"
+  },
   "homepage": "https://github.com/thfai2000/lorm-examples#readme",
   "description": "",
   "dependencies": {
