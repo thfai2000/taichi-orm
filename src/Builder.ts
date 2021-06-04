@@ -2,6 +2,13 @@ import { Knex}  from "knex"
 import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid } from "."
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, StringType } from "./PropertyType"
 
+// type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
+
+// type Dataset<TRecord = any, TResult = any> = {
+//     [Property in keyof Knex.QueryBuilder<TRecord, TResult>]: 
+//         Knex.QueryBuilder<TRecord, TResult>[Property] extends (...a: any) => Knex.QueryBuilder<TRecord, TResult> ? 
+//             ReplaceReturnType< Knex.QueryBuilder<TRecord, TResult>[Property], Dataset> : ( Knex.QueryBuilder<TRecord, TResult>[Property] extends Knex.QueryBuilder<TRecord, TResult> ?  Dataset : Knex.QueryBuilder<TRecord, TResult>[Property]  )
+// }
 
 declare module "knex" {
     export namespace Knex {
