@@ -268,11 +268,26 @@ describe('custom Computed Fields', () => {
         return stmt.select(root.$.productCount()).where(root.pk, '=', id)
     })
     expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
+
   });
+
 })
 
 
 describe('Mixed Query', () => {
+
+  test("Standard", async() => {
+
+    // Shop.find({
+    //   where: {id: 5},
+    //   limit: 10,
+    //   offset: 5,
+    //   $product: {
+    //     where: {id: 5},
+    //     limit: 10
+    //   }
+    // })
+  })
 
   test('Query computed field', async () => {
 
