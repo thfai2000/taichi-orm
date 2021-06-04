@@ -49,6 +49,12 @@ describe('Test Create - No transaction', () => {
     expect(record).toEqual( expect.objectContaining({
       ...shopData
     }))
+
+    //try to find it again, to prove it can get it
+    let found = await models.Shop.findOne({id: 5})
+    expect(found).toEqual( expect.objectContaining({
+      ...shopData
+    }))
   })
 
 
@@ -65,6 +71,13 @@ describe('Test Create - No transaction', () => {
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
+
+    //try to find it again, to prove it can get it
+    let found = await models.Shop.find()
+    expect(found).toEqual(shopData.map(shop => expect.objectContaining({
+      ...shop
+    })))
+
   })
 
 })

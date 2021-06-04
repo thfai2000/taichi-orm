@@ -1128,14 +1128,20 @@ export class Database{
             let updateStmt = input.sqlString
             let selectStmt = input.sideSqlString.select(entityClass.schema.primaryKey.fieldName)
             
-            let pks: number[]
+            let pks: number[] = []
             if (config.knexConfig.client.startsWith('mysql')) {
                 let result = await this.executeStatement(selectStmt, trx)
                 pks = result[0].map( (r: SimpleObject) => r[entityClass.schema.primaryKey.fieldName])
             } else if (config.knexConfig.client.startsWith('sqlite')) {
                 let result = await this.executeStatement(selectStmt, trx)
                 pks = result.map( (r: SimpleObject) => r[entityClass.schema.primaryKey.fieldName])
-            } else {
+            } else if (config.knexConfig.client.startsWith('pg')) {
+                updateStmt = updateStmt.returning(entityClass.schema.primaryKey.fieldName)
+                let updateResult = await this.executeStatement(updateStmt, trx)
+                return await Promise.all((updateResult.rows as SimpleObject[] ).map( async (row) => {
+                    return () => this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: row[entityClass.schema.primaryKey.fieldName]})
+                }))
+            }else {
                 throw new Error('NYI.')
             }
 
@@ -1350,6 +1356,10 @@ export class Entity {
 
     static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<I>{
         return Database.updateOne(this, data, applyFilter, ...args)
+    }
+
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<I[]>{
+        return Database.update(this, data, applyFilter, ...args)
     }
 
     /**
