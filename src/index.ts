@@ -51,34 +51,14 @@ export const client = (): string => config.knexConfig.client.toString()
 export const quote = (name: string) => {
     let c = client()
     if(c.startsWith('sqlite') || c.startsWith('mysql') ){
-        //TODO: escape `
-        return `\`${name}\``
+        return `\`${name.replace(/\`/g, '``')}\``
     } else if (c.startsWith('pg')){
-        //TODO: escape "
-        return `"${name}"`
+        return `"${name.replace(/\"/g, '""')}"`
     }
     throw new Error('Unsupport client')
 }
 
 let _globalKnexInstance: Knex | null = null
-
-// let _sqlParser: Parser | null = null
-
-// const getSqlParser = (): Parser => {
-//     if(_sqlParser){
-//         return _sqlParser
-//     }
-//     let pkg = 'node-sql-parser'
-//     if(client().startsWith('pg')){
-//         pkg = 'node-sql-parser/build/postgresql'
-//     } else if(client().startsWith('mysql')){
-//         pkg = 'node-sql-parser/build/mysql'
-//     }
-
-//     const {Parser} = require(pkg)
-//     _sqlParser = new Parser()
-//     return _sqlParser!
-// }
 
 // a global knex instance
 export const getKnexInstance = (): Knex => {
@@ -316,7 +296,7 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryObject?: QueryObject, ...args: any[]) => {
+        return (queryObject?: QueryOptions, ...args: any[]) => {
             let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
@@ -338,7 +318,7 @@ export class NamedProperty {
         let namedProperty = this
         // let fieldAlias = metaFieldAlias(namedProperty)
 
-        return (queryObject?: QueryObject, ...args: any[]) => {
+        return (queryObject?: QueryOptions, ...args: any[]) => {
             let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryObject, computedFunc, rootSelector, args)
 
             let process = (subquery: Knex.QueryBuilder): Column => {
@@ -361,26 +341,37 @@ export class NamedProperty {
         }
     }
 
-    private simpleQuery(stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryOptions) {
+    private simpleQuery(stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryObject) {
 
-        let onbjectIsWhere = true
+        // let select: any[] = []
+        let isOnlyWhere = true
         if(queryOptions.where){
             stmt = stmt.where(selector(queryOptions.where))
-            onbjectIsWhere = false
+            isOnlyWhere = false
         }
         if(queryOptions.limit){
             stmt = stmt.limit(queryOptions.limit)
-            onbjectIsWhere = false
+            isOnlyWhere = false
         }
         if(queryOptions.offset){
             stmt = stmt.offset(queryOptions.offset)
-            onbjectIsWhere = false
+            isOnlyWhere = false
+        }
+        if(queryOptions.orderBy){
+            stmt = stmt.orderBy(queryOptions.orderBy)
+            isOnlyWhere = false
         }
         if(queryOptions.select){
-            onbjectIsWhere = false
+            isOnlyWhere = false
         }
+        // if(queryOptions.select && queryOptions.select.length > 0){
+        //     select = select.concat(queryOptions.select)
+        // }
+        //TODO: find all select  & and mark isOnlyWhere = false
+        // Object.keys(queryOptions).filter(key => key.startsWith('$') || key.startsWith('_') )
+       
 
-        if(onbjectIsWhere){
+        if(isOnlyWhere){
             stmt = stmt.where(selector(queryOptions))
         }
 
@@ -416,7 +407,7 @@ export class NamedProperty {
         }
     }
 
-    private executeComputeFunc(queryObject: QueryObject | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
+    private executeComputeFunc(queryObject: QueryOptions | undefined, computedFunc: ComputedFunction, rootSelector: SelectorImpl, args: any[]) {
         const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
             let process = (stmt: Knex.QueryBuilder) => {
                 // console.log('stmt', stmt.toString())
@@ -775,20 +766,36 @@ export class SelectorImpl{
     }
 }
 
-export type CompiledFunction = (queryObject?: QueryObject, ...args: any[]) => Column
+export type CompiledFunction = (queryObject?: QueryOptions, ...args: any[]) => Column
 
-export type CompiledFunctionPromise = (queryObject?: QueryObject, ...args: any[]) => Promise<Column> | Column
+export type CompiledFunctionPromise = (queryObject?: QueryOptions, ...args: any[]) => Promise<Column> | Column
 
-export type QueryOptions = {
-    select?: string[],
-    where?: SimpleObject,
+export type EntityPropertyKeyValues = {
+    [key: string]: boolean | number | string | any | Array<any>
+}
+
+export type QuerySelectMap = {
+    [key: string]: boolean | QueryFunction | Array<QueryFunction | any>
+}
+
+export type QuerySelect = string[]
+
+export type QueryWhere = EntityPropertyKeyValues
+
+export type QueryOrderBy = (string | {column: string, order: 'asc' | 'desc'} )[]
+
+export type QueryObject = ({
+    select?: QuerySelect,
+    where?: QueryWhere,
     limit?: number,
-    offset?: number
-} | SimpleObject
+    offset?: number,
+    orderBy?: QueryOrderBy
+} & QuerySelectMap) | QueryWhere
+
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-export type QueryObject = QueryFunction | QueryOptions | null
+export type QueryOptions = QueryFunction | QueryObject | null
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
@@ -797,7 +804,7 @@ type BeforeExecutionAction = () => Promise<BeforeExecutionOutput>
 type BeforeExecutionOutput = Array<{
     sqlString: Knex.QueryBuilder,
     sideSqlString?: Knex.QueryBuilder,
-    entityData?: SimpleObject,
+    entityData?: EntityPropertyKeyValues,
     uuid: string | null
 }>
 
@@ -863,7 +870,7 @@ export class ExecutionContext<I> implements PromiseLike<I>{
 export class Database{
     
 
-    static createOne<T extends typeof Entity>(entityClass: T, data: SimpleObject ): ExecutionContext< InstanceType<T> >{
+    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues ): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
             async() => {
                 let prepared = Database._prepareCreate<T>(entityClass, data)
@@ -879,7 +886,7 @@ export class Database{
         )
     }
 
-    static create<T extends typeof Entity>(entityClass: T, arrayOfData: SimpleObject[] ): ExecutionContext< InstanceType<T>[] >{
+    static create<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[] ): ExecutionContext< InstanceType<T>[] >{
         return new ExecutionContext< InstanceType<T>[] >(
             async() => {
                 return arrayOfData.map( (data) => {
@@ -933,7 +940,7 @@ export class Database{
                     return record
 
                 } else {
-                    throw new Error('NYI')
+                    throw new Error('Unsupport client')
                 }
                 
             }))
@@ -950,7 +957,7 @@ export class Database{
         }))
     }
 
-    private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: SimpleObject) {
+    private static _prepareCreate<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues) {
         const schema = entityClass.schema
 
         let useUuid: boolean = !!config.enableUuid
@@ -979,7 +986,7 @@ export class Database{
         }
     }
 
-    private static _prepareNewData(data: SimpleObject, schema: Schema) {
+    private static _prepareNewData(data: EntityPropertyKeyValues, schema: Schema) {
         return Object.keys(data).reduce((acc, propName) => {
             let prop = schema.namedProperties.find(p => {
                 return p.name === propName
@@ -989,7 +996,7 @@ export class Database{
             }
             acc[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop)
             return acc
-        }, {} as SimpleObject)
+        }, {} as EntityPropertyKeyValues)
     }
 
     /**
@@ -997,7 +1004,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]): ExecutionContext<  InstanceType<T> >{
+     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<  InstanceType<T> >{
          return new ExecutionContext< InstanceType<T> >(
             async() => {
                 return [await Database._prepareFind(entityClass, applyFilter, ...args)]
@@ -1017,7 +1024,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<  Array<InstanceType<T>> >{
         return new ExecutionContext< Array<InstanceType<T>> >(
             async() => {
                 return [await Database._prepareFind(entityClass, applyFilter, ...args)]
@@ -1029,7 +1036,7 @@ export class Database{
         })
     }
 
-    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryObject, ...args: any[]) {
+    private static async _prepareFind<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, ...args: any[]) {
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1062,7 +1069,7 @@ export class Database{
         } else if(config.knexConfig.client.startsWith('pg')){
             rowData = resultData.rows[0]
         } else {
-            throw new Error('NYI')
+            throw new Error('Unsupport client.')
         }
         let dualInstance = this.parseRaw(Dual, rowData)
         let str = "data" as keyof Dual
@@ -1070,7 +1077,7 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, data: SimpleObject, applyFilter?: QueryObject, ...args: any[]): ExecutionContext< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext< InstanceType<T> >{
         return new ExecutionContext< InstanceType<T> >(
             async () => {
                 let prepared = Database._prepareUpdate<T>(entityClass, data, applyFilter, ...args)
@@ -1083,7 +1090,7 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, data: SimpleObject, applyFilter?: QueryObject, ...args: any[]): ExecutionContext< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext< InstanceType<T>[] >{
         return new ExecutionContext< InstanceType<T>[] >(
             async () => {
                 let prepared = Database._prepareUpdate<T>(entityClass, data, applyFilter, ...args)
@@ -1096,7 +1103,7 @@ export class Database{
         )
     }
 
-    private static _prepareUpdate<T extends typeof Entity>(entityClass: T, data: SimpleObject, applyFilter?: QueryObject, ...args: any[]) {
+    private static _prepareUpdate<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]) {
         const schema = entityClass.schema
         const s = entityClass.selector()
         let newData = Database._prepareNewData(data, schema)
@@ -1191,7 +1198,7 @@ export class Database{
         return result
     }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, row: SimpleObject): InstanceType<T>{
+    static parseRaw<T extends typeof Entity>(entityClass: T, row: EntityPropertyKeyValues): InstanceType<T>{
         // let entityClass = (entityConstructor as unknown as typeof Entity)
         // let entityClass = this
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
@@ -1333,15 +1340,15 @@ export class Entity {
         return selector
     }
 
-    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: SimpleObject[]): ExecutionContext<I[]>{
+    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): ExecutionContext<I[]>{
         return Database.create(this, arrayOfData)
     }
 
-    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: SimpleObject): ExecutionContext<I>{
+    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): ExecutionContext<I>{
         return Database.createOne(this, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: SimpleObject, applyFilter?: QueryObject, ...args: any[]): ExecutionContext<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<I>{
         return Database.updateOne(this, data, applyFilter, ...args)
     }
 
@@ -1350,7 +1357,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryObject, ...args: any[]): ExecutionContext<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<I>{
         return Database.findOne(this, applyFilter, ...args)
     }
 
@@ -1359,11 +1366,11 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryObject, ...args: any[]): ExecutionContext<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions, ...args: any[]): ExecutionContext<Array<I>>{
         return Database.find(this, applyFilter, ...args)
     }
 
-    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: SimpleObject): I{
+    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
         let r = Database.parseRaw(this, row)
         return r as I
     }
