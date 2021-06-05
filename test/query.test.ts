@@ -46,47 +46,63 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', new Types.String(true, 100))
-        schema.prop('location', new Types.String(true, 255))
-        schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-        schema.computedProp('productCount', new Types.Number(), (shop) => {
+        schema.prop('name', new Types.String({length: 255}))
+        schema.prop('location', new Types.String({length: 255}))
+        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf(Product, {
+          compute: Relations.has(Product, 'shopId')
+        }) ) )
+        schema.prop('productCount', new Types.Number({
+          compute: (shop) => {
             // let p = Product.selector()
             // return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
             return shop.$.products().count()
-        })
-        schema.computedProp('hasProducts', new Types.Boolean(), (shop) => {
+          }
+        }))
+        schema.prop('hasProducts', new Types.Boolean({
+          compute: (shop) => {
             return shop.$.products().exists()
-        })
-        schema.computedProp('hasNoProducts', new Types.Boolean(), (shop) => {
-          return shop.$.products().exists().is('=', false)
-        })
-        schema.computedProp('hasOver2Products', new Types.Boolean(), (shop) => {
+          }
+        }))
+        schema.prop('hasNoProducts', new Types.Boolean({
+          compute: (shop) => {
+            return shop.$.products().exists().is('=', false)
+          }
+        }))
+        schema.prop('hasOver2Products', new Types.Boolean({
+          compute: (shop) => {
             return shop.$.productCount().is('>', 2)
-        })
-        schema.computedProp('hasProductsAsync', new Types.Boolean(), async (shop) => {
+          }
+        }))
+        schema.prop('hasProductsAsync', new Types.Boolean({
+          compute: async (shop) => {
             return await shop.$.products().exists()
-        })
+          }
+        }))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', new Types.String(true, 255))
-        schema.prop('createdAt', new Types.DateTime(true, 6))
+        schema.prop('name', new Types.String({length: 255}))
+        schema.prop('createdAt', new Types.DateTime({precision: 6}))
         schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
+        schema.prop('shop', new Types.ObjectOf(Shop, {
+          compute: Relations.belongsTo(Shop, 'shopId')
+        }))
 
-        schema.computedProp('colors', 
-          new Types.ArrayOf(Color), 
-          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
+        schema.prop('colors', 
+          new Types.ArrayOf(new Types.ObjectOf(Color, {
+            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
+          }))
         )
         
-        schema.computedProp('mainColor', 
-          new Types.ObjectOf(Color), 
-          Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
-            return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
+        schema.prop('mainColor', 
+          new Types.ObjectOf(Color, {
+            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+              return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
+            })
           })
         )
       }
@@ -94,15 +110,18 @@ const initializeDatabase = async () => {
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', new Types.String(true, 50))
+        schema.prop('code', new Types.String({
+          nullable: false,
+          length: 50
+        }))
       }
     }
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('productId', new Types.Number(false))
-        schema.prop('colorId', new Types.Number(false))
-        schema.prop('type', new Types.String(false, 50))
+        schema.prop('productId', new Types.Number({nullable: false}))
+        schema.prop('colorId', new Types.Number({nullable: false}))
+        schema.prop('type', new Types.String({nullable: false, length: 50}))
       }
     }
 

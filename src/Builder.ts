@@ -36,7 +36,7 @@ export interface Column<T = any> extends Knex.Raw {
     count(): Column<NumberType> 
     exists(): Column<BooleanType> 
     is(operator: string, value: any): Column<BooleanType> 
-    as(propName: string): Column<T>         //rename
+    as(propName: string): Column<T>         //TODO: implement rename
 }
 
 export interface Source extends Knex.Raw {
@@ -105,9 +105,9 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                                 if(extractedColumnNames.length === 0){
                                     throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
                                 }
-                                finalExpr = definition.queryTransform(castedExpression, extractedColumnNames).toString()
+                                finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1').toString()
                             } else {
-                                finalExpr = definition.queryTransform(expression, null).toString()
+                                finalExpr = definition.queryTransform(expression, null, 'column1').toString()
                             }
 
                         } else {
@@ -205,7 +205,7 @@ export const makeColumn = <T = any>(selector: Selector | null, prop: NamedProper
         if(!expression || prop === '*'){
             throw new Error('Only Dataset can apply count')
         }
-        return makeColumn<NumberType>(null, new NamedProperty(`${prop.name}`, new Types.Number, null),
+        return makeColumn<NumberType>(null, new NamedProperty(`${prop.name}`, new Types.Number()),
             makeBuilder().count().from(makeRaw(`(${expression}) AS ${quote(makeid(5))}`)) )
     }
 
@@ -214,7 +214,7 @@ export const makeColumn = <T = any>(selector: Selector | null, prop: NamedProper
             throw new Error('Only Dataset can apply exists')
         }
 
-        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean, null),
+        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean()),
             makeRaw(`EXISTS (${expression})`) )
     }
 
@@ -223,7 +223,7 @@ export const makeColumn = <T = any>(selector: Selector | null, prop: NamedProper
             throw new Error('Only Dataset can apply count')
         }
 
-        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean, null),
+        return makeColumn<BooleanType>(null, new NamedProperty(`${prop.name}`, new Types.Boolean()),
             makeRaw(`(${expression}) ${operator} ?`, [value]) )
     }
     

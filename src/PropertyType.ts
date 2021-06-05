@@ -1,12 +1,22 @@
-import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty } from "."
+import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction } from "."
 
-export interface PropertyType {
+export abstract class PropertyDefinition<I = any> {
+    private _computeFunc: ComputeFunction | null
+
+    constructor(computeFunc?: ComputeFunction | null){
+        this._computeFunc = computeFunc ?? null
+    }
+
+    get computeFunc(){
+        return this._computeFunc
+    }
+
     // isPrimitive: boolean
-    create(prop: NamedProperty) : string[]
-    queryTransform?(query: SQLString, columns: string[] | null): SQLString
+    abstract create(prop: NamedProperty) : string[]
+    queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
     mutateTransform?(query: SQLString, columns: string[]):SQLString
-    parseRaw(rawValue: any, prop: NamedProperty): any
-    parseProperty(propertyvalue: any, prop: NamedProperty):any
+    abstract parseRaw(rawValue: any, prop: NamedProperty): I
+    abstract parseProperty(propertyvalue: I, prop: NamedProperty):any
 }
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
@@ -43,10 +53,13 @@ const emptyJsonArray = () => {
         throw new Error('NYI')
 }
 
-export class PrimaryKeyType implements PropertyType {
+export class PrimaryKeyType extends PropertyDefinition<number> {
 
-    parseRaw(rawValue: any, prop: NamedProperty): any {
-        return rawValue === null? null : parseInt(rawValue)
+    parseRaw(rawValue: any, prop: NamedProperty): number {
+        if(rawValue === null){
+            throw new Error(`The Property '${prop.name}' cannot be null.`)
+        }
+        return parseInt(rawValue)
     }
 
     parseProperty(propertyvalue: any, prop: NamedProperty): any {
@@ -81,11 +94,16 @@ export class PrimaryKeyType implements PropertyType {
     }
 }
 
-export class NumberType implements PropertyType {
+type NumberTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: number }
+export class NumberType extends PropertyDefinition<number | null> {
+    options: NumberTypeOptions
     
-    constructor(private nullable: boolean = true, private options?: SimpleObject){}
+    constructor(options: Partial<NumberTypeOptions> ={}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
         
-    parseRaw(rawValue: any): any {
+    parseRaw(rawValue: any): number | null {
         if(rawValue === null)
             return null
         else if(Number.isInteger(rawValue)){
@@ -93,8 +111,8 @@ export class NumberType implements PropertyType {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: any, prop: NamedProperty): any {
-        if(propertyvalue === null && !this.nullable){
+    parseProperty(propertyvalue: any, prop: NamedProperty) {
+        if(propertyvalue === null && !this.options.nullable){
             throw new Error(`The Property '${prop.name}' cannot be null.`)
         }
         return propertyvalue
@@ -104,22 +122,28 @@ export class NumberType implements PropertyType {
             [
                 `${quote(prop.fieldName)}`, 
                 'INTEGER', 
-                nullableText(this.nullable), 
+                nullableText(this.options.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
             ].join(' ')
         ]
     }
 }
 
-export class DecimalType implements PropertyType {
+type DecimalTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: number, precision?: number, scale?: number }
+export class DecimalType extends PropertyDefinition<number | null> {
 
-    constructor(private nullable: boolean = true, private precision?: number, private scale?: number, private options?: SimpleObject){}
-  
-    parseRaw(rawValue: any): any{
+    options: DecimalTypeOptions
+    
+    constructor(options: Partial<DecimalTypeOptions> = {}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
+
+    parseRaw(rawValue: any): number | null{
             return rawValue === null? null: parseFloat(rawValue)
         }
         parseProperty(propertyvalue: any, prop: NamedProperty): any {
-            if(propertyvalue === null && !this.nullable){
+            if(propertyvalue === null && !this.options.nullable){
                     throw new Error(`The Property '${prop.name}' cannot be null.`)
                 }
                 return propertyvalue
@@ -127,94 +151,111 @@ export class DecimalType implements PropertyType {
 
         create(prop: NamedProperty){
 
-            let c = [this.precision, this.scale].filter(v => v).join(',')
+            let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
             return [
                 [
                     `${quote(prop.fieldName)}`, 
                     `DECIMAL${c.length > 0?`(${c})`:''}`,
-                    nullableText(this.nullable), 
+                    nullableText(this.options.nullable), 
                     (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
                 ].join(' ')
             ]
         }
 }
 
-export class BooleanType implements PropertyType{
+type BooleanTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: boolean }
+export class BooleanType extends PropertyDefinition<boolean | null>{
+    options: BooleanTypeOptions
 
-    constructor(private nullable: boolean = true, private options?: SimpleObject) {}
+    constructor(options: Partial<BooleanTypeOptions> = {}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
 
-        parseRaw(rawValue: any): any {
-            //TODO: warning if nullable is false but value is null
-            if(rawValue === null)
-                return null
-            else if(rawValue === true)
-                return true
-            else if(rawValue === false)
-                return false
-            else if(Number.isInteger(rawValue)){
-                return parseInt(rawValue) > 0
-            }
-            throw new Error('Cannot parse Raw into Boolean')
+    parseRaw(rawValue: any): boolean | null {
+        //TODO: warning if nullable is false but value is null
+        if(rawValue === null)
+            return null
+        else if(rawValue === true)
+            return true
+        else if(rawValue === false)
+            return false
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue) > 0
         }
-        parseProperty(propertyvalue: any, prop: NamedProperty): any {
-            if(propertyvalue === null && !this.nullable){
-                throw new Error(`The Property '${prop.name}' cannot be null.`)
-            }
-            return propertyvalue === null? null: (propertyvalue? '1': '0')
+        throw new Error('Cannot parse Raw into Boolean')
+    }
+    parseProperty(propertyvalue: any, prop: NamedProperty): any {
+        if(propertyvalue === null && !this.options.nullable){
+            throw new Error(`The Property '${prop.name}' cannot be null.`)
         }
+        return propertyvalue === null? null: (propertyvalue? '1': '0')
+    }
 
-        create(prop: NamedProperty){
-            return [
-            [
-                `${quote(prop.fieldName)}`,
-                ( client().startsWith('pg')?'SMALLINT':`TINYINT(1)`),
-                nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
-            ].join(' ')
-        ]
+    create(prop: NamedProperty){
+        return [
+        [
+            `${quote(prop.fieldName)}`,
+            ( client().startsWith('pg')?'SMALLINT':`TINYINT(1)`),
+            nullableText(this.options.nullable), 
+            (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
+        ].join(' ')
+    ]
     }
 
 }
 
-export class StringType implements PropertyType{
+type StringTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: string, length?: number }
+export class StringType extends PropertyDefinition<string | null>{
     
-    constructor(private nullable: boolean = true, private length?: number, private options?: SimpleObject) {}
+    options: StringTypeOptions
 
-    parseRaw(rawValue: any): any {
+    constructor(options: Partial<StringTypeOptions> = {}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
+
+    parseRaw(rawValue: any): string | null {
         //TODO: warning if nullable is false but value is null
         return rawValue === null? null: `${rawValue}`
     }
     parseProperty(propertyvalue: any, prop: NamedProperty): any{
-        if(propertyvalue === null && !this.nullable){
+        if(propertyvalue === null && !this.options.nullable){
             throw new Error(`The Property '${prop.name}' cannot be null.`)
         }
         return propertyvalue
     }
 
     create(prop: NamedProperty){
-        let c = [this.length].filter(v => v).join(',')
+        let c = [this.options.length].filter(v => v).join(',')
         return [
             [
                 `${quote(prop.fieldName)}`,
                 `VARCHAR${c.length > 0?`(${c})`:''}`,
-                nullableText(this.nullable), 
+                nullableText(this.options.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
             ].join(' ')
         ]
     }
 }
 
-export class DateType implements PropertyType{
+type DateTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: Date }
+export class DateType extends PropertyDefinition<Date | null>{
 
-    constructor(private nullable: boolean = true, private options?: SimpleObject) {}
+    options: DateTypeOptions
 
-    parseRaw(rawValue: any): any {
+    constructor(options: Partial<DateTypeOptions> = {}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
+
+    parseRaw(rawValue: any): Date | null {
         //TODO: warning if nullable is false but value is null
         return rawValue === null? null: new Date(rawValue)
     }
     parseProperty(propertyvalue: any, prop: NamedProperty): any {
-        if(propertyvalue === null && !this.nullable){
+        if(propertyvalue === null && !this.options.nullable){
             throw new Error(`The Property '${prop.name}' cannot be null.`)
         }
         return propertyvalue
@@ -225,52 +266,66 @@ export class DateType implements PropertyType{
             [
                 `${quote(prop.fieldName)}`,
                 `DATE`,
-                nullableText(this.nullable), 
+                nullableText(this.options.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
             ].join(' ')
         ]
     }
 }
 
-export class DateTimeType implements PropertyType{
+type DateTimeTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: Date, precision?: number }
+export class DateTimeType extends PropertyDefinition<Date | null>{
 
-    constructor(private nullable: boolean = true, private precision?: number, private options?: SimpleObject) {}
+    options: DateTimeTypeOptions
 
-    parseRaw(rawValue: any): any{
+    constructor(options: Partial<DateTimeTypeOptions> = {}){
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
+
+    parseRaw(rawValue: any): Date | null{
         //TODO: warning if nullable is false but value is null
         return rawValue === null? null: new Date(rawValue)
     }
     parseProperty(propertyvalue: any, prop: NamedProperty): any {
-        if(propertyvalue === null && !this.nullable){
+        if(propertyvalue === null && !this.options.nullable){
             throw new Error(`The Property '${prop.name}' cannot be null.`)
         }
         return propertyvalue
     }
 
     create(prop: NamedProperty) {
-        let c = [this.precision].filter(v => v).join(',')
+        let c = [this.options.precision].filter(v => v).join(',')
         return [
             [
                 `${quote(prop.fieldName)}`,
                 (client().startsWith('pg')? `TIMESTAMP${c.length > 0?`(${c})`:''}`: `DATETIME${c.length > 0?`(${c})`:''}`),
-                nullableText(this.nullable), 
+                nullableText(this.options.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, prop)}`:'') 
             ].join(' ')
         ]
     }
 }
 
-export class ObjectOfType<I extends Entity> implements PropertyType{
+type ObjectOfTypeOptions = { compute?: ComputeFunction | null, nullable: boolean }
+export class ObjectOfType<I extends Entity> extends PropertyDefinition<I | null>{
 
-    constructor(private entityClass: typeof Entity & (new (...args: any[]) => I), private nullable: boolean = true) {}
+    options: ObjectOfTypeOptions
+
+    constructor(private entityClass: typeof Entity & (new (...args: any[]) => I),
+    options: Partial<ObjectOfTypeOptions> = {}
+    ) {
+        super(options.compute)
+        this.options = {nullable: true, ...options}
+    }
                 
-    queryTransform(query: SQLString, columns: string[] | null){
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string){
         if(columns === null){
             throw new Error('Only Dataset can be the type of \'ObjectOf\'')
         }
         let jsonify =  `SELECT ${jsonObject()}(${
                 columns.map(c => `'${c}', ${quote(c)}`).join(',')
-            }) FROM (${query.toString()}) AS ${quote(makeid(5))}`
+            }) AS ${quote(intoSingleColumn)} FROM (${query.toString()}) AS ${quote(makeid(5))}`
         return jsonify
     }
     
@@ -290,7 +345,7 @@ export class ObjectOfType<I extends Entity> implements PropertyType{
     }
     
     parseProperty(propertyvalue: I, prop: NamedProperty): any {
-        if(!prop.computedFunc){
+        if(!prop.definition.computeFunc){
             throw new Error(`Property ${prop.name} is not a computed field. The data type is not allowed.`)
         }
         //TODO:
@@ -298,28 +353,49 @@ export class ObjectOfType<I extends Entity> implements PropertyType{
     }
 
     create(prop: NamedProperty) {
-        if(!prop.computedFunc){
+        if(!prop.definition.computeFunc){
             throw new Error(`Property ${prop.name} is not a computed field. The data type is not allowed.`)
         }
         return []
     }
 }
 
-export class ArrayOfType<I extends Entity> implements PropertyType{
+// type ArrayOfTypeOptions = {}
+export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
     
-    constructor(private entityClass: typeof Entity & (new (...args: any[]) => I)) {}
+    // options: ArrayOfTypeOptions
+    type: PropertyDefinition<I>
 
-    queryTransform(query: SQLString, columns: string[] | null) {
-        if(columns === null){
-            throw new Error('Only Dataset can be the type of \'ArrayOf\'')
-        }
-        let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${jsonObject()}(${
-                columns.map(c => `'${c}', ${quote(c)}`).join(',')
-            })), ${emptyJsonArray()}) FROM (${query.toString()}) AS ${quote(makeid(5))} `
-        return jsonify
+    constructor(type: PropertyDefinition<I>) {
+        super(null)
+        this.type = type
     }
 
-    parseRaw(rawValue: any): Array<I> {
+    get computeFunc(){
+        return this.type.computeFunc
+    }
+
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string) {
+
+        if(!intoSingleColumn){
+            throw new Error('Unexpected Flow.')
+        }
+        
+        let innerLevelColumnName = 'column1'
+        let objectify = this.type.queryTransform? `(${this.type.queryTransform(query, columns, innerLevelColumnName)})`: `(${query})`
+
+        if(columns === null){
+         
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${query}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)}`
+            return jsonify
+        } else {
+
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${quote(innerLevelColumnName)}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)} FROM ${objectify} AS ${quote(makeid(5))}`
+            return jsonify
+        }
+    }
+
+    parseRaw(rawValue: any, prop: NamedProperty): I[]{
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -331,11 +407,11 @@ export class ArrayOfType<I extends Entity> implements PropertyType{
             throw new Error('It is not supported.')
         }
         return parsed.map( raw => {
-            return this.entityClass.parseRaw(raw)
+            return this.type.parseRaw(raw, prop)
         })
     }
     parseProperty(propertyvalue: Array<I>, prop: NamedProperty): any {
-        if(!prop.computedFunc){
+        if(!prop.definition.computeFunc){
             throw new Error(`Property ${prop.name} is not a computed field. The data type is not allowed.`)
         }
         //TODO:
@@ -343,7 +419,7 @@ export class ArrayOfType<I extends Entity> implements PropertyType{
     }
 
     create(prop: NamedProperty){
-        if(!prop.computedFunc){
+        if(!prop.definition.computeFunc){
             throw new Error(`Property ${prop.name} is not a computed field. The data type is not allowed.`)
         }
         return []
