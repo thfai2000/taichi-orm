@@ -96,7 +96,7 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                     } else {
                         let definition = prop.definition
                         let finalExpr: string
-                        if(definition.readTransform){
+                        if(definition.queryTransform){
 
                             // @ts-ignore
                             if(expression.__type === 'Row'){
@@ -105,9 +105,9 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                                 if(extractedColumnNames.length === 0){
                                     throw new Error(`There is no selected column to be transformed as Computed Field '${prop.name}'. Please check your sql builder.`)
                                 }
-                                finalExpr = definition.readTransform(castedExpression, extractedColumnNames).toString()
+                                finalExpr = definition.queryTransform(castedExpression, extractedColumnNames).toString()
                             } else {
-                                finalExpr = definition.readTransform(expression, null).toString()
+                                finalExpr = definition.queryTransform(expression, null).toString()
                             }
 
                         } else {
