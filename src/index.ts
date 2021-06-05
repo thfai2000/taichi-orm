@@ -246,8 +246,6 @@ export interface SQLString{
     toString(): string
 }
 
-export type ComputedFunction = (selector: Selector, queryFunction: ApplyNextQueryFunction, ...args: any[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
-
 export type NamedPropertyOptions = {
     skipFieldNameConvertion?: boolean
 }
@@ -766,10 +764,6 @@ export class SelectorImpl{
     }
 }
 
-export type CompiledFunction = (queryObject?: QueryOptions, ...args: any[]) => Column
-
-export type CompiledFunctionPromise = (queryObject?: QueryOptions, ...args: any[]) => Promise<Column> | Column
-
 export type EntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
@@ -792,6 +786,11 @@ export type QueryObject = ({
     orderBy?: QueryOrderBy
 } & QuerySelectMap) | QueryWhere
 
+export type ComputedFunction = (selector: Selector, applyNextQueryFunction: ApplyNextQueryFunction, ...args: any[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
+
+export type CompiledFunction = (queryObject?: QueryOptions, ...args: any[]) => Column
+
+export type CompiledFunctionPromise = (queryObject?: QueryOptions, ...args: any[]) => Promise<Column> | Column
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 

@@ -3,8 +3,8 @@ import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty }
 export interface PropertyType {
     // isPrimitive: boolean
     create(prop: NamedProperty) : string[]
-    readTransform?(query: SQLString, columns: string[] | null): SQLString
-    writeTransform?(query: SQLString, columns: string[]):SQLString
+    queryTransform?(query: SQLString, columns: string[] | null): SQLString
+    mutateTransform?(query: SQLString, columns: string[]):SQLString
     parseRaw(rawValue: any, prop: NamedProperty): any
     parseProperty(propertyvalue: any, prop: NamedProperty):any
 }
@@ -264,7 +264,7 @@ export class ObjectOfType<I extends Entity> implements PropertyType{
 
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I), private nullable: boolean = true) {}
                 
-    readTransform(query: SQLString, columns: string[] | null){
+    queryTransform(query: SQLString, columns: string[] | null){
         if(columns === null){
             throw new Error('Only Dataset can be the type of \'ObjectOf\'')
         }
@@ -309,7 +309,7 @@ export class ArrayOfType<I extends Entity> implements PropertyType{
     
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I)) {}
 
-    readTransform(query: SQLString, columns: string[] | null) {
+    queryTransform(query: SQLString, columns: string[] | null) {
         if(columns === null){
             throw new Error('Only Dataset can be the type of \'ArrayOf\'')
         }
