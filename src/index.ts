@@ -364,28 +364,59 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
     if(queryOptions.select){
         isOnlyWhere = false
     }
-    // if(queryOptions.select && queryOptions.select.length > 0){
-    //     select = select.concat(queryOptions.select)
-    // }
-    //TODO: find all select  & and mark isOnlyWhere = false
-    // Object.keys(queryOptions).filter(key => key.startsWith('$') || key.startsWith('_') )
-    
-
     if(isOnlyWhere){
         stmt = stmt.where(selector(queryOptions))
     }
 
     if (queryOptions.select && queryOptions.select.length > 0) {
-        let names: string[] = queryOptions.select.map( (a: any) => {
-            if (typeof a !== 'string') {
-                throw new Error('Only string are allowed as arguments for Simple Filtering Approach.')
-            }
-            return a
-        })
-        // let props = selector.getProperties().map(p => p.computedFunc)
-        let newStmt = names.reduce((stmt, a) => {
 
-            let result = selector.$$[a]()
+        let normalProps = queryOptions.select.map( (item: any) => {
+            if (typeof item === 'string') {
+                let prop = selector.schema.namedProperties.find(p => p.name === item)
+                if(!prop){
+                    throw new Error(`The property ${item} cannot be found in schema '${selector.entityClass.name}'`)
+                }
+                if(!prop.definition.computeFunc){
+                    return selector._[prop.name]
+                }
+            }
+            return null
+        }).filter( (p: any) => p)
+
+        if(normalProps.length > 0){
+            stmt = stmt.clearSelect().select(...normalProps)
+        }
+
+        let executedProps: Array<Column | Promise<Column>> = queryOptions.select.flatMap( (item: any) => {
+            if (typeof item === 'string'){
+                let prop = selector.schema.namedProperties.find(p => p.name === item)
+                if(!prop){
+                    throw new Error(`The property ${item} cannot be found in schema '${selector.entityClass.name}'`)
+                }
+                if(prop.definition.computeFunc){
+                    return selector.$$[prop.name]()
+                }
+            } else if (item instanceof SimpleObjectClass) {
+                let options = item as SimpleObject
+                return Object.keys(options).map( name => {
+                    if( options[name] instanceof PropertyDefinition){
+                        selector.registerProp( new NamedProperty(name, options[name]) )
+                        return selector.$$[name]()
+                    } else {
+                        let prop = selector.schema.namedProperties.find(p => p.name === name && p.definition.computeFunc)
+                        if(!prop){
+                            throw new Error(`The property ${name} cannot be found in schema '${selector.entityClass.name}'`)
+                        }
+                        return selector.$$[prop.name](options[name])
+                    }
+                })
+            }
+            return null
+        }).filter( (p: (Column | Promise<Column>) | null) => p)
+        
+        // let props = selector.getProperties().map(p => p.computedFunc)
+        let newStmt = executedProps.reduce((stmt, executed) => {
+            let result = executed
             if(result instanceof Promise || stmt instanceof Promise){
                 return new Promise( async (resolve, reject) => {
                     try{

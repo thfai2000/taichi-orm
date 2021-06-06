@@ -1,4 +1,4 @@
-import {configure, Schema, Entity, Types, Relations, models} from '../dist'
+import {configure, Schema, Entity, Types, Relations, models, raw} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -296,16 +296,32 @@ describe('custom Computed Fields', () => {
 describe('Mixed Query', () => {
 
   test("Standard", async() => {
+    const time = '2020-01-01 12:20:01'
 
-    // Shop.find({
-    //   where: {id: 5},
-    //   limit: 10,
-    //   offset: 5,
-    //   $product: {
-    //     where: {id: 5},
-    //     limit: 10
-    //   }
-    // })
+    let records = await models.Shop.find({
+      select: [
+        'productCount', 
+        {'products': {select: ['colors']} }, 
+        {'currentTime': new Types.DateTime({ compute: s => raw(`'${time}'`) })} 
+      ],
+    })
+
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.map( shop => expect.objectContaining({
+          ...shop,
+          products: expect.arrayContaining(
+            productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
+              ...p,
+              colors: expect.arrayContaining( productColorData.filter(pc => pc.productId === p.id)
+                .map( pc => expect.objectContaining( colorData.find(c => c.id === pc.colorId))) )
+            }))
+          ),
+          productCount: productData.filter(p => p.shopId === shop.id).length,
+          currentTime: new Date(time)
+        })
+      )
+    ))
+
   })
 
   test('Query computed field', async () => {
