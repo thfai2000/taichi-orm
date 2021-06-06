@@ -761,7 +761,7 @@ export class SelectorImpl{
         if(!namedProperty.definition.computeFunc){
             throw new Error('Only the Computed Property can be registered after the schema is created.')
         } else {
-            return this.getComputedCompiledPromise(namedProperty.fieldName)
+            return this.getComputedCompiledPromise(namedProperty.name)
         }
     }
 }
