@@ -78,6 +78,12 @@ const initializeDatabase = async () => {
             return await shop.$.products().exists()
           }
         }))
+        schema.prop('hasEnoughProducts', new Types.Boolean({
+          compute: (shop, args) => {
+            return shop.$.productCount().is('>=', args.count)
+          }
+        }))
+
       }
     }
     
@@ -348,4 +354,37 @@ describe('Mixed Query', () => {
     ))
 
   });
+})
+
+
+describe('Mixed Query', () => {
+
+  test('Use Query Arguments', async () => {
+    let expectedCount = 3
+    let records = await models.Shop.find({
+      select: [
+        'products',
+        {
+          'hasEnoughProducts': { 
+            args: {count : expectedCount}
+          }
+        }
+      ]
+    })
+
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.map( shop => expect.objectContaining({
+          ...shop,
+          products: expect.arrayContaining(
+            productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
+              ...p
+            }))
+          ),
+          hasEnoughProducts: productData.filter(p => p.shopId === shop.id).length >= expectedCount
+        })
+      )
+    ))
+
+  })
+
 })
