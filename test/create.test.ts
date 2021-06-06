@@ -5,10 +5,9 @@ import {v4 as uuidv4} from 'uuid'
 const initializeDatabase = async () => {
     // configure the orm
     class Shop extends Entity{
-
       static register(schema: Schema){
-          schema.prop('name', new Types.String(true, 255))
-          schema.prop('location', new Types.String(false, 255))
+          schema.prop('name', new Types.String({length: 255, nullable: false}))
+          schema.prop('location', new Types.String({length: 255, nullable: false}))
       }
     }
 

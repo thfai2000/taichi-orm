@@ -8,29 +8,29 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', new Types.String(false, 255))
+          schema.prop('location', new Types.String({nullable: false, length: 255}))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String(true, 255))
-          schema.prop('isActive', new Types.Boolean(true))
-          schema.prop('price', new Types.Decimal(true, 7, 2))
-          schema.prop('createdAt', new Types.DateTime(true, 6))
-          schema.prop('shopId', new Types.Number(true))
+          schema.prop('name', new Types.String({nullable: true, length: 255}))
+          schema.prop('isActive', new Types.Boolean())
+          schema.prop('price', new Types.Decimal({precision: 7, scale: 2}))
+          schema.prop('createdAt', new Types.DateTime({precision: 6}))
+          schema.prop('shopId', new Types.Number())
       }
     }
 
     class StrictProduct extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String(false, 255))
-          schema.prop('isActive', new Types.Boolean(false))
-          schema.prop('price', new Types.Decimal(false, 5, 2))
-          schema.prop('createdAt', new Types.DateTime(false))
-          schema.prop('shopId', new Types.Number(false))
+          schema.prop('name', new Types.String({nullable: false, length: 255}))
+          schema.prop('isActive', new Types.Boolean({nullable: false}))
+          schema.prop('price', new Types.Decimal({nullable: false, precision: 5, scale: 2}))
+          schema.prop('createdAt', new Types.DateTime({nullable: false}))
+          schema.prop('shopId', new Types.Number({nullable: false}))
       }
     }
 
@@ -48,9 +48,6 @@ const initializeDatabase = async () => {
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: config
     })
-
-    // console.log("sql", sql)
-    // console.log('xxxxx', await getKnexInstance().raw('SELECT * FROM sqlite_master WHERE type=\'table\';') )
 }
 
 const clearDatabase = () => {

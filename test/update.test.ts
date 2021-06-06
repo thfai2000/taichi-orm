@@ -7,8 +7,8 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('name', new Types.String(true, 255))
-          schema.prop('location', new Types.String(false, 255))
+          schema.prop('name', new Types.String({nullable: true, length: 255}))
+          schema.prop('location', new Types.String({nullable: false, length: 255}))
       }
     }
 

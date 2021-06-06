@@ -17,6 +17,8 @@ declare module "knex" {
             __selectItems: SelectItem[]
             __realSelect: Function
             __realClearSelect: Function
+
+            __realClone: Function //TODO: override the clone function
         }
     }
 }

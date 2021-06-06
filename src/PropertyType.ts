@@ -11,6 +11,8 @@ export abstract class PropertyDefinition<I = any> {
         return this._computeFunc
     }
 
+    abstract asMultipleRows: boolean
+
     // isPrimitive: boolean
     abstract create(prop: NamedProperty) : string[]
     queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
@@ -55,6 +57,9 @@ const emptyJsonArray = () => {
 
 export class PrimaryKeyType extends PropertyDefinition<number> {
 
+
+    asMultipleRows: boolean = false
+
     parseRaw(rawValue: any, prop: NamedProperty): number {
         if(rawValue === null){
             throw new Error(`The Property '${prop.name}' cannot be null.`)
@@ -97,6 +102,7 @@ export class PrimaryKeyType extends PropertyDefinition<number> {
 type NumberTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: number }
 export class NumberType extends PropertyDefinition<number | null> {
     options: NumberTypeOptions
+    asMultipleRows: boolean = false
     
     constructor(options: Partial<NumberTypeOptions> ={}){
         super(options.compute)
@@ -133,6 +139,7 @@ type DecimalTypeOptions = { compute?: ComputeFunction | null, nullable: boolean,
 export class DecimalType extends PropertyDefinition<number | null> {
 
     options: DecimalTypeOptions
+    asMultipleRows: boolean = false
     
     constructor(options: Partial<DecimalTypeOptions> = {}){
         super(options.compute)
@@ -167,6 +174,7 @@ export class DecimalType extends PropertyDefinition<number | null> {
 type BooleanTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, default?: boolean }
 export class BooleanType extends PropertyDefinition<boolean | null>{
     options: BooleanTypeOptions
+    asMultipleRows: boolean = false
 
     constructor(options: Partial<BooleanTypeOptions> = {}){
         super(options.compute)
@@ -210,6 +218,7 @@ type StringTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, 
 export class StringType extends PropertyDefinition<string | null>{
     
     options: StringTypeOptions
+    asMultipleRows: boolean = false
 
     constructor(options: Partial<StringTypeOptions> = {}){
         super(options.compute)
@@ -244,6 +253,7 @@ type DateTypeOptions = { compute?: ComputeFunction | null, nullable: boolean, de
 export class DateType extends PropertyDefinition<Date | null>{
 
     options: DateTypeOptions
+    asMultipleRows: boolean = false
 
     constructor(options: Partial<DateTypeOptions> = {}){
         super(options.compute)
@@ -277,6 +287,7 @@ type DateTimeTypeOptions = { compute?: ComputeFunction | null, nullable: boolean
 export class DateTimeType extends PropertyDefinition<Date | null>{
 
     options: DateTimeTypeOptions
+    asMultipleRows: boolean = false
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
         super(options.compute)
@@ -311,6 +322,7 @@ type ObjectOfTypeOptions = { compute?: ComputeFunction | null, nullable: boolean
 export class ObjectOfType<I extends Entity> extends PropertyDefinition<I | null>{
 
     options: ObjectOfTypeOptions
+    asMultipleRows: boolean = true
 
     constructor(private entityClass: typeof Entity & (new (...args: any[]) => I),
     options: Partial<ObjectOfTypeOptions> = {}
@@ -365,6 +377,7 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
     
     // options: ArrayOfTypeOptions
     type: PropertyDefinition<I>
+    asMultipleRows: boolean = false
 
     constructor(type: PropertyDefinition<I>) {
         super(null)
@@ -384,8 +397,7 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
         let innerLevelColumnName = 'column1'
         let objectify = this.type.queryTransform? `(${this.type.queryTransform(query, columns, innerLevelColumnName)})`: `(${query})`
 
-        if(columns === null){
-         
+        if( !this.type.asMultipleRows ){
             let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${query}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)}`
             return jsonify
         } else {
