@@ -1,4 +1,4 @@
-import {configure, Schema, Entity, Types, Relations, models, raw} from '../dist'
+import {configure, Schema, Entity, Types, Relations, models, raw, column} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
