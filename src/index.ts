@@ -296,13 +296,7 @@ const compileAs_ = (rootSelector: SelectorImpl, prop: NamedProperty) => {
 
 const compileAs$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledComputeFunction => {
     return (queryOptions?: QueryOptions) => {
-        let args: QueryArguments = {}
-        if(queryOptions instanceof SimpleObjectClass){
-            let casted: QueryObject = queryOptions
-            args = casted.args ?? args
-        }
-
-        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector, args)
+        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector)
 
         let process = (subquery: Knex.QueryBuilder): NamedColumn => {
             let alias = metaFieldAlias(prop)
@@ -318,13 +312,7 @@ const compileAs$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledCo
 
 const compileAs$$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledComputeFunctionPromise => {
     return (queryOptions?: QueryOptions) => {
-        let args: QueryArguments = {}
-        if(queryOptions instanceof SimpleObjectClass){
-            let casted: QueryObject = queryOptions
-            args = casted.args ?? args
-        }
-
-        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector, args)
+        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector)
 
         let process = (subquery: Knex.QueryBuilder): NamedColumn => {
             let alias = metaFieldAlias(prop)
@@ -370,6 +358,13 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
     if(queryOptions.select){
         isOnlyWhere = false
     }
+    if(queryOptions.args){
+        isOnlyWhere = false
+    }
+    if(queryOptions.fn){
+        isOnlyWhere = false
+    }
+
     if(isOnlyWhere){
         stmt = stmt.where(selector(queryOptions))
     }
@@ -444,9 +439,14 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
     }
 }
 
-const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedProperty, rootSelector: SelectorImpl, args: QueryArguments) => {
+const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedProperty, rootSelector: SelectorImpl) => {
     if(!prop.definition.computeFunc){
         throw new Error('Normal Property cannot be compiled as computed field.')
+    }
+    let args: QueryArguments = {}
+    if(queryOptions instanceof SimpleObjectClass){
+        let casted: QueryObject = queryOptions
+        args = casted.args ?? args
     }
     const computedFunc = prop.definition.computeFunc
     const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
@@ -461,15 +461,28 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
             }
             if(!queryOptions){
                 return stmt
-            } else if(queryOptions instanceof Function){
-                let queryFunction = queryOptions as QueryFunction
-                return queryFunction(stmt, firstSelector, ...restSelectors)
-            } else if(queryOptions instanceof SimpleObjectClass){
-                //TODO: consider this suitation
+            } else {
                 if(!isRow(stmt)){
                     throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
                 }
-                return simpleQuery(stmt, firstSelector, queryOptions)
+                if(queryOptions instanceof Function){
+                    let queryFunction = queryOptions as QueryFunction
+                    return queryFunction(stmt, firstSelector, ...restSelectors)
+                } else if(queryOptions instanceof SimpleObjectClass){
+                    // Mix usage of Object and function
+                    // combine the sql statement
+                    let queryObject = queryOptions as QueryObject
+                    let result = simpleQuery(stmt, firstSelector, queryOptions)
+                    if(queryObject.fn){
+                        let queryFunction = queryObject.fn
+                        if(result instanceof Promise){
+                            return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
+                        } else {
+                            return queryFunction(result, firstSelector, ...restSelectors)
+                        }
+                    }
+                    return result
+                }
             }
             throw new Error('It is not support. Only Function and Object can be passed as filters.')
         }
