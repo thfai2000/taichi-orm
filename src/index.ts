@@ -291,7 +291,7 @@ const compileAs_ = (rootSelector: SelectorImpl, prop: NamedProperty) => {
     let alias = metaFieldAlias(prop)
     let rawTxt = `${tableAlias}.${fieldName}`
 
-    return makeNamedColumn(alias, makeColumn(prop.definition , raw(rawTxt) ) )
+    return makeNamedColumn(alias, makeColumn(raw(rawTxt), prop.definition) )
 }
 
 const compileAs$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledComputeFunction => {
@@ -306,7 +306,7 @@ const compileAs$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledCo
 
         let process = (subquery: Knex.QueryBuilder): NamedColumn => {
             let alias = metaFieldAlias(prop)
-            return makeNamedColumn(alias, makeColumn(prop.definition, subquery) )
+            return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
         }
         if(subquery instanceof Promise){
             throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
@@ -328,7 +328,7 @@ const compileAs$$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledC
 
         let process = (subquery: Knex.QueryBuilder): NamedColumn => {
             let alias = metaFieldAlias(prop)
-            return makeNamedColumn(alias, makeColumn(prop.definition, subquery) )
+            return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
         }
 
         if(subquery instanceof Promise){
@@ -488,20 +488,32 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
             return process(stmt)
         }
     }
+
+    let checkValid = (subquery: Knex.QueryBuilder) => {
+        if(!isRow(subquery) && !isColumn(subquery)){
+            throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
+        }
+        if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
+            console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
+            throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
+        }
+        if(!prop.definition.transformFromMultipleRows && !isColumn(subquery)){
+            console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
+            throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
+        }
+    }
+
     let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, args ,applyFilterFunc)
 
-    if(!isRow(subquery) && !isColumn(subquery)){
-        throw new Error('QueryBuilders which are not created through TaiChi are not supported.')
+    if(subquery instanceof Promise){
+        return subquery.then(value =>  {
+            checkValid(value)
+            return value
+        })
+    } else {
+        checkValid(subquery)
+        return subquery
     }
-    if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
-        console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-        throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-    }
-    if(!prop.definition.transformFromMultipleRows && !isColumn(subquery)){
-        console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-        throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-    }
-    return subquery
 }
 
 export const configure = async function(newConfig: Partial<Config>){
@@ -648,7 +660,7 @@ export interface Selector {
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
     all: NamedColumn[]
-    star: NamedColumn
+    // star: NamedColumn
     source: Source
     // sourceRaw: string
     pk: NamedColumn

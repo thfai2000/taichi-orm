@@ -28,14 +28,14 @@ type SelectItem = {
 }
 
 export interface NamedColumn<T = any> extends Column<T> {
-    __fieldName: string
+    // __fieldName: string
     __actualAlias: string
 }
 export interface Column<T = any> extends Knex.Raw {
     __type: 'Column'
     // __selector: Selector | null
     // __namedProperty: NamedProperty
-    __definition: PropertyDefinition
+    __definition: PropertyDefinition | null
     __expression: Knex.QueryBuilder | Knex.Raw
     count(): Column<NumberType> 
     exists(): Column<BooleanType> 
@@ -71,7 +71,7 @@ export const isRow = (builder: any) : boolean => {
 
 export const isNamedColumn = (builder: any) : boolean => {
     //@ts-ignore
-    if( isColumn(builder) && builder.__fieldName){
+    if( isColumn(builder) && builder.__actualAlias){
         return true
     }
     return false
@@ -102,7 +102,7 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                 console.log('\x1b[33m%s\x1b[0m', 'Maybe you called any computed Property that is an Async Function but you haven\'t \'await\' it before placing it into the QueryBuilder.')
                 throw new Error('Invalid Select Item.')
             } else if(item === '*'){
-                throw new Error("Currently it doesn't support using '*'. Please use Selector.star")
+                throw new Error("Currently it doesn't support using '*'. Please use Selector.all")
             } else if(Array.isArray(item) && item.find( subitem => isNamedColumn(subitem) )){
                 throw new Error("Detected that array of 'Column' is placed into select expression. Please use ES6 spread syntax to place the columns.")
             } else if(isNamedColumn(item) ){
@@ -112,7 +112,7 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                 let alias = casted.__actualAlias
 
                 let finalExpr: string
-                if(definition.queryTransform){
+                if(definition && definition.queryTransform){
 
                     if(isRow(expression)){
                         let castedExpression = expression as Knex.QueryBuilder
@@ -133,9 +133,9 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                 }
 
 
-                let text = finalExpr.toString()
+                let text = finalExpr.toString().trim()
 
-                if(text.trim().includes(' ')){
+                if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
                     text = `(${text})`
                 }
                 return [{
@@ -184,23 +184,11 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeColumn = <T = any>(definition: PropertyDefinition, expression: Knex.QueryBuilder | Knex.Raw ): Column<T> => {
+export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, definition: PropertyDefinition | null = null): Column<T> => {
 
-    // let raw: string
+    let text = expression.toString().trim()
 
-    // if(expression){
-    //     raw = `(${expression})`
-    // } else {
-    //     if(!selector){
-    //         throw new Error('Unexpected Flow.')
-    //     }
-    //     let tableAlias = quote(selector.tableAlias)
-    //     // fieldName = quote(fieldName)
-    //     raw = `${tableAlias}.${fieldName}`
-    // }
-    let text = expression.toString()
-
-    if(text.trim().includes(' ')){
+    if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
         text = `(${text})`
     }
     let column: Column<any> = makeRaw(text) as Column<any>
@@ -215,9 +203,9 @@ export const makeColumn = <T = any>(definition: PropertyDefinition, expression: 
             throw new Error('Only Dataset can apply count')
         }
         let definition = new NumberType()
-        let expr = makeBuilder().count().from(makeRaw(`(${expression.toString()})`))
+        let expr = makeBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`))
 
-        return makeColumn<NumberType>(definition, expr)
+        return makeColumn<NumberType>(expr, definition)
     }
 
     column.exists = (): Column<BooleanType> => {
@@ -225,7 +213,7 @@ export const makeColumn = <T = any>(definition: PropertyDefinition, expression: 
             throw new Error('Only Dataset can apply exists')
         }
 
-        return makeColumn<BooleanType>(new Types.Boolean(), makeRaw(`EXISTS (${expression.toString()})`) )
+        return makeColumn<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
     }
 
     column.is = (operator: string, value: any): Column<BooleanType> => {
@@ -233,7 +221,7 @@ export const makeColumn = <T = any>(definition: PropertyDefinition, expression: 
             throw new Error('Only Dataset can apply count')
         }
 
-        return makeColumn<BooleanType>(new Types.Boolean(), makeRaw(`(${expression.toString()}) ${operator} ?`, [value]) )
+        return makeColumn<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new Types.Boolean())
     }
     
     return column

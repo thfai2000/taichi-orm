@@ -308,7 +308,7 @@ describe('Mixed Query', () => {
       select: [
         'productCount', 
         {'products': {select: ['colors']} }, 
-        {'currentTime': new Types.DateTime({ compute: s => raw(`'${time}'`) })} 
+        {'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })} 
       ],
     })
 
