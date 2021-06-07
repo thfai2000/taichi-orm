@@ -26,7 +26,7 @@ export const Relations = {
             //     .joinRaw(`INNER JOIN ${throughSelector.sourceRaw} ON ${throughSelector._[relationPropName]} = ${relatedSelector._.id}`)
             //     .whereRaw("?? = ??", [rootSelector._.id, throughSelector._[ownerPropName]])
 
-            let stmt = makeBuilder().select(relatedSelector.star).from(
+            let stmt = makeBuilder().select(...relatedSelector.all).from(
                     relatedSelector.source.innerJoin(
                         throughSelector.source, 
                         throughSelector._[relationPropName],

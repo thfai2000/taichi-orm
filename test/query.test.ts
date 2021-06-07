@@ -1,4 +1,4 @@
-import {configure, Schema, Entity, Types, Relations, models, raw} from '../dist'
+import {configure, Schema, Entity, Types, Relations, models, raw, column} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -308,7 +308,7 @@ describe('Mixed Query', () => {
       select: [
         'productCount', 
         {'products': {select: ['colors']} }, 
-        {'currentTime': new Types.DateTime({ compute: s => raw(`'${time}'`) })} 
+        {'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })} 
       ],
     })
 
