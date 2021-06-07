@@ -1200,6 +1200,18 @@ export class Database{
         if(!applyFilter || !(applyFilter instanceof SimpleObjectClass) ){
             throw new Error('Invalid Query Options')
         }
+
+        //TODO: allow using fnc to build update
+        //TODO: allow using select to get back the data, 
+        // check the applyFilter
+        // if simpleObject...
+        //      if limit, offset... throw error
+        //      where + fnc => update stmt  + update(newData)
+        //      select + where => sideSql
+        //
+        // if function...
+        //      become the update stmt starting point  + update(newData)
+
         return {
             sqlString: builder(s).where(applyFilter).update(newData),
             sideSqlString: builder(s).where(applyFilter),

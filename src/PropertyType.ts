@@ -13,9 +13,7 @@ export abstract class PropertyDefinition<I = any> {
 
     abstract transformFromMultipleRows: boolean
     abstract transformIntoMultipleRows: boolean
-    
 
-    // isPrimitive: boolean
     abstract create(prop: NamedProperty) : string[]
     queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
     mutateTransform?(query: SQLString, columns: string[]):SQLString
