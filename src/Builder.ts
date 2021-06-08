@@ -19,17 +19,22 @@ declare module "knex" {
             __realClearSelect: Function
             __realClone: Function //TODO: override the clone function
         }
+
+        interface Raw {
+            clone: Function
+        }
     }
 }
 
 type SelectItem = {
-    raw: Knex.Raw | any,
+    value: any,
     actualAlias: string
 }
 
 export interface NamedColumn<T = any> extends Column<T> {
     // __fieldName: string
     __actualAlias: string
+    clone(): NamedColumn<T>
 }
 export interface Column<T = any> extends Knex.Raw {
     __type: 'Column'
@@ -41,6 +46,7 @@ export interface Column<T = any> extends Knex.Raw {
     exists(): Column<BooleanType> 
     is(operator: string, value: any): Column<BooleanType> 
     toColumn(): Column<T>
+    clone(): Column<T>
     as(propName: string): NamedColumn<T>         //TODO: implement rename
 }
 
@@ -51,6 +57,7 @@ export interface Source extends Knex.Raw {
     innerJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
     leftJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
     rightJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
+    clone(): Source
 }
 
 // const castAsRow = (builder: any) : Row => {
@@ -139,34 +146,46 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
                     text = `(${text})`
                 }
                 return [{
-                    raw: makeRaw(`${text} AS ${quote(alias)}`),
+                    value: makeRaw(`${text} AS ${quote(alias)}`),
                     actualAlias: alias
                 }]
             }
 
             return [{
-                raw: item,
+                value: item,
                 actualAlias: parseName(item)
             }]
         })
 
         //check exists in columns before
-        let pool = this.__selectItems.map(item => item.raw.toString())
-        let duplicated = converted.filter(item => pool.includes( item.raw.toString() ))
+        let pool = this.__selectItems.map(item => item.value.toString())
+        let duplicated = converted.filter(item => pool.includes( item.value.toString() ))
         if( duplicated.length > 0 ){
             throw new Error(`Duplicated Columns '${duplicated.map(d => d.actualAlias).join(',')}' are detected.`)
         }
 
         this.__selectItems = this.__selectItems.concat(converted)
 
-        let raws = converted.map(c => c.raw)
-        return this.__realSelect(...raws)
+        let values = converted.map(c => c.value)
+        return this.__realSelect(...values)
     }
 
     sealBuilder.__realClearSelect = sealBuilder.clearSelect
     sealBuilder.clearSelect = function(){
         this.__selectItems = []
         return this.__realClearSelect()
+    }
+
+    sealBuilder.__realClone = sealBuilder.clone
+    sealBuilder.clone = function(){
+        let b = this.__realClone() as Knex.QueryBuilder
+        b.__selectItems = this.__selectItems.map(item => {
+            return {
+                actualAlias: item.actualAlias,
+                value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
+            }
+        })
+        return b
     }
 
     //after the select is override, add default 'all'
@@ -181,6 +200,9 @@ export const makeRaw = (first: any, ...args: any[]) => {
     let r = getKnexInstance().raw(first, ...args)
     // @ts-ignore
     r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+    r.clone = () => {
+        return makeRaw(r.toString())
+    }
     return r
 }
 
@@ -193,7 +215,7 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
     }
     let column: Column<any> = makeRaw(text) as Column<any>
     column.__type = 'Column'
-    column.__expression = expression
+    column.__expression = expression.clone()
     // column.__fieldName = fieldName
     column.__definition = definition
     // column.__selector = selector
@@ -223,13 +245,20 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
 
         return makeColumn<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new Types.Boolean())
     }
+
+    column.clone = () =>{
+        return makeColumn<T>(expression, definition)
+    }
     
     return column
 }
 
 export const makeNamedColumn = <T = any>(alias: string, col: Column<T>) : NamedColumn<T> => {
-    let column = col as NamedColumn<T>
+    let column = col.clone() as NamedColumn<T>
     column.__actualAlias = alias
+    column.clone = () =>{
+        return makeNamedColumn<T>(alias, col)
+    }
     return column
 }
 

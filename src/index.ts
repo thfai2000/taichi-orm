@@ -388,6 +388,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
             stmt = stmt.clearSelect().select(...normalProps)
         }
 
+        //TODO: (the lifecycle) must separate into 2 steps ... register all first, then compile all
         let executedProps = queryOptions.select.flatMap( (item: any) => {
             if (typeof item === 'string'){
                 let prop = selector.schema.namedProperties.find(p => p.name === item)
@@ -451,7 +452,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
     const computedFunc = prop.definition.computeFunc
     const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
         let process = (stmt: Knex.QueryBuilder) => {
-            // console.log('stmt', stmt.toString())
+
             // If the function object placed into the Knex.QueryBuilder, 
             // Knex.QueryBuilder will call it and pass itself as the parameter
             // That's why we can say likely our compiled function didn't be called.
@@ -459,6 +460,10 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
                 console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
                 throw new Error('The QueryFunction is not instanceof Function.')
             }
+
+            // !! VERY IMPORTANT: must clone a new one for next filtering
+            stmt = stmt.clone()
+            
             if(!queryOptions){
                 return stmt
             } else {
