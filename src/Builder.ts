@@ -14,6 +14,7 @@ declare module "knex" {
     export namespace Knex {
         interface QueryBuilder {
             __type: 'Row'
+            __mainSelector?: Selector | null
             __selectItems: SelectItem[]
             __realSelect: Function
             __realClearSelect: Function
@@ -92,14 +93,29 @@ export const isColumn = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder {
-    let sealBuilder = getKnexInstance().clearSelect()
-    
+export const makeBuilder = function(mainSelector?: Selector | null, from?: Knex.QueryBuilder) : Knex.QueryBuilder {
+    let sealBuilder: Knex.QueryBuilder
+    if(from){
+        if(!isRow(from)){
+            throw new Error('Unexpected Flow.')
+        }
+        sealBuilder = from.__realClone()
+        sealBuilder.__selectItems = from.__selectItems.map(item => {
+            return {
+                actualAlias: item.actualAlias,
+                value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
+            }
+        })
+    } else {
+        sealBuilder = getKnexInstance().clearSelect()
+        sealBuilder.__selectItems = []
+    }
+
     // @ts-ignore
     sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
     sealBuilder.__type = 'Row'
-    sealBuilder.__selectItems = []
     sealBuilder.__realSelect = sealBuilder.select
+    sealBuilder.__mainSelector = mainSelector
     // override the select methods
     sealBuilder.select = function(...args: any[]){
 
@@ -172,20 +188,13 @@ export const makeBuilder = function(mainSelector?: Selector) : Knex.QueryBuilder
 
     sealBuilder.__realClearSelect = sealBuilder.clearSelect
     sealBuilder.clearSelect = function(){
-        this.__selectItems = []
-        return this.__realClearSelect()
+        sealBuilder.__selectItems = []
+        return sealBuilder.__realClearSelect()
     }
 
     sealBuilder.__realClone = sealBuilder.clone
     sealBuilder.clone = function(){
-        let b = this.__realClone() as Knex.QueryBuilder
-        b.__selectItems = this.__selectItems.map(item => {
-            return {
-                actualAlias: item.actualAlias,
-                value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
-            }
-        })
-        return b
+        return makeBuilder(null, sealBuilder)
     }
 
     //after the select is override, add default 'all'

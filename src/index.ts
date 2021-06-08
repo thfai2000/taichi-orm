@@ -382,7 +382,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
                 }
             }
             return null
-        }).filter(notEmpty) 
+        }).filter(notEmpty)
 
         if(normalProps.length > 0){
             stmt = stmt.clearSelect().select(...normalProps)
