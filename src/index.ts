@@ -4,12 +4,13 @@ import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
 import {makeBuilder as builder, isRow, isColumn, makeRaw as raw, makeColumn as column, makeNamedColumn, Source, makeSource, NamedColumn, makeColumn} from './Builder'
 export {builder, raw, column}
-import { Relations } from './Relations'
-export { Relations }
+import { ComputeFn } from './ComputeFn'
+export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
+import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
-const SimpleObjectClass = ({}).constructor
+const SimpleObjectClass = ({} as {[key:string]: any}).constructor
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
@@ -1390,27 +1391,58 @@ export class Entity {
         let selectorImpl = new SelectorImpl(this, schemas[this.name])
         // let entityClass = this
 
-        let selector = function(value: any){
-            if(typeof value === 'string'){
-                return selectorImpl.getNormalCompiled(value)
-            } else if(value.constructor === Object){
-
-                let sqlArgs: string[] = []
-                let accSqls: string[] = []
-            
-                Object.keys(value).forEach( (key) => {
-                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
-                    if(prop && !prop.definition.computeFunc){
-                        let converted = selectorImpl.getNormalCompiled(key).toString()
-                        accSqls.push(`${converted} = ?`)
-                        sqlArgs.push(value[key])
-                    }
-                })
-                return raw( accSqls.join(' AND '), sqlArgs)
+        let constructWhere = function(value: any): Promise<Knex.Raw> | Knex.Raw {
+            if(value instanceof AndOperator){
+                let and = value as AndOperator
+                return and.toRaw()
+            } else if(value instanceof OrOperator){
+                let or = value as OrOperator
+                return or.toRaw()
             } else if(Array.isArray(value)){
-                return value.map( v => selectorImpl.getNormalCompiled(v) )
-            } else return value
-        } as Selector
+                return constructWhere(Or(...value))
+            } else if(value instanceof Function) {
+                return value(selectorImpl)
+            } else if(value instanceof SimpleObjectClass){
+                let dict = value as SimpleObject
+                let sqls = Object.keys(dict).reduce( (accSqls, key) => {
+                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
+                    if(!prop){
+                        throw new Error(`cannot found property '${key}'`)
+                    }
+
+                    let operator: ValueOperator
+                    if(dict[key] instanceof ValueOperator){
+                        operator = dict[key]
+                    }else if( Array.isArray(dict[key]) ){
+                        operator = Contain(...dict[key])
+                    } else {
+                        operator = Equal(dict[key])
+                    }
+
+                    if(!prop.definition.computeFunc){
+                        let converted = selectorImpl.getNormalCompiled(key)
+                        accSqls.push( operator.toRaw(converted) )
+                    } else {
+                        let compiled = (selectorImpl.getComputedCompiledPromise(key))()
+                        if(compiled instanceof Promise){
+                            accSqls.push( compiled.then(col => operator.toRaw(col) ) )
+                        } else {
+                            accSqls.push( operator.toRaw(compiled) )
+                        }
+                    }
+
+                    return accSqls
+
+                }, [] as Array<Promise<Knex.Raw> | Knex.Raw> )
+
+                let a = constructWhere(And(...sqls))
+                return a
+            } else {
+                throw new Error('Unsupport Where clause')
+            }
+        }
+        
+        let selector = constructWhere as Selector
 
         // selector._ = selectorImpl._
         // selector.$ = selectorImpl.$

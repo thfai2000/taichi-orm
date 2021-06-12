@@ -1,4 +1,4 @@
-import {configure, Schema, Entity, Types, Relations, models, raw, column} from '../dist'
+import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -49,7 +49,7 @@ const initializeDatabase = async () => {
         schema.prop('name', new Types.String({length: 255}))
         schema.prop('location', new Types.String({length: 255}))
         schema.prop('products', new Types.ArrayOf(new Types.ObjectOf(Product, {
-          compute: Relations.has(Product, 'shopId')
+          compute: Builtin.ComputeFn.relatedFrom(Product, 'shopId')
         }) ) )
         schema.prop('productCount', new Types.Number({
           compute: (shop) => {
@@ -95,18 +95,18 @@ const initializeDatabase = async () => {
         schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
         schema.prop('shop', new Types.ObjectOf(Shop, {
-          compute: Relations.belongsTo(Shop, 'shopId')
+          compute: Builtin.ComputeFn.relatesTo(Shop, 'shopId')
         }))
 
         schema.prop('colors', 
           new Types.ArrayOf(new Types.ObjectOf(Color, {
-            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
+            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId') 
           }))
         )
         
         schema.prop('mainColor', 
           new Types.ObjectOf(Color, {
-            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
               return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })

@@ -2,9 +2,9 @@ import { Knex } from "knex"
 import { makeBuilder } from "./Builder"
 import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments} from "."
 
-export const Relations = {
+export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
-    has: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
+    relatedFrom: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction) => {
             let relatedSelector = entityClass.newSelector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [rootSelector._.id, relatedSelector._[propName] ])
@@ -17,7 +17,7 @@ export const Relations = {
         }
     },
 
-    relateThrough: (entityClass: typeof Entity, throughEntity: typeof Entity, relationPropName: string, ownerPropName: string, customFilter?: QueryFunction) => {
+    relatesThrough: (entityClass: typeof Entity, throughEntity: typeof Entity, relationPropName: string, ownerPropName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction) => {
             let relatedSelector = entityClass.newSelector()
             let throughSelector = throughEntity.newSelector()
@@ -43,8 +43,7 @@ export const Relations = {
         }
     },
 
-    // (SQL template) create a basic belongsTo prepared statement 
-    belongsTo: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
+    relatesTo: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction) => {
             let relatedSelector = entityClass.newSelector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [relatedSelector._.id, rootSelector._[propName] ])
