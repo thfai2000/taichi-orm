@@ -21,10 +21,16 @@ function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
 //     }
 //     return value
 // }
+export function thenResultArray<T, R>(value: Array<T | Promise<T>>, fn: (value: Array<T>) => (R | Promise<R>) ):  (R | Promise<R>) {
+    if(value.some(v => v instanceof Promise)){
+        return Promise.all(value).then(fn)
+    }
+    return fn(value as Array<T>)
+}
 
 export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>) ):  (R | Promise<R>) {
     if(value instanceof Promise){
-        return value.then(fn).then(value => value)
+        return value.then(fn)
     }
     return fn(value)
 }

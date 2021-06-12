@@ -1,6 +1,6 @@
 import {Column, isColumn, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { Selector, SimpleObject, thenResult } from '.'
+import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
 
 abstract class ValueOperator {
     abstract toRaw(leftOperand: Column ): Knex.Raw | Promise<Knex.Raw>
@@ -12,11 +12,7 @@ abstract class ValueOperator {
         this.args = args
     }
     toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
-        const logic = (args: Array<ConditionExpression>) => raw( args.map(arg => `(${resolver(arg).toString()})`).join(' AND ')) 
-        if( this.args.some( x => x instanceof Promise) ){
-            return Promise.all(this.args).then(args => logic(args))
-        }
-        return logic(this.args)
+        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw( args.map(arg => `(${resolver(arg).toString()})`).join(' AND ')) )
     }
 }
 
@@ -26,11 +22,7 @@ class OrOperator{
         this.args = args
     }
     toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw> {
-        const logic = (args: Array<ConditionExpression>) => raw( args.map(arg => `(${resolver(arg).toString()})`).join(' OR ')) 
-        if( this.args.some( x => x instanceof Promise) ){
-            return Promise.all(this.args).then(args => logic(args))
-        }
-        return logic(this.args)
+        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw( args.map(arg => `(${resolver(arg).toString()})`).join(' OR ')) )
     }
 }
 
@@ -42,8 +34,7 @@ class ContainOperator extends ValueOperator {
     }
 
     toRaw(leftOperand: Column){
-        //TODO: must cater promise..
-        return raw( `${leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+        return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     }
 }
 
