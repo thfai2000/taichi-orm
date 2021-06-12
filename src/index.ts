@@ -35,6 +35,13 @@ export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | P
     return fn(value)
 }
 
+export function addBlanketIfNeeds(text: string) {
+    if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+        text = `(${text})`
+    }
+    return text
+}
+
 export type Config = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
@@ -458,7 +465,8 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
     }
 
     if(queryOptions.where){
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions.where)) )
+        const where = queryOptions.where
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(where)) )
         isOnlyWhere = false
     }
     if(isOnlyWhere){
@@ -537,7 +545,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
         // }
     }
 
-    let checkValid = (subquery: Knex.QueryBuilder) => {
+    let checkValid = (subquery: Knex.QueryBuilder | Column) => {
         if(!isRow(subquery) && !isColumn(subquery)){
             throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
         }
@@ -551,7 +559,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
         }
     }
 
-    let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, args ,applyFilterFunc)
+    let subquery = computedFunc(rootSelector.interface!, args ,applyFilterFunc)
 
     // if(subquery instanceof Promise){
     //     return subquery.then(value =>  {
@@ -700,8 +708,8 @@ export const breakdownMetaFieldAlias = function(metaAlias: string){
     }
 }
 
-export interface Selector {
-    (value: any): any
+export interface Selector extends ConditionExpressionResolver {
+    (value: ConditionExpression): Promise<Column> | Column
     impl: SelectorImpl
     entityClass: typeof Entity
     schema: Schema
@@ -913,7 +921,7 @@ export type QueryObject = ({
     fn?: QueryFunction
 })
 
-export type ComputeFunction = (selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
+export type ComputeFunction = (selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => NamedColumn
 
@@ -1425,18 +1433,18 @@ export class Entity {
         let selectorImpl = new SelectorImpl(this, schemas[this.name])
         // let entityClass = this
 
-        let resolveExpression: ConditionExpressionResolver = function(value: ConditionExpression): Promise<Knex.Raw> | Knex.Raw {
+        let resolveExpression: ConditionExpressionResolver = function(value: ConditionExpression): Promise<Column> | Column {
             if(value instanceof AndOperator){
                 let and = value as AndOperator
-                return and.toRaw(resolveExpression)
+                return and.toColumn(resolveExpression)
             } else if(value instanceof OrOperator){
                 let or = value as OrOperator
-                return or.toRaw(resolveExpression)
+                return or.toColumn(resolveExpression)
             } else if(Array.isArray(value)){
                 return resolveExpression(Or(...value))
             } else if(value instanceof Function) {
                 return value(selectorImpl.interface!)
-            } else if(isColumn(value) || isRow(value) || isRaw(value)){
+            } else if(isColumn(value) || isRow(value)){
                 return value as Knex.QueryBuilder
             } else if(value instanceof SimpleObjectClass){
                 let dict = value as SimpleObject
@@ -1457,7 +1465,7 @@ export class Entity {
 
                     if(!prop.definition.computeFunc){
                         let converted = selectorImpl.getNormalCompiled(key)
-                        accSqls.push( operator.toRaw(converted) )
+                        accSqls.push( operator.toColumn(converted) )
                     } else {
                         let compiled = (selectorImpl.getComputedCompiledPromise(key))()
                         // if(compiled instanceof Promise){
@@ -1465,13 +1473,12 @@ export class Entity {
                         // } else {
                         //     accSqls.push( operator.toRaw(compiled) )
                         // }
-                        accSqls.push( thenResult(compiled, col => operator.toRaw(col)) )
+                        accSqls.push( thenResult(compiled, col => operator.toColumn(col)) )
                     }
 
                     return accSqls
 
-                }, [] as Array<Promise<Knex.Raw> | Knex.Raw> )
-
+                }, [] as Array<Promise<Column> | Column> )
                 return resolveExpression(And(...sqls))
             } else {
                 throw new Error('Unsupport Where clause')

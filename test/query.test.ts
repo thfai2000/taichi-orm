@@ -1,5 +1,5 @@
 import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
-import {And, NotEqual, Or} from '../dist/Operator'
+import {And, Contain, Like, Equal, NotEqual, Or} from '../dist/Operator'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -82,6 +82,15 @@ const initializeDatabase = async () => {
         schema.prop('hasEnoughProducts', new Types.Boolean({
           compute: (shop, args) => {
             return shop.$.productCount().is('>=', args.count)
+          }
+        }))
+
+        schema.prop('hasTwoProductsAndlocationHasLetterA', new Types.Boolean({
+          compute: (shop, args) => {
+            return shop({
+              location: Like('%a%'),
+              productCount: 2
+            })
           }
         }))
 
@@ -178,73 +187,9 @@ afterAll(() => {
     return clearDatabase();
 });
 
-describe('Operators', () => {
-   test('Query by object filter - Not Equal', async () => {
-    let id = 2
-    let records = await models.Shop.find({id: NotEqual(id)})
-
-    expect(records).toEqual( expect.arrayContaining(
-      shopData.filter(s => s.id !== id).map( s => expect.objectContaining(s))
-    ))
-  })
-
-  test('Query by object filter - Or Case', async () => {
-    let id = 2, name = 'Shop 4'
-    let records = await models.Shop.find({
-      where: Or(
-        {id},
-        {name}
-      )
-    })
-
-    expect(records).toEqual( expect.arrayContaining(
-      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
-    ))
 
 
-    let records2 = await models.Shop.find({
-      where: [
-        {id},
-        {name}
-      ]
-    })
-
-    expect(records2).toEqual( expect.arrayContaining(
-      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
-    ))
-
-  })
-
-
-  test('Query by object filter - And Case', async () => {
-    let id = 2, name = 'Shop 4'
-    let records = await models.Shop.find({
-      where: And(
-        {id},
-        {name}
-      )
-    })
-
-    expect(records).toHaveLength(0)
-
-    
-    let records2 = await models.Shop.find({
-      where: [
-        And({id: 2}, {name: 'Shop 2'}),
-        And({id: 4}, {name: 'Shop 4'})
-      ]
-    })
-
-    expect(records2).toEqual( expect.arrayContaining(
-      shopData.filter(s => [2,4].includes(s.id) ).map( s => expect.objectContaining(s))
-    ))
-
-  })
-
-  
-})
-
-describe('Simple Query', () => {
+describe('Select - Simple Query', () => {
 
   test('Query by object filter', async () => {
     let id = 2
@@ -282,7 +227,7 @@ describe('Simple Query', () => {
 
 })
 
-describe('Computed Fields using Standard Relations', () => {
+describe('Select - Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
         return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
@@ -353,7 +298,7 @@ describe('Computed Fields using Standard Relations', () => {
 
 })
 
-describe('custom Computed Fields', () => {
+describe('Select - Custom Computed Fields', () => {
 
   test('Query computed field', async () => {
     let id = 2
@@ -367,7 +312,7 @@ describe('custom Computed Fields', () => {
 })
 
 
-describe('Mixed Query', () => {
+describe('Select - Mixed Query', () => {
 
   test("Standard", async() => {
     const time = '2020-01-01 12:20:01'
@@ -425,7 +370,7 @@ describe('Mixed Query', () => {
 })
 
 
-describe('Mixed Query', () => {
+describe('Select - Use Query Arguments', () => {
 
   test('Use Query Arguments', async () => {
     let expectedCount = 3
@@ -455,4 +400,123 @@ describe('Mixed Query', () => {
 
   })
 
+})
+
+describe('Where - Operators', () => {
+
+  test('Query by object filter - Equal', async () => {
+    let id = 2
+    let records = await models.Shop.find({id: Equal(id)})
+
+    expect(records).toHaveLength(1)
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id).map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Not Equal', async () => {
+    let id = 2
+    let records = await models.Shop.find({id: NotEqual(id)})
+
+    expect(records).toHaveLength(shopData.length - 1)
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id !== id).map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Contain', async () => {
+    let ids = [2,4,100]
+    let expectedShops = shopData.filter(s => ids.includes(s.id) )
+    let records = await models.Shop.find({id: ids})
+
+    expect(records).toHaveLength(expectedShops.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+    
+    let records2 = await models.Shop.find({id: Contain(...ids)})
+    expect(records2).toHaveLength(expectedShops.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Like', async () => {
+    const likeStr = '2'
+    let expectedShops = shopData.filter( s => s.name.includes(likeStr))
+    let records = await models.Shop.find({name: Like(`%${likeStr}%`) })
+
+    expect(records).toHaveLength(1)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Or Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: Or(
+        {id},
+        {name}
+      )
+    })
+    expect(records).toHaveLength(2)
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+    let records2 = await models.Shop.find({
+      where: [
+        {id},
+        {name}
+      ]
+    })
+    expect(records2).toHaveLength(2)
+    expect(records2).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+
+  test('Query by object filter - And Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: And(
+        {id},
+        {name}
+      )
+    })
+
+    expect(records).toHaveLength(0)
+
+    let records2 = await models.Shop.find({
+      where: [
+        And({id: 2}, {name: 'Shop 2'}),
+        And({id: 4}, {name: 'Shop 4'})
+      ]
+    })
+    const expectedShopData = shopData.filter(s => [2,4].includes(s.id) )
+    expect(records2).toHaveLength(expectedShopData.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShopData.map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+
+  test('Filter by Computed Field', async () => {
+    let records = await models.Shop.find({
+      hasTwoProductsAndlocationHasLetterA: true
+    })
+
+    const expectedShopData = shopData.filter(s => productData.filter(p => p.shopId === s.id).length === 2 && s.location.includes('a') )
+    expect(records).toHaveLength(expectedShopData.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShopData.map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+  
 })

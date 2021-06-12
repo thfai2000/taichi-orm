@@ -1,5 +1,6 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds } from "."
+import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -46,6 +47,7 @@ export interface Column<T = any> extends Knex.Raw {
     __expression: Knex.QueryBuilder | Knex.Raw
     count(): Column<NumberType> 
     exists(): Column<BooleanType> 
+    equals: (value: any) => Column<BooleanType>
     is(operator: string, value: any): Column<BooleanType> 
     toColumn(): Column<T>
     clone(): Column<T>
@@ -229,9 +231,7 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
 
     let text = expression.toString().trim()
 
-    if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
-        text = `(${text})`
-    }
+    text = addBlanketIfNeeds(text)
     let column: Column<any> = makeRaw(text) as Column<any>
     column.__type = 'Column'
     column.__expression = expression.clone()
@@ -255,6 +255,11 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
         }
 
         return makeColumn<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
+    }
+
+    column.equals = (value: any): Column<BooleanType> => {
+
+        return makeColumn<BooleanType>( Equal(value).toRaw(column), new Types.Boolean())
     }
 
     column.is = (operator: string, value: any): Column<BooleanType> => {
