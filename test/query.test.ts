@@ -1,4 +1,5 @@
 import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
+import {And, NotEqual, Or} from '../dist/Operator'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -177,6 +178,72 @@ afterAll(() => {
     return clearDatabase();
 });
 
+describe('Operators', () => {
+   test('Query by object filter - Not Equal', async () => {
+    let id = 2
+    let records = await models.Shop.find({id: NotEqual(id)})
+
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id !== id).map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Or Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: Or(
+        {id},
+        {name}
+      )
+    })
+
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+
+    let records2 = await models.Shop.find({
+      where: [
+        {id},
+        {name}
+      ]
+    })
+
+    expect(records2).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+
+  test('Query by object filter - And Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: And(
+        {id},
+        {name}
+      )
+    })
+
+    expect(records).toHaveLength(0)
+
+
+    let records2 = await models.Shop.find({
+      where: [
+        And({id: 2}, {name: 'Shop 2'}),
+        And({id: 4}, {name: 'Shop 4'})
+      ]
+    })
+
+    expect(records2).toEqual( expect.arrayContaining(
+      shopData.filter(s => [2,4].includes(s.id) ).map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+  
+})
+
 describe('Simple Query', () => {
 
   test('Query by object filter', async () => {
@@ -185,6 +252,7 @@ describe('Simple Query', () => {
 
     expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
   })
+
 
   test('Query by object filter + select computed fields', async () => {
     let id = 2

@@ -23,6 +23,7 @@ declare module "knex" {
 
         interface Raw {
             clone: Function
+            __type: 'Raw' | 'Column' | 'Source' | 'Row'
         }
     }
 }
@@ -68,6 +69,14 @@ export interface Source extends Knex.Raw {
 //     }
 //     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
 // }
+
+export const isRaw = (builder: any) : boolean => {
+    //@ts-ignore
+    if(builder.__type === 'Raw' ){
+        return true
+    }
+    return false
+}
 
 export const isRow = (builder: any) : boolean => {
     //@ts-ignore
@@ -212,6 +221,7 @@ export const makeRaw = (first: any, ...args: any[]) => {
     r.clone = () => {
         return makeRaw(r.toString())
     }
+    r.__type = 'Raw'
     return r
 }
 

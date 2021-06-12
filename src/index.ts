@@ -2,17 +2,31 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
-import {makeBuilder as builder, isRow, isColumn, makeRaw as raw, makeColumn as column, makeNamedColumn, Source, makeSource, NamedColumn, makeColumn} from './Builder'
+import {makeBuilder as builder, isRow, isRaw, isColumn, makeRaw as raw, makeColumn as column, makeNamedColumn, Source, makeSource, NamedColumn, makeColumn, Column} from './Builder'
 export {builder, raw, column}
 import { ComputeFn } from './ComputeFn'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain} from './Operator'
+import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, ConditionExpression, ConditionExpressionResolver} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
 function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
+}
+
+// function then<T>(value: T | Promise<T>, fn: (value: T) => void):  (T | Promise<T>) {
+//     if(value instanceof Promise){
+//         return value.then(fn).then( () =>  )
+//     }
+//     return value
+// }
+
+function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>) ):  (R | Promise<R>) {
+    if(value instanceof Promise){
+        return value.then(fn).then(value => value)
+    }
+    return fn(value)
 }
 
 export type Config = {
@@ -320,19 +334,21 @@ const compileAs$$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledC
             return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
         }
 
-        if(subquery instanceof Promise){
-            return new Promise<NamedColumn>( (resolve, reject)=> {
-                if(subquery instanceof Promise){
-                    subquery.then((query: Knex.QueryBuilder)=>{
-                        resolve(process(query))
-                    },reject)
-                } else {
-                    throw new Error('Unexpected flow. Subquery is updated.')
-                }
-            })
-        } else {
-            return process(subquery)
-        }
+        return thenResult(subquery, query => process(query))
+
+        // if(subquery instanceof Promise){
+        //     return new Promise<NamedColumn>( (resolve, reject)=> {
+        //         if(subquery instanceof Promise){
+        //             subquery.then((query: Knex.QueryBuilder)=>{
+        //                 resolve(process(query))
+        //             },reject)
+        //         } else {
+        //             throw new Error('Unexpected flow. Subquery is updated.')
+        //         }
+        //     })
+        // } else {
+        //     return process(subquery)
+        // }
     }
 }
 
@@ -340,10 +356,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
 
     // let select: any[] = []
     let isOnlyWhere = true
-    if(queryOptions.where){
-        stmt = stmt.where(selector(queryOptions.where))
-        isOnlyWhere = false
-    }
+
     if(queryOptions.limit){
         stmt = stmt.limit(queryOptions.limit)
         isOnlyWhere = false
@@ -366,9 +379,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
         isOnlyWhere = false
     }
 
-    if(isOnlyWhere){
-        stmt = stmt.where(selector(queryOptions))
-    }
+    let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
     if (queryOptions.select && queryOptions.select.length > 0) {
 
@@ -417,8 +428,9 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
             return null
         }).filter(notEmpty) 
         
+        stmtOrPromise = stmt
         // let props = selector.getProperties().map(p => p.computedFunc)
-        let newStmt = executedProps.reduce((stmt, executed) => {
+        stmtOrPromise = executedProps.reduce((stmt, executed) => {
             let result = executed
             if(result instanceof Promise || stmt instanceof Promise){
                 return new Promise( async (resolve, reject) => {
@@ -434,11 +446,19 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
             } else {
                 return stmt.select(result)
             }
-        }, stmt as Knex.QueryBuilder | Promise<Knex.QueryBuilder>)
-        return newStmt
+        }, stmtOrPromise)
     } else {
-        return stmt
+        stmtOrPromise = stmt
     }
+
+    if(queryOptions.where){
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions.where)) )
+        isOnlyWhere = false
+    }
+    if(isOnlyWhere){
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions)) )
+    }
+    return stmtOrPromise
 }
 
 const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedProperty, rootSelector: SelectorImpl) => {
@@ -481,11 +501,12 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
                     let result = simpleQuery(stmt, firstSelector, queryOptions)
                     if(queryObject.fn){
                         let queryFunction = queryObject.fn
-                        if(result instanceof Promise){
-                            return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
-                        } else {
-                            return queryFunction(result, firstSelector, ...restSelectors)
-                        }
+                        // if(result instanceof Promise){
+                        //     return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
+                        // } else {
+                        //     return queryFunction(result, firstSelector, ...restSelectors)
+                        // }
+                        return thenResult(result, value => queryFunction(value, firstSelector, ...restSelectors) )
                     }
                     return result
                 }
@@ -493,19 +514,21 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
             throw new Error('It is not support. Only Function and Object can be passed as filters.')
         }
 
-        if (stmt instanceof Promise) {
-            return new Promise<Knex.QueryBuilder>((resolve, reject) => {
-                if (stmt instanceof Promise) {
-                    stmt.then((query: Knex.QueryBuilder) => {
-                        resolve(process(query))
-                    }, reject)
-                } else {
-                    throw new Error('Unexpected flow. Subquery is updated.')
-                }
-            })
-        } else {
-            return process(stmt)
-        }
+        return thenResult(stmt, stmt => process(stmt))
+
+        // if (stmt instanceof Promise) {
+        //     return new Promise<Knex.QueryBuilder>((resolve, reject) => {
+        //         if (stmt instanceof Promise) {
+        //             stmt.then((query: Knex.QueryBuilder) => {
+        //                 resolve(process(query))
+        //             }, reject)
+        //         } else {
+        //             throw new Error('Unexpected flow. Subquery is updated.')
+        //         }
+        //     })
+        // } else {
+        //     return process(stmt)
+        // }
     }
 
     let checkValid = (subquery: Knex.QueryBuilder) => {
@@ -524,15 +547,20 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
 
     let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = computedFunc(rootSelector.interface!, args ,applyFilterFunc)
 
-    if(subquery instanceof Promise){
-        return subquery.then(value =>  {
-            checkValid(value)
-            return value
-        })
-    } else {
+    // if(subquery instanceof Promise){
+    //     return subquery.then(value =>  {
+    //         checkValid(value)
+    //         return value
+    //     })
+    // } else {
+    //     checkValid(subquery)
+    //     return subquery
+    // }
+
+    return thenResult(subquery, subquery => {
         checkValid(subquery)
         return subquery
-    }
+    })
 }
 
 export const configure = async function(newConfig: Partial<Config>){
@@ -1391,17 +1419,19 @@ export class Entity {
         let selectorImpl = new SelectorImpl(this, schemas[this.name])
         // let entityClass = this
 
-        let constructWhere = function(value: any): Promise<Knex.Raw> | Knex.Raw {
+        let resolveExpression: ConditionExpressionResolver = function(value: ConditionExpression): Promise<Knex.Raw> | Knex.Raw {
             if(value instanceof AndOperator){
                 let and = value as AndOperator
-                return and.toRaw()
+                return and.toRaw(resolveExpression)
             } else if(value instanceof OrOperator){
                 let or = value as OrOperator
-                return or.toRaw()
+                return or.toRaw(resolveExpression)
             } else if(Array.isArray(value)){
-                return constructWhere(Or(...value))
+                return resolveExpression(Or(...value))
             } else if(value instanceof Function) {
-                return value(selectorImpl)
+                return value(selectorImpl.interface!)
+            } else if(isColumn(value) || isRow(value) || isRaw(value)){
+                return value as Knex.QueryBuilder
             } else if(value instanceof SimpleObjectClass){
                 let dict = value as SimpleObject
                 let sqls = Object.keys(dict).reduce( (accSqls, key) => {
@@ -1424,25 +1454,25 @@ export class Entity {
                         accSqls.push( operator.toRaw(converted) )
                     } else {
                         let compiled = (selectorImpl.getComputedCompiledPromise(key))()
-                        if(compiled instanceof Promise){
-                            accSqls.push( compiled.then(col => operator.toRaw(col) ) )
-                        } else {
-                            accSqls.push( operator.toRaw(compiled) )
-                        }
+                        // if(compiled instanceof Promise){
+                        //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
+                        // } else {
+                        //     accSqls.push( operator.toRaw(compiled) )
+                        // }
+                        accSqls.push( thenResult(compiled, col => operator.toRaw(col)) )
                     }
 
                     return accSqls
 
                 }, [] as Array<Promise<Knex.Raw> | Knex.Raw> )
 
-                let a = constructWhere(And(...sqls))
-                return a
+                return resolveExpression(And(...sqls))
             } else {
                 throw new Error('Unsupport Where clause')
             }
         }
         
-        let selector = constructWhere as Selector
+        let selector = resolveExpression as Selector
 
         // selector._ = selectorImpl._
         // selector.$ = selectorImpl.$
