@@ -227,7 +227,7 @@ describe('Operators', () => {
 
     expect(records).toHaveLength(0)
 
-
+    
     let records2 = await models.Shop.find({
       where: [
         And({id: 2}, {name: 'Shop 2'}),

@@ -1,6 +1,6 @@
 import {Column, isColumn, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { Selector, SimpleObject } from '.'
+import { Selector, SimpleObject, thenResult } from '.'
 
 abstract class ValueOperator {
     abstract toRaw(leftOperand: Column ): Knex.Raw | Promise<Knex.Raw>
@@ -55,16 +55,12 @@ class EqualOperator extends ValueOperator {
     }
 
     toRaw(leftOperand: Column){
-        const logic = (value: any) => {
+        return thenResult(this.rightOperand, (value: any) => {
             if(isColumn(value)){
                 return raw( `${leftOperand} = ??`, [value.toString()])
             }
             else return raw( `${leftOperand} = ?`, [value])
-        }
-        if(this.rightOperand instanceof Promise){
-            return this.rightOperand.then(logic)
-        }
-        return logic(this.rightOperand)
+        })
     }
 }
 class NotEqualOperator extends ValueOperator {
@@ -75,16 +71,12 @@ class NotEqualOperator extends ValueOperator {
     }
 
     toRaw(leftOperand: Column): Knex.Raw | Promise<Knex.Raw> {
-        const logic = (value: any) => {
+        return thenResult(this.rightOperand, (value: any) => {
             if(isColumn(value)){
                 return raw( `${leftOperand} <> ??`, [value.toString()])
             }
             else return raw( `${leftOperand} <> ?`, [value])
-        }
-        if(this.rightOperand instanceof Promise){
-            return this.rightOperand.then(logic)
-        }
-        return logic(this.rightOperand)
+        })
     }
 }
 

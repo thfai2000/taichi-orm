@@ -22,7 +22,7 @@ function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
 //     return value
 // }
 
-function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>) ):  (R | Promise<R>) {
+export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>) ):  (R | Promise<R>) {
     if(value instanceof Promise){
         return value.then(fn).then(value => value)
     }
@@ -885,7 +885,7 @@ export type EntityPropertyKeyValues = {
 
 export type QuerySelect = string[]
 
-export type QueryWhere = EntityPropertyKeyValues
+export type QueryWhere = ConditionExpression
 
 export type QueryOrderBy = (string | {column: string, order: 'asc' | 'desc'} )[]
 
