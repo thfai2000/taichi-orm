@@ -1,7 +1,8 @@
 import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
-import {And, Contain, Like, Equal, NotEqual, Or} from '../dist/Operator'
-import {snakeCase} from 'lodash'
+import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
+import {isNull, snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+import { NOTFOUND } from 'dns'
 // import {clearSysFields} from './util'
 
 let shopData = [
@@ -9,7 +10,8 @@ let shopData = [
   { id: 2, name: 'Shop 2', location: 'Yuen Long'},
   { id: 3, name: 'Shop 3', location: 'Tsuen Wan'},
   { id: 4, name: 'Shop 4', location: 'Tsuen Wan'},
-  { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
+  { id: 5, name: 'Shop 5', location: 'Tsuen Wan'},
+  { id: 6, name: 'Shop 6', location: null}
 ]
 
 let productData = [
@@ -404,7 +406,7 @@ describe('Select - Use Query Arguments', () => {
 
 describe('Where - Operators', () => {
 
-  test('Query by object filter - Equal', async () => {
+  test('Query by object filter - Equal and IsNull', async () => {
     let id = 2
     let records = await models.Shop.find({id: Equal(id)})
 
@@ -414,13 +416,53 @@ describe('Where - Operators', () => {
     ))
   })
 
+  test('Query by object filter - IsNull', async () => {
+
+    let records = await models.Shop.find({location: IsNull()})
+    let records2 = await models.Shop.find({location: null})
+
+    const expected = shopData.filter(s => s.location === null)
+
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+
+    expect(records2).toHaveLength(expected.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - IsNotNull', async () => {
+    let records = await models.Shop.find({location: IsNotNull()})
+    const expected = shopData.filter(s => s.location !== null)
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
   test('Query by object filter - Not Equal', async () => {
     let id = 2
     let records = await models.Shop.find({id: NotEqual(id)})
-
-    expect(records).toHaveLength(shopData.length - 1)
+    const expected = shopData.filter(s => s.id !== id)
+    expect(records).toHaveLength(expected.length)
     expect(records).toEqual( expect.arrayContaining(
-      shopData.filter(s => s.id !== id).map( s => expect.objectContaining(s))
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Not', async () => {
+    let records = await models.Shop.find({where: Not({
+      location: 'Tsuen Wan',
+      name: 'Shop 4'
+    })})
+
+    const expected = shopData.filter(s => !(s.location === 'Tsuen Wan' && s.name === 'Shop 4') )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
     ))
   })
 
@@ -510,7 +552,7 @@ describe('Where - Operators', () => {
       hasTwoProductsAndlocationHasLetterA: true
     })
 
-    const expectedShopData = shopData.filter(s => productData.filter(p => p.shopId === s.id).length === 2 && s.location.includes('a') )
+    const expectedShopData = shopData.filter(s => productData.filter(p => p.shopId === s.id).length === 2 && s.location?.includes('a') )
     expect(records).toHaveLength(expectedShopData.length)
     expect(records).toEqual( expect.arrayContaining(
       expectedShopData.map( s => expect.objectContaining(s))

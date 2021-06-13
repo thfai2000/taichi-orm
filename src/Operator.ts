@@ -8,14 +8,14 @@ abstract class ValueOperator {
     abstract toColumn(leftOperand: Column ): Column | Promise<Column>
 }
 
- class AndOperator {
+class AndOperator {
     args: Array<ConditionExpression>
     constructor(...args: Array<ConditionExpression>){
         this.args = args
     }
     toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw( 
-            args.length === 1? resolver(args[0]).toString(): args.map(arg => `${addBlanketIfNeeds(resolver(arg).toString())}`).join(' AND ')
+            args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
     }
     toColumn(resolver: ConditionExpressionResolver): Column | Promise<Column>{
@@ -30,11 +30,27 @@ class OrOperator{
         this.args = args
     }
     toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw( 
-            args.length === 1? resolver(args[0]).toString(): args.map(arg => `${addBlanketIfNeeds(resolver(arg).toString())}`).join(' OR ')
+        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw(
+            `(${args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
     }
     toColumn(resolver: ConditionExpressionResolver): Column | Promise<Column>{
+        const p = this.toRaw(resolver)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class NotOperator {
+    arg: ConditionExpression
+    constructor(arg: ConditionExpression){
+        this.arg = arg
+    }
+
+    toRaw(resolver: ConditionExpressionResolver){
+        return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
+    }
+    
+    toColumn(resolver: ConditionExpressionResolver){
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeColumn(r, new BooleanType()))
     }
@@ -117,15 +133,48 @@ class NotEqualOperator extends ValueOperator {
     }
 }
 
+class IsNullOperator extends ValueOperator {
+    constructor(){
+        super()
+    }
+
+    toRaw(leftOperand: Column): Knex.Raw {
+        return raw(`${leftOperand} IS NULL`)
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class IsNotNullOperator extends ValueOperator {
+    constructor(){
+        super()
+    }
+
+    toRaw(leftOperand: Column): Knex.Raw {
+        return raw(`${leftOperand} IS NOT NULL`)
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
 export type ConditionExpressionResolver = (value: ConditionExpression) => Promise<Column> | Column
 export type SelectorFunction = (selector: Selector) => Column
 export type ConditionExpression = AndOperator | OrOperator | Column | Promise<Column> | SimpleObject | SelectorFunction | Array<ConditionExpression>
 
 const And = (...condition: Array<ConditionExpression> ) => new AndOperator(...condition)
 const Or = (...condition: Array<ConditionExpression>) => new OrOperator(...condition)
+const Not = (condition: ConditionExpression) => new NotOperator(condition)
 const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
 const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
 const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)
 const Like = (rightOperand: any) => new LikeOperator(rightOperand)
+const IsNull = () => new IsNullOperator()
+const IsNotNull = () => new IsNotNullOperator()
 
-export {And, Or, Equal, NotEqual, Contain, Like, AndOperator, OrOperator, ValueOperator}
+export {And, Or, Not, Equal, NotEqual, Contain, Like, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator}

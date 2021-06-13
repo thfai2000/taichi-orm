@@ -7,7 +7,7 @@ export {builder, raw, column}
 import { ComputeFn } from './ComputeFn'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, ConditionExpression, ConditionExpressionResolver} from './Operator'
+import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, ConditionExpression, ConditionExpressionResolver, IsNull, NotOperator} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -36,7 +36,12 @@ export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | P
 }
 
 export function addBlanketIfNeeds(text: string) {
-    if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+    text = text.trim()
+    let need = true
+    if(/^[a-zA-Z0-9\_\$\.`'"]+$/.test(text)){
+        need = false
+    }
+    if (need) {
         text = `(${text})`
     }
     return text
@@ -1440,6 +1445,9 @@ export class Entity {
             } else if(value instanceof OrOperator){
                 let or = value as OrOperator
                 return or.toColumn(resolveExpression)
+             } else if(value instanceof NotOperator){
+                let not = value as NotOperator
+                return not.toColumn(resolveExpression)
             } else if(Array.isArray(value)){
                 return resolveExpression(Or(...value))
             } else if(value instanceof Function) {
@@ -1459,6 +1467,8 @@ export class Entity {
                         operator = dict[key]
                     }else if( Array.isArray(dict[key]) ){
                         operator = Contain(...dict[key])
+                    } else if(dict[key] === null){
+                        operator = IsNull()
                     } else {
                         operator = Equal(dict[key])
                     }
