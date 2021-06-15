@@ -124,70 +124,70 @@ export const getKnexInstance = (): Knex => {
 }
 
 
-export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
-    let knex = getKnexInstance()
-    return await new Promise((resolve, reject)=> {
-        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
-            try{
-                const AsyncFunction = (async () => {}).constructor;
-                if(func instanceof AsyncFunction){
-                    let called = func(trx) as Promise<T>
-                    called.then(
-                        (result: T) => {
-                            if(!isExistingTrx){
-                                trx.commit().then( 
-                                    () => resolve(result),
-                                    (error) => reject(error)
-                                )
-                            } else {
-                                resolve(result)
-                            }
-                        },
-                        (error: any) => {
-                            if(!isExistingTrx){
-                                trx.rollback().then(
-                                    () => reject(error),
-                                    () => reject(error)
-                                )
-                            } else {
-                                reject(error)
-                            }
-                        }
-                    )
-                }else{
-                    let result = func(trx)
-                    if(!isExistingTrx){
-                        trx.commit().then( 
-                            () => resolve(result),
-                            (error) => reject(error)
-                        )
-                    } else {
-                        resolve(result)
-                    }
-                }
-            }catch(error){
-                if(!isExistingTrx){
-                    trx.rollback().then(
-                        () => reject(error),
-                        () => reject(error)
-                    )
-                } else {
-                    reject(error)
-                }
-            }
-        }
+// export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
+//     let knex = getKnexInstance()
+//     return await new Promise((resolve, reject)=> {
+//         const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
+//             try{
+//                 const AsyncFunction = (async () => {}).constructor;
+//                 if(func instanceof AsyncFunction){
+//                     let called = func(trx) as Promise<T>
+//                     called.then(
+//                         (result: T) => {
+//                             if(!isExistingTrx){
+//                                 trx.commit().then( 
+//                                     () => resolve(result),
+//                                     (error) => reject(error)
+//                                 )
+//                             } else {
+//                                 resolve(result)
+//                             }
+//                         },
+//                         (error: any) => {
+//                             if(!isExistingTrx){
+//                                 trx.rollback().then(
+//                                     () => reject(error),
+//                                     () => reject(error)
+//                                 )
+//                             } else {
+//                                 reject(error)
+//                             }
+//                         }
+//                     )
+//                 }else{
+//                     let result = func(trx)
+//                     if(!isExistingTrx){
+//                         trx.commit().then( 
+//                             () => resolve(result),
+//                             (error) => reject(error)
+//                         )
+//                     } else {
+//                         resolve(result)
+//                     }
+//                 }
+//             }catch(error){
+//                 if(!isExistingTrx){
+//                     trx.rollback().then(
+//                         () => reject(error),
+//                         () => reject(error)
+//                     )
+//                 } else {
+//                     reject(error)
+//                 }
+//             }
+//         }
 
-        if(existingTrx){
-            // use existing
-            useTrx(existingTrx, true)
-        } else {
-            // use new 
-            knex.transaction( (trx) => {
-                useTrx(trx, false)
-            })
-        }
-    })
-}
+//         if(existingTrx){
+//             // use existing
+//             useTrx(existingTrx, true)
+//         } else {
+//             // use new 
+//             knex.transaction( (trx) => {
+//                 useTrx(trx, false)
+//             })
+//         }
+//     })
+// }
 
 let schemas: {
     [key: string]: Schema
@@ -938,26 +938,86 @@ export type QueryOptions = QueryFunction | QueryObject | QueryWhere | null
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-type ExecutionContextActionResult<T> = {
+type DBRunnerActionResult<T> = {
     resultData: T
 }
 
-type ExecutionContextAction<I> =  (trx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => Promise<ExecutionContextActionResult<I>>
-// type BeforeExecutionAction = () => Promise<BeforeExecutionOutput>
-// type BeforeExecutionOutput = Array<{
-//     sqlString: Knex.QueryBuilder,
-//     sideSqlString?: Knex.QueryBuilder,
-//     entityData?: EntityPropertyKeyValues,
-//     uuid: string | null
-// }>
+type DBRunnerAction<I> =  (context: ExecutionContext) => Promise<DBRunnerActionResult<I>>
 
-export class ExecutionContext<I> implements PromiseLike<I>{
-    // private beforeAction: BeforeExecutionAction
-    private trx?: Knex.Transaction
-    private action: ExecutionContextAction<I>
+
+export class ExecutionContext{
+    sqlRunCallback: ((sql: string) => void) | null
+    trxProvider: () => Promise<Knex.Transaction<any, any[]>>
+    started: number = 0
+    success: number = 0
+
+    constructor(trxProvider: () => Promise<Knex.Transaction<any, any[]>>, sqlRunCallback: ((sql: string) => void) | null){
+        this.trxProvider = trxProvider
+        this.sqlRunCallback = sqlRunCallback
+    }
+
+    async startTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
+        // return await startTransaction<T>( async (trx) => {
+        //     this.trx = trx
+        //     return await func()
+        // }, this.trx)
+        try{
+            const trx = await this.trxProvider()
+            this.started++
+            let result = await func(this)
+            this.success++
+            return result
+        }catch(error){
+            throw error
+        }
+    }
+
+    static async start<T = any>(
+        options: {onSqlRun?: ((sql: string) => void) | null}, 
+        func: (context: ExecutionContext) => Promise<T> ): Promise<T> {
+        
+        let _trx: Knex.Transaction | null = null
+        // const trxProvider = async() => {
+        //     if(!_trx){
+        //         _trx = await getKnexInstance().transaction()
+        //     }
+        //     return _trx
+        // }
+        const trxProvider = getKnexInstance().transactionProvider()
+        let ctx = new ExecutionContext(trxProvider, options.onSqlRun ?? null)
+        try{
+            let result = await func(ctx);
+            if(ctx.success > 0){
+                const trx = await trxProvider()
+                await trx.commit()
+            }
+            return result
+        }catch(error){
+            if(ctx.started > 0){
+                const trx = await trxProvider()
+                await trx.rollback()
+                throw error
+            }
+            throw error
+        }
+    }
+}
+
+export const startTransaction = async (logic: (context: ExecutionContext) => any ) => {
+    return await ExecutionContext.start({}, async(context) => {
+        return context.startTransaction( async(context: ExecutionContext) => {
+            return await logic(context)
+        })
+    })
+}
+
+export class DBRunner<I> implements PromiseLike<I>{
+    private ctx?: ExecutionContext
+    private action: DBRunnerAction<I>
+    private trx?: Knex.Transaction | null
     private sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(action: ExecutionContextAction<I>){
+    constructor(action: DBRunnerAction<I>){
         // this.beforeAction = beforeAction
         this.action = action
     }
@@ -968,11 +1028,15 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         : Promise<TResult1 | TResult2> {
 
         try{
-            // let beforeExecutionOutput = await this.beforeAction()
-            // if(this.withLogFlag){
-            //     beforeExecutionOutput.forEach( ({sqlString}) => console.log('\x1b[33m%s\x1b[0m', sqlString.toString()) )
-            // }
-            let result = await this.action(this.trx ?? null, this.sqlRunCallback ?? null)
+            let result
+            if(!this.ctx){
+                result = await ExecutionContext.start({onSqlRun: this.sqlRunCallback}, async(context) => {
+                    return await this.action(context)
+                })
+            } else {
+                result = await this.action(this.ctx)
+            }
+
             if(onfulfilled){
                 return onfulfilled(result.resultData)
             } else {
@@ -988,20 +1052,25 @@ export class ExecutionContext<I> implements PromiseLike<I>{
         // return this.then(onfulfilled, onrejected)
     }
 
-    usingConnection(trx: Knex.Transaction): ExecutionContext<I>{
-        this.trx = trx
-        return this
-    }
+    // usingConnection(trx: Knex.Transaction): DBRunner<I>{
+    //     this.trx = trx
+    //     return this
+    // }
 
-    usingConnectionIfAvailable(trx: Knex.Transaction | null | undefined): ExecutionContext<I>{
-        if(trx){
-            this.trx = trx
-        }
-        return this
-    }
+    // usingConnectionIfAvailable(trx: Knex.Transaction | null | undefined): DBRunner<I>{
+    //     if(trx){
+    //         this.trx = trx
+    //     }
+    //     return this
+    // }
 
     onSqlRun(callback: ((sql: string) => void) | null ){
         this.sqlRunCallback = callback
+        return this
+    }
+
+    usingContext(ctx: ExecutionContext) {
+        this.ctx = ctx
         return this
     }
 
@@ -1012,10 +1081,10 @@ export class ExecutionContext<I> implements PromiseLike<I>{
 export class Database{
     
 
-    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues ): ExecutionContext< InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-                let result = await Database._create<T>(entityClass, [data], existingTrx ?? null, sqlRunCallback)
+    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues ): DBRunner< InstanceType<T> >{
+        return new DBRunner< InstanceType<T> >(
+            async (existingContext: ExecutionContext) => {
+                let result = await Database._create<T>(entityClass, [data], existingContext)
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
@@ -1026,10 +1095,10 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[] ): ExecutionContext< InstanceType<T>[] >{
-        return new ExecutionContext< InstanceType<T>[] >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-                let result = await Database._create<T>(entityClass, arrayOfData, existingTrx, sqlRunCallback)
+    static createEach<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[] ): DBRunner< InstanceType<T>[] >{
+        return new DBRunner< InstanceType<T>[] >(
+            async (existingContext: ExecutionContext) => {
+                let result = await Database._create<T>(entityClass, arrayOfData, existingContext)
                 return {
                     resultData: result.map( data => {
                         if(data === null){
@@ -1042,8 +1111,8 @@ export class Database{
     }
 
     private static async _create<T extends typeof Entity>(entityClass: T, values: EntityPropertyKeyValues[], 
-        existingTrx: Knex.Transaction<any, any[]> | null, sqlRunCallback: ((sql: string) => void ) | null ) {
-
+        existingContext: ExecutionContext ) {
+        
         const schema = entityClass.schema
         
         let useUuid: boolean = !!config.enableUuid
@@ -1074,7 +1143,7 @@ export class Database{
             }
         })
 
-        let fns = await startTransaction(async (trx) => {
+        let fns = await existingContext.startTransaction(async (existingContext) => {
             let allResults = await Promise.all(inputs.map(async ( input) => {
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
@@ -1082,22 +1151,23 @@ export class Database{
                 if (config.knexConfig.client.startsWith('mysql')) {
                     let insertedId: number
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                    const r = await this.executeStatement(insertStmt, trx, sqlRunCallback)
+                    const r = await this.executeStatement(insertStmt, existingContext)
                     insertedId = r[0][0].insertId
-                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx).onSqlRun(sqlRunCallback)
+                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingContext(existingContext)
                     
-                    return await this.resolveMutations<T>(record, input.mutations, trx)
+                    let b = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                    return b
                 } else if (config.knexConfig.client.startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
-                    const r = await this.executeStatement(insertStmt, trx, sqlRunCallback)
+                    const r = await this.executeStatement(insertStmt, existingContext)
                     
                     if(config.enableUuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid])).usingConnection(trx).onSqlRun(sqlRunCallback)
-                            return await this.resolveMutations<T>(record, input.mutations, trx)
+                            let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid])).usingContext(existingContext)
+                            return await this.resolveMutations<T>(record, input.mutations, existingContext)
                         }
                     } else {
                         return null
@@ -1106,11 +1176,11 @@ export class Database{
                 } else if (config.knexConfig.client.startsWith('pg')) {
                     const insertStmt = input.sqlString.toString()
                     let insertedId: number
-                    const r = await this.executeStatement(insertStmt, trx, sqlRunCallback)
+                    const r = await this.executeStatement(insertStmt, existingContext)
                     
                     insertedId = r.rows[0][ entityClass.schema.primaryKey.fieldName]
-                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingConnection(trx).onSqlRun(sqlRunCallback)
-                    return await this.resolveMutations<T>(record, input.mutations, trx)
+                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingContext(existingContext)
+                    return await this.resolveMutations<T>(record, input.mutations, existingContext)
 
                 } else {
                     throw new Error('Unsupport client')
@@ -1119,7 +1189,7 @@ export class Database{
             }))
             return allResults
 
-        }, existingTrx)
+        })
 
         return fns
     }
@@ -1147,8 +1217,8 @@ export class Database{
                 } else {
                     action = mutate('default', data[prop.name])
                 }
-                mutations[currentProp.fieldName] = (rootValue: Entity, trx: Knex.Transaction) => {
-                    let value = action(currentProp, rootValue, trx)
+                mutations[currentProp.fieldName] = (rootValue: Entity, existingContext: ExecutionContext) => {
+                    let value = action(currentProp, rootValue, existingContext)
                     return currentProp.definition.parseProperty(value, currentProp)
                 }
             }
@@ -1156,17 +1226,17 @@ export class Database{
             return {fieldValues, mutations}
         }, {fieldValues: {}, mutations: {}} as {
             fieldValues: EntityPropertyKeyValues,
-            mutations: { [key:string]: (rootValue: Entity, trx: Knex.Transaction) => any}
+            mutations: { [key:string]: (rootValue: Entity, existingContext: ExecutionContext) => any}
         })
     }
 
     private static async resolveMutations<T extends typeof Entity>(record: InstanceType<T>, 
-        mutations: {[key: string]: (rootValue: Entity, trx: Knex.Transaction<any, any[]>) => any | Promise<any>}, 
-        trx: Knex.Transaction): Promise<InstanceType<T>> {
+        mutations: {[key: string]: (rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>}, 
+        existingContext: ExecutionContext): Promise<InstanceType<T>> {
         let mutationValues = await Object.keys(mutations).reduce( async (accP, key) => {
             let acc = await accP
             const action = mutations[key]
-            acc[key] = await action(record, trx)
+            acc[key] = await action(record, existingContext)
             return acc
         }, {} as {[key:string]: any})
 
@@ -1179,10 +1249,10 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): ExecutionContext<  InstanceType<T> >{
-         return new ExecutionContext< InstanceType<T> >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingTrx, sqlRunCallback)
+     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): DBRunner<  InstanceType<T> >{
+         return new DBRunner< InstanceType<T> >(
+            async (existingContext: ExecutionContext) => {
+            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
             return {
                 resultData: rows[0] ?? null
             }
@@ -1194,18 +1264,17 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): ExecutionContext<  Array<InstanceType<T>> >{
-        return new ExecutionContext< Array<InstanceType<T>> >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingTrx, sqlRunCallback)
+    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): DBRunner<  Array<InstanceType<T>> >{
+        return new DBRunner< Array<InstanceType<T>> >(
+            async (existingContext: ExecutionContext) => {
+            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
             return {
                 resultData: rows
             }
         })
     }
 
-    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter: QueryOptions | null, existingTrx: Knex.Transaction<any, any[]> | null, 
-        sqlRunCallback: ((sql: string) => void ) | null) {
+    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter: QueryOptions | null, existingContext: ExecutionContext) {
        
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
@@ -1228,7 +1297,7 @@ export class Database{
         // console.debug("========== FIND ================")
         // console.debug(stmt.toString())
         // console.debug("================================")
-        let resultData: any = await Database.executeStatement(sqlString, existingTrx, sqlRunCallback)
+        let resultData: any = await Database.executeStatement(sqlString, existingContext)
 
         let rowData = null
         if(config.knexConfig.client.startsWith('mysql')){
@@ -1246,10 +1315,10 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): ExecutionContext< InstanceType<T> >{
-        return new ExecutionContext< InstanceType<T> >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-                let result = await Database._update<T>(entityClass, data, applyFilter??null, true, existingTrx, sqlRunCallback)
+    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T> >{
+        return new DBRunner< InstanceType<T> >(
+            async (existingContext: ExecutionContext) => {
+                let result = await Database._update<T>(entityClass, data, applyFilter??null, true, existingContext)
                 return {
                     resultData: result[0] ?? null
                 }
@@ -1257,10 +1326,10 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): ExecutionContext< InstanceType<T>[] >{
-        return new ExecutionContext< InstanceType<T>[] >(
-            async (existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null) => {
-                let result = await Database._update<T>(entityClass, data, applyFilter??null, false, existingTrx, sqlRunCallback)
+    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T>[] >{
+        return new DBRunner< InstanceType<T>[] >(
+            async (existingContext: ExecutionContext) => {
+                let result = await Database._update<T>(entityClass, data, applyFilter??null, false, existingContext)
                 return {
                     resultData: result
                 }
@@ -1272,8 +1341,7 @@ export class Database{
     private static async _update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues,  
         applyFilter: QueryOptions | null, 
         isOneOnly: boolean, 
-        existingTrx: Knex.Transaction<any, any[]> | null,
-        sqlRunCallback: ((sql: string) => void ) | null) {
+        existingContext: ExecutionContext) {
         
         
         const schema = entityClass.schema
@@ -1302,7 +1370,7 @@ export class Database{
         }
         
         
-        let fns = await startTransaction(async (trx) => {
+        let fns = await existingContext.startTransaction(async (trx) => {
 
             if(!input.sideSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
@@ -1313,18 +1381,18 @@ export class Database{
             let pks: number[] = []
             if (config.knexConfig.client.startsWith('pg')) {
                 updateStmt = updateStmt.returning(entityClass.schema.primaryKey.fieldName)
-                let updateResult = await this.executeStatement(updateStmt, trx, sqlRunCallback)
+                let updateResult = await this.executeStatement(updateStmt, existingContext)
                 return await Promise.all((updateResult.rows as SimpleObject[] ).map( async (row) => {
-                    let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: row[entityClass.schema.primaryKey.fieldName]}).usingConnection(trx).onSqlRun(sqlRunCallback)
-                    return await this.resolveMutations<T>(record, input.mutations, trx)
+                    let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: row[entityClass.schema.primaryKey.fieldName]}).usingContext(existingContext)
+                    return await this.resolveMutations<T>(record, input.mutations, existingContext)
                 }))
             } else {
 
                 if (config.knexConfig.client.startsWith('mysql')) {
-                    let result = await this.executeStatement(selectStmt, trx, sqlRunCallback)
+                    let result = await this.executeStatement(selectStmt, existingContext)
                     pks = result[0].map( (r: SimpleObject) => r[entityClass.schema.primaryKey.fieldName])
                 } else if (config.knexConfig.client.startsWith('sqlite')) {
-                    let result = await this.executeStatement(selectStmt, trx, sqlRunCallback)
+                    let result = await this.executeStatement(selectStmt, existingContext)
                     pks = result.map( (r: SimpleObject) => r[entityClass.schema.primaryKey.fieldName])
                 } else {
                     throw new Error('NYI.')
@@ -1339,7 +1407,7 @@ export class Database{
                 }
     
                 return await Promise.all(pks.flatMap( async (pk) => {
-                    let updateResult = await this.executeStatement(updateStmt.clone().andWhereRaw('?? = ?', [entityClass.schema.primaryKey.fieldName, pk]), trx, sqlRunCallback)
+                    let updateResult = await this.executeStatement(updateStmt.clone().andWhereRaw('?? = ?', [entityClass.schema.primaryKey.fieldName, pk]), existingContext)
                     if (config.knexConfig.client.startsWith('mysql')) {
                         let numUpdates: number
                         numUpdates = updateResult[0].affectedRows
@@ -1348,19 +1416,19 @@ export class Database{
                         } else if(numUpdates === 0){
                             return null
                         } else {
-                            let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingConnection(trx).onSqlRun(sqlRunCallback)
-                            return await this.resolveMutations<T>(record, input.mutations, trx)
+                            let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
+                            return await this.resolveMutations<T>(record, input.mutations, existingContext)
                         }
                     } else if (config.knexConfig.client.startsWith('sqlite')) {
-                        let found = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingConnection(trx).onSqlRun(sqlRunCallback)
+                        let found = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
                         let data = input.entityData!
                         let unmatchedKey = Object.keys(data).filter( k => data[k] !== found[k])
                         if( unmatchedKey.length > 0 ){
                             console.log('Unmatched prop values', unmatchedKey.map(k => `${k}: ${data[k]} != ${found[k]}` ))
                             throw new Error(`The record cannot be updated. `)
                         }
-                        let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingConnection(trx).onSqlRun(sqlRunCallback)
-                        return await this.resolveMutations<T>(record, input.mutations, trx)
+                        let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
+                        return await this.resolveMutations<T>(record, input.mutations, existingContext)
     
                     } else {
                         throw new Error('NYI.')
@@ -1369,19 +1437,20 @@ export class Database{
             }
 
 
-        }, existingTrx)
+        })
 
         return fns.filter(notEmpty)
     }
 
-    static async executeStatement(stmt: SQLString, existingTrx: Knex.Transaction | null, sqlRunCallback: ((sql: string) => void ) | null): Promise<any> {
+    static async executeStatement(stmt: SQLString, context: ExecutionContext): Promise<any> {
 
         const sql = stmt.toString()
-        if(sqlRunCallback) sqlRunCallback(sql)
+        if(context.sqlRunCallback) context.sqlRunCallback(sql)
 
         let KnexStmt = getKnexInstance().raw(sql)
-        if (existingTrx) {
-            KnexStmt.transacting(existingTrx)
+        if (context.started > 0) {
+            const trx = await context.trxProvider()
+            KnexStmt.transacting(trx)
         }
         let result = null
         try{
@@ -1571,19 +1640,19 @@ export class Entity {
         return selector
     }
 
-    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): ExecutionContext<I[]>{
+    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DBRunner<I[]>{
         return Database.createEach(this, arrayOfData)
     }
 
-    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): ExecutionContext<I>{
+    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): DBRunner<I>{
         return Database.createOne(this, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): ExecutionContext<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I>{
         return Database.updateOne(this, data, applyFilter)
     }
 
-    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): ExecutionContext<I[]>{
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I[]>{
         return Database.update(this, data, applyFilter)
     }
 
@@ -1592,7 +1661,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): ExecutionContext<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DBRunner<I>{
         return Database.findOne(this, applyFilter)
     }
 
@@ -1601,7 +1670,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): ExecutionContext<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DBRunner<Array<I>>{
         return Database.find(this, applyFilter)
     }
 
@@ -1623,14 +1692,14 @@ export class Dual extends Entity {
 
 export const models = registeredModels
 
-export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, trx: Knex.Transaction) => any
+export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
 
 export const mutate = (actionName: string, value: any): MutateFunctionProducer => {
-    return (prop: NamedProperty, rootValue: Entity, trx: Knex.Transaction) => {
+    return (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => {
         if(!prop.definition.mutationFunc){
             throw new Error('There is no mutation function defined.')
         }
-        return prop.definition.mutationFunc(actionName, value, rootValue, trx)
+        return prop.definition.mutationFunc(actionName, value, rootValue, existingContext)
     }
 }
 /**
