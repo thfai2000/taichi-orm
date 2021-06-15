@@ -9,48 +9,48 @@ abstract class ValueOperator {
 }
 
 class AndOperator {
-    args: Array<ConditionExpression>
-    constructor(...args: Array<ConditionExpression>){
+    args: Array<Expression>
+    constructor(...args: Array<Expression>){
         this.args = args
     }
-    toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw( 
+    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression>) => raw( 
             args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
     }
-    toColumn(resolver: ConditionExpressionResolver): Column | Promise<Column>{
+    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeColumn(r, new BooleanType()))
     }
 }
 
 class OrOperator{
-    args: Array<ConditionExpression>
-    constructor(...args: Array<ConditionExpression>){
+    args: Array<Expression>
+    constructor(...args: Array<Expression>){
         this.args = args
     }
-    toRaw(resolver: ConditionExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<ConditionExpression>) => raw(
+    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression>) => raw(
             `(${args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
     }
-    toColumn(resolver: ConditionExpressionResolver): Column | Promise<Column>{
+    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeColumn(r, new BooleanType()))
     }
 }
 
 class NotOperator {
-    arg: ConditionExpression
-    constructor(arg: ConditionExpression){
+    arg: Expression
+    constructor(arg: Expression){
         this.arg = arg
     }
 
-    toRaw(resolver: ConditionExpressionResolver){
+    toRaw(resolver: ExpressionResolver){
         return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
     }
     
-    toColumn(resolver: ConditionExpressionResolver){
+    toColumn(resolver: ExpressionResolver){
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeColumn(r, new BooleanType()))
     }
@@ -163,13 +163,18 @@ class IsNotNullOperator extends ValueOperator {
     }
 }
 
-export type ConditionExpressionResolver = (value: ConditionExpression) => Promise<Column> | Column
-export type SelectorFunction = (selector: Selector) => Column
-export type ConditionExpression = AndOperator | OrOperator | Column | Promise<Column> | SimpleObject | SelectorFunction | Array<ConditionExpression>
+//TODO: GreaterThan
+//TODO: LessThan
+//TODO: GreaterThanOrEqual
+//TODO: LessThanOrEqual
 
-const And = (...condition: Array<ConditionExpression> ) => new AndOperator(...condition)
-const Or = (...condition: Array<ConditionExpression>) => new OrOperator(...condition)
-const Not = (condition: ConditionExpression) => new NotOperator(condition)
+export type ExpressionResolver = (value: Expression) => Promise<Column> | Column
+export type SelectorFunction = (selector: Selector) => Column
+export type Expression = AndOperator | OrOperator | Column | Promise<Column> | SimpleObject | SelectorFunction | Array<Expression>
+
+const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
+const Or = (...condition: Array<Expression>) => new OrOperator(...condition)
+const Not = (condition: Expression) => new NotOperator(condition)
 const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
 const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
 const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)

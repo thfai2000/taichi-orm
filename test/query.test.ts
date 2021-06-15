@@ -1,8 +1,7 @@
 import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
 import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
-import {isNull, snakeCase} from 'lodash'
+import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-import { NOTFOUND } from 'dns'
 // import {clearSysFields} from './util'
 
 let shopData = [

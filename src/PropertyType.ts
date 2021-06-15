@@ -1,22 +1,35 @@
+import { Knex } from "knex"
 import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction } from "."
+
+
+export type MutateFunction = (actionName: string, data: any, rootValue: Entity, trx: Knex.Transaction) => any | Promise<any>
 
 export abstract class PropertyDefinition<I = any> {
     private _computeFunc: ComputeFunction | null
+    private _mutationFunc: MutateFunction | null
 
-    constructor(computeFunc?: ComputeFunction | null){
+    constructor(
+        computeFunc?: ComputeFunction | null, 
+        mutationFunc?: MutateFunction | null){
         this._computeFunc = computeFunc ?? null
+        this._mutationFunc = mutationFunc ?? null
     }
 
     get computeFunc(){
         return this._computeFunc
     }
 
+    get mutationFunc(){
+        return this._mutationFunc
+    }
+    
     abstract transformFromMultipleRows: boolean
     abstract transformIntoMultipleRows: boolean
 
     abstract create(prop: NamedProperty) : string[]
     queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
-    mutateTransform?(query: SQLString, columns: string[]):SQLString
+    
+
     abstract parseRaw(rawValue: any, prop: NamedProperty): I
     abstract parseProperty(propertyvalue: I, prop: NamedProperty):any
 }
