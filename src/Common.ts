@@ -1,9 +1,8 @@
 import { Knex } from "knex"
 import { makeBuilder } from "./Builder"
-import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, ExecutionContext} from "."
-import { MutateFunction } from "./PropertyType"
+import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments} from "."
 
-export const ComputeFn: {[key:string]: (...args: any[]) => ComputeFunction}  = {
+export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
     relatedFrom: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return (rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction) => {
@@ -57,30 +56,3 @@ export const ComputeFn: {[key:string]: (...args: any[]) => ComputeFunction}  = {
         }
     }
 }
-
-
-// export const MutateFn : {[key:string]:  (...args: any[]) => MutateFunction} = {
-
-//     hasCollection: (entityClass: typeof Entity, propName: string) => {
-//         return (actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => {
-
-//             if(!Array.isArray(data)){
-//                 throw new Error('data must be array')
-//             }
-
-//             if( ['default', 'replace'].includes(actionName) ){
-
-//                 entityClass.delete().usingContext(existingContext)
-
-//                 let created = entityClass.createEach(data.map(d => ({
-//                     ...d,
-//                     [propName]: rootValue.id
-//                 }))).usingContext(existingContext)
-
-//                 return created
-//             }
-//         }
-//     }
-
-
-// }
