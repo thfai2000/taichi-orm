@@ -1,7 +1,8 @@
-import {configure, Schema, Entity, Types, Builtin, models, raw, column} from '../dist'
+import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector} from '../dist'
 import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+import { Knex } from 'knex'
 // import {clearSysFields} from './util'
 
 let shopData = [
@@ -117,7 +118,7 @@ const initializeDatabase = async () => {
         
         schema.prop('mainColor', 
           new Types.ObjectOf(Color, {
-            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt: Knex.QueryBuilder, relatedSelector: Selector, throughSelector: Selector) => {
               return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })

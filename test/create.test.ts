@@ -66,7 +66,7 @@ describe('Test Create - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    let records = await models.Shop.create(shopData)
+    let records = await models.Shop.createEach(shopData)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -88,7 +88,7 @@ describe('Test Create - with transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     
     let record = await startTransaction( async(trx) => {
-      let record = await models.Shop.createOne(shopData).usingContext(trx)
+      let record = await models.Shop.createOne(shopData).usingConnection(trx)
       return record
     })
 
@@ -110,11 +110,11 @@ describe('Test Create - with transaction', () => {
     let errorMessage = 'It is failed.'
     
     const t = async() => await startTransaction( async(trx) => {
-      let record = await models.Shop.createOne(shopData).usingContext(trx)
+      let record = await models.Shop.createOne(shopData).usingConnection(trx)
       expect(record).toEqual( expect.objectContaining({
         ...shopData
       }))
-      let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) ).usingContext(trx)
+      let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) ).usingConnection(trx)
       expect(found).toEqual( expect.objectContaining({
         ...shopData
       }))
@@ -136,7 +136,7 @@ describe('Test Create - with transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
     let records = await startTransaction( async(trx) => {
-      return await models.Shop.create(shopData).usingContext(trx)
+      return await models.Shop.createEach(shopData).usingConnection(trx)
     })
 
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
@@ -161,12 +161,12 @@ describe('Test Create - with transaction', () => {
     let errorMessage = 'It is failed.'
 
     let t = async() => await startTransaction( async(trx) => {
-      let records = await models.Shop.create(shopData).usingContext(trx)
+      let records = await models.Shop.createEach(shopData).usingConnection(trx)
       expect(records).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))
       // find again
-      let found = await models.Shop.find().usingContext(trx)
+      let found = await models.Shop.find().usingConnection(trx)
       expect(found).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))

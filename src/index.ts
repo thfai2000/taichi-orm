@@ -124,70 +124,70 @@ export const getKnexInstance = (): Knex => {
 }
 
 
-// export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
-//     let knex = getKnexInstance()
-//     return await new Promise((resolve, reject)=> {
-//         const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
-//             try{
-//                 const AsyncFunction = (async () => {}).constructor;
-//                 if(func instanceof AsyncFunction){
-//                     let called = func(trx) as Promise<T>
-//                     called.then(
-//                         (result: T) => {
-//                             if(!isExistingTrx){
-//                                 trx.commit().then( 
-//                                     () => resolve(result),
-//                                     (error) => reject(error)
-//                                 )
-//                             } else {
-//                                 resolve(result)
-//                             }
-//                         },
-//                         (error: any) => {
-//                             if(!isExistingTrx){
-//                                 trx.rollback().then(
-//                                     () => reject(error),
-//                                     () => reject(error)
-//                                 )
-//                             } else {
-//                                 reject(error)
-//                             }
-//                         }
-//                     )
-//                 }else{
-//                     let result = func(trx)
-//                     if(!isExistingTrx){
-//                         trx.commit().then( 
-//                             () => resolve(result),
-//                             (error) => reject(error)
-//                         )
-//                     } else {
-//                         resolve(result)
-//                     }
-//                 }
-//             }catch(error){
-//                 if(!isExistingTrx){
-//                     trx.rollback().then(
-//                         () => reject(error),
-//                         () => reject(error)
-//                     )
-//                 } else {
-//                     reject(error)
-//                 }
-//             }
-//         }
+export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
+    let knex = getKnexInstance()
+    return await new Promise((resolve, reject)=> {
+        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
+            try{
+                const AsyncFunction = (async () => {}).constructor;
+                if(func instanceof AsyncFunction){
+                    let called = func(trx) as Promise<T>
+                    called.then(
+                        (result: T) => {
+                            if(!isExistingTrx){
+                                trx.commit().then( 
+                                    () => resolve(result),
+                                    (error) => reject(error)
+                                )
+                            } else {
+                                resolve(result)
+                            }
+                        },
+                        (error: any) => {
+                            if(!isExistingTrx){
+                                trx.rollback().then(
+                                    () => reject(error),
+                                    () => reject(error)
+                                )
+                            } else {
+                                reject(error)
+                            }
+                        }
+                    )
+                }else{
+                    let result = func(trx)
+                    if(!isExistingTrx){
+                        trx.commit().then( 
+                            () => resolve(result),
+                            (error) => reject(error)
+                        )
+                    } else {
+                        resolve(result)
+                    }
+                }
+            }catch(error){
+                if(!isExistingTrx){
+                    trx.rollback().then(
+                        () => reject(error),
+                        () => reject(error)
+                    )
+                } else {
+                    reject(error)
+                }
+            }
+        }
 
-//         if(existingTrx){
-//             // use existing
-//             useTrx(existingTrx, true)
-//         } else {
-//             // use new 
-//             knex.transaction( (trx) => {
-//                 useTrx(trx, false)
-//             })
-//         }
-//     })
-// }
+        if(existingTrx){
+            // use existing
+            useTrx(existingTrx, true)
+        } else {
+            // use new 
+            knex.transaction( (trx) => {
+                useTrx(trx, false)
+            })
+        }
+    })
+}
 
 let schemas: {
     [key: string]: Schema
@@ -585,19 +585,6 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
 export const configure = async function(newConfig: Partial<Config>){
     Object.assign(config, newConfig)
 
-
-    // if(config.waitUtilDatabaseReady){
-        
-    //     while(){
-    //         try{
-    //             await getKnexInstance().raw('SELECT 1')
-    //         }catch(error){
-    
-    //         }
-    //     }
-
-    // }
-
     let tables: Schema[] = []
 
     const registerEntity = (entityName: string, entityClass: any) => {
@@ -945,80 +932,124 @@ type DBRunnerActionResult<T> = {
 type DBRunnerAction<I> =  (context: ExecutionContext) => Promise<DBRunnerActionResult<I>>
 
 
-export class ExecutionContext{
+export type ExecutionContextConfig = {
     sqlRunCallback: ((sql: string) => void) | null
-    trxProvider: () => Promise<Knex.Transaction<any, any[]>>
-    started: number = 0
-    success: number = 0
+    trx: Knex.Transaction<any, any[]> | null
+}
 
-    constructor(trxProvider: () => Promise<Knex.Transaction<any, any[]>>, sqlRunCallback: ((sql: string) => void) | null){
-        this.trxProvider = trxProvider
-        this.sqlRunCallback = sqlRunCallback
+export class ExecutionContext{
+    sqlRunCallback?: ((sql: string) => void) | null
+    // trxProvider: () => Promise<Knex.Transaction<any, any[]>>
+    trx?: Knex.Transaction<any, any[]> | null
+    // started: number = 0
+    // success: number = 0
+
+    constructor(config?: Partial<ExecutionContextConfig>){
+        this.trx = config?.trx
+        // this.trxProvider = trxProvider
+        this.sqlRunCallback = config?.sqlRunCallback
+    }
+
+    get models(){
+        const context = this
+        let proxyEntities = new Map<string, any>()
+
+        let proxyRoot = new Proxy(models, {
+            get: (registeredModels, sKey: string): Entity => {
+                let e = proxyEntities.get(sKey)
+                if(e){
+                    return e
+                }else {
+                    e = new Proxy(registeredModels[sKey], {
+                        get: (entityClass: typeof Entity, sKey: string) => {
+                            //@ts-ignore
+                            const method = entityClass[sKey]
+                            //@ts-ignore
+                            const referMethod = Database[sKey]
+
+                            if( entityClass.hasOwnProperty(sKey) && Database.hasOwnProperty(sKey) && method instanceof Function ){
+                                return (...args: any[]) => referMethod(...args, context)
+                            }
+                            return method
+                        }
+                    })
+                    proxyEntities.set(sKey, e)
+                    return e
+                }
+            }
+        })
+
+        return proxyRoot
     }
 
     async startTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
-        // return await startTransaction<T>( async (trx) => {
-        //     this.trx = trx
-        //     return await func()
-        // }, this.trx)
-        try{
-            const trx = await this.trxProvider()
-            this.started++
-            let result = await func(this)
-            this.success++
-            return result
-        }catch(error){
-            throw error
-        }
+        let result = await startTransaction<T>( async (trx) => {
+            return await func(this.clone({trx, sqlRunCallback: this.sqlRunCallback}))
+        }, this.trx)
+        return result
     }
 
-    static async start<T = any>(
-        options: {onSqlRun?: ((sql: string) => void) | null}, 
-        func: (context: ExecutionContext) => Promise<T> ): Promise<T> {
-        
-        let _trx: Knex.Transaction | null = null
-        // const trxProvider = async() => {
-        //     if(!_trx){
-        //         _trx = await getKnexInstance().transaction()
-        //     }
-        //     return _trx
-        // }
-        const trxProvider = getKnexInstance().transactionProvider()
-        let ctx = new ExecutionContext(trxProvider, options.onSqlRun ?? null)
-        try{
-            let result = await func(ctx);
-            if(ctx.success > 0){
-                const trx = await trxProvider()
-                await trx.commit()
-            }
-            return result
-        }catch(error){
-            if(ctx.started > 0){
-                const trx = await trxProvider()
-                await trx.rollback()
-                throw error
-            }
-            throw error
-        }
-    }
-}
-
-export const startTransaction = async (logic: (context: ExecutionContext) => any ) => {
-    return await ExecutionContext.start({}, async(context) => {
-        return context.startTransaction( async(context: ExecutionContext) => {
-            return await logic(context)
+    clone(options: Partial<ExecutionContextConfig>){
+        return new ExecutionContext({
+            trx: options.trx ?? this.trx, 
+            sqlRunCallback: options.sqlRunCallback ?? this.sqlRunCallback
         })
-    })
+    }
 }
+
+const globalContext = new ExecutionContext()
+
+// try{
+//     const trx = await this.trxProvider()
+//     this.started++
+//     let result = await func(this)
+//     this.success++
+//     return result
+// }catch(error){
+//     throw error
+// }
+
+// let _trx: Knex.Transaction | null = null
+
+// const trxProvider = getKnexInstance().transactionProvider()
+// let ctx = new ExecutionContext(trxProvider, options.onSqlRun ?? null)
+// try{
+//     let result = await func(ctx);
+//     if(ctx.success > 0){
+//         const trx = await trxProvider()
+//         await trx.commit()
+//     }
+//     return result
+// }catch(error){
+//     if(ctx.started > 0){
+//         const trx = await trxProvider()
+//         await trx.rollback()
+//         throw error
+//     }
+//     throw error
+// }
+// static async start<T = any>(
+//     options: {onSqlRun?: ((sql: string) => void) | null}, 
+//     func: (context: ExecutionContext) => Promise<T> ): Promise<T> {
+// }
+
+// export const startTransaction = async (logic: (context: ExecutionContext) => any ) => {
+//     return await ExecutionContext.start({}, async(context) => {
+//         return context.startTransaction( async(context: ExecutionContext) => {
+//             return await logic(context)
+//         })
+//     })
+// }
 
 export class DBRunner<I> implements PromiseLike<I>{
-    private ctx?: ExecutionContext
+    private ctx: ExecutionContext
     private action: DBRunnerAction<I>
-    private trx?: Knex.Transaction | null
+    // private trx?: Knex.Transaction | null
     private sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(action: DBRunnerAction<I>){
+    constructor(ctx: ExecutionContext, action: DBRunnerAction<I>){
         // this.beforeAction = beforeAction
+        this.ctx = ctx
         this.action = action
     }
 
@@ -1028,15 +1059,7 @@ export class DBRunner<I> implements PromiseLike<I>{
         : Promise<TResult1 | TResult2> {
 
         try{
-            let result
-            if(!this.ctx){
-                result = await ExecutionContext.start({onSqlRun: this.sqlRunCallback}, async(context) => {
-                    return await this.action(context)
-                })
-            } else {
-                result = await this.action(this.ctx)
-            }
-
+            let result = await this.action(this.ctx)
             if(onfulfilled){
                 return onfulfilled(result.resultData)
             } else {
@@ -1052,10 +1075,10 @@ export class DBRunner<I> implements PromiseLike<I>{
         // return this.then(onfulfilled, onrejected)
     }
 
-    // usingConnection(trx: Knex.Transaction): DBRunner<I>{
-    //     this.trx = trx
-    //     return this
-    // }
+    usingConnection(trx: Knex.Transaction): DBRunner<I>{
+        this.ctx = this.ctx.clone({trx})
+        return this
+    }
 
     // usingConnectionIfAvailable(trx: Knex.Transaction | null | undefined): DBRunner<I>{
     //     if(trx){
@@ -1065,7 +1088,7 @@ export class DBRunner<I> implements PromiseLike<I>{
     // }
 
     onSqlRun(callback: ((sql: string) => void) | null ){
-        this.sqlRunCallback = callback
+        this.ctx = this.ctx.clone({sqlRunCallback: callback})
         return this
     }
 
@@ -1081,8 +1104,9 @@ export class DBRunner<I> implements PromiseLike<I>{
 export class Database{
     
 
-    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues ): DBRunner< InstanceType<T> >{
+    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._create<T>(entityClass, [data], existingContext)
                 if(!result[0]){
@@ -1095,8 +1119,9 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[] ): DBRunner< InstanceType<T>[] >{
+    static createEach<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[],existingContext?: ExecutionContext | null ): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._create<T>(entityClass, arrayOfData, existingContext)
                 return {
@@ -1194,9 +1219,6 @@ export class Database{
         return fns
     }
 
-
-   
-
     private static _prepareNewData(data: EntityPropertyKeyValues, schema: Schema) {
         return Object.keys(data).reduce(( {fieldValues, mutations}, propName) => {
             let prop = schema.namedProperties.find(p => {
@@ -1249,8 +1271,9 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): DBRunner<  InstanceType<T> >{
+     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner<  InstanceType<T> >{
          return new DBRunner< InstanceType<T> >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
             let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
             return {
@@ -1264,8 +1287,9 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions): DBRunner<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner<  Array<InstanceType<T>> >{
         return new DBRunner< Array<InstanceType<T>> >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
             let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
             return {
@@ -1274,8 +1298,7 @@ export class Database{
         })
     }
 
-    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter: QueryOptions | null, existingContext: ExecutionContext) {
-       
+    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter: QueryOptions | null, existingContext: ExecutionContext) {   
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1315,8 +1338,9 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._update<T>(entityClass, data, applyFilter??null, true, existingContext)
                 return {
@@ -1326,8 +1350,9 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
+            existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._update<T>(entityClass, data, applyFilter??null, false, existingContext)
                 return {
@@ -1370,7 +1395,7 @@ export class Database{
         }
         
         
-        let fns = await existingContext.startTransaction(async (trx) => {
+        let fns = await existingContext.startTransaction(async (existingContext) => {
 
             if(!input.sideSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
@@ -1448,9 +1473,8 @@ export class Database{
         if(context.sqlRunCallback) context.sqlRunCallback(sql)
 
         let KnexStmt = getKnexInstance().raw(sql)
-        if (context.started > 0) {
-            const trx = await context.trxProvider()
-            KnexStmt.transacting(trx)
+        if (context.trx) {
+            KnexStmt.transacting(context.trx)
         }
         let result = null
         try{
@@ -1640,7 +1664,12 @@ export class Entity {
         return selector
     }
 
-    static create<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DBRunner<I[]>{
+    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
+        let r = Database.parseRaw(this, row)
+        return r as I
+    }
+
+    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DBRunner<I[]>{
         return Database.createEach(this, arrayOfData)
     }
 
@@ -1674,10 +1703,7 @@ export class Entity {
         return Database.find(this, applyFilter)
     }
 
-    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
-        let r = Database.parseRaw(this, row)
-        return r as I
-    }
+
 }
 
 
@@ -1702,6 +1728,12 @@ export const mutate = (actionName: string, value: any): MutateFunctionProducer =
         return prop.definition.mutationFunc(actionName, value, rootValue, existingContext)
     }
 }
+
+
+
+
+
+
 /**
  * 
  * 
