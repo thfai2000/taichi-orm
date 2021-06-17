@@ -4,7 +4,7 @@ import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
 import {makeBuilder as builder, isRow, isRaw, isColumn, makeRaw as raw, makeColumn as column, makeNamedColumn, Source, makeSource, NamedColumn, makeColumn, Column} from './Builder'
 export {builder, raw, column}
-import { ComputeFn } from './ComputeFn'
+import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator} from './Operator'
@@ -952,29 +952,29 @@ export class ExecutionContext{
 
     get models(){
         const context = this
-        let proxyEntities = new Map<string, any>()
+        const models = registeredModels
+        let proxyEntities = new Map<string, typeof Entity>()
 
-        let proxyRoot = new Proxy(models, {
-            get: (registeredModels, sKey: string): Entity => {
+        let proxyRoot: {[key:string]: typeof Entity} = new Proxy(models, {
+            get: (models, sKey: string): typeof Entity => {
                 let e = proxyEntities.get(sKey)
                 if(e){
                     return e
                 }else {
-                    e = new Proxy(registeredModels[sKey], {
+                    const newE: typeof Entity = new Proxy(models[sKey], {
                         get: (entityClass: typeof Entity, sKey: string) => {
                             //@ts-ignore
                             const method = entityClass[sKey]
                             //@ts-ignore
                             const referMethod = Database[sKey]
-
-                            if( entityClass.hasOwnProperty(sKey) && Database.hasOwnProperty(sKey) && method instanceof Function ){
-                                return (...args: any[]) => referMethod(...args, context)
+                            if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
+                                return (...args: any[]) => referMethod(entityClass, context, ...args)
                             }
                             return method
                         }
                     })
-                    proxyEntities.set(sKey, e)
-                    return e
+                    proxyEntities.set(sKey, newE)
+                    return newE
                 }
             }
         })
@@ -997,7 +997,7 @@ export class ExecutionContext{
     }
 }
 
-const globalContext = new ExecutionContext()
+export const globalContext = new ExecutionContext()
 
 // try{
 //     const trx = await this.trxProvider()
@@ -1104,11 +1104,11 @@ export class DBRunner<I> implements PromiseLike<I>{
 export class Database{
     
 
-    static createOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T> >{
+    static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-                let result = await Database._create<T>(entityClass, [data], existingContext)
+                let result = await Database._create<T>(entityClass, existingContext, [data])
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
@@ -1119,11 +1119,11 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity>(entityClass: T, arrayOfData: EntityPropertyKeyValues[],existingContext?: ExecutionContext | null ): DBRunner< InstanceType<T>[] >{
+    static createEach<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: EntityPropertyKeyValues[]): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-                let result = await Database._create<T>(entityClass, arrayOfData, existingContext)
+                let result = await Database._create<T>(entityClass, existingContext, arrayOfData)
                 return {
                     resultData: result.map( data => {
                         if(data === null){
@@ -1135,8 +1135,7 @@ export class Database{
             })
     }
 
-    private static async _create<T extends typeof Entity>(entityClass: T, values: EntityPropertyKeyValues[], 
-        existingContext: ExecutionContext ) {
+    private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: EntityPropertyKeyValues[]) {
         
         const schema = entityClass.schema
         
@@ -1178,7 +1177,7 @@ export class Database{
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
                     const r = await this.executeStatement(insertStmt, existingContext)
                     insertedId = r[0][0].insertId
-                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingContext(existingContext)
+                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
                     
                     let b = await this.resolveMutations<T>(record, input.mutations, existingContext)
                     return b
@@ -1191,7 +1190,7 @@ export class Database{
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid])).usingContext(existingContext)
+                            let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid]))
                             return await this.resolveMutations<T>(record, input.mutations, existingContext)
                         }
                     } else {
@@ -1204,7 +1203,7 @@ export class Database{
                     const r = await this.executeStatement(insertStmt, existingContext)
                     
                     insertedId = r.rows[0][ entityClass.schema.primaryKey.fieldName]
-                    let record = await this.findOne(entityClass, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId])).usingContext(existingContext)
+                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
                     return await this.resolveMutations<T>(record, input.mutations, existingContext)
 
                 } else {
@@ -1271,11 +1270,11 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner<  InstanceType<T> >{
+     static findOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DBRunner<  InstanceType<T> >{
          return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
+            let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
             return {
                 resultData: rows[0] ?? null
             }
@@ -1287,18 +1286,18 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DBRunner<  Array<InstanceType<T>> >{
         return new DBRunner< Array<InstanceType<T>> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-            let rows = await Database._find<T>(entityClass, applyFilter?? null, existingContext)
+            let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
             return {
                 resultData: rows
             }
         })
     }
 
-    private static async _find<T extends typeof Entity>(entityClass: T, applyFilter: QueryOptions | null, existingContext: ExecutionContext) {   
+    private static async _find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, applyFilter: QueryOptions | null) {   
         let dualSelector = Dual.newSelector()
         let prop = new NamedProperty(
             'data',
@@ -1338,11 +1337,11 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-                let result = await Database._update<T>(entityClass, data, applyFilter??null, true, existingContext)
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, true)
                 return {
                     resultData: result[0] ?? null
                 }
@@ -1350,11 +1349,11 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues, applyFilter?: QueryOptions, existingContext?: ExecutionContext | null): DBRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-                let result = await Database._update<T>(entityClass, data, applyFilter??null, false, existingContext)
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, false)
                 return {
                     resultData: result
                 }
@@ -1363,10 +1362,10 @@ export class Database{
     }
 
 
-    private static async _update<T extends typeof Entity>(entityClass: T, data: EntityPropertyKeyValues,  
+    private static async _update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, data: EntityPropertyKeyValues,  
         applyFilter: QueryOptions | null, 
-        isOneOnly: boolean, 
-        existingContext: ExecutionContext) {
+        isOneOnly: boolean
+       ) {
         
         
         const schema = entityClass.schema
@@ -1408,7 +1407,7 @@ export class Database{
                 updateStmt = updateStmt.returning(entityClass.schema.primaryKey.fieldName)
                 let updateResult = await this.executeStatement(updateStmt, existingContext)
                 return await Promise.all((updateResult.rows as SimpleObject[] ).map( async (row) => {
-                    let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: row[entityClass.schema.primaryKey.fieldName]}).usingContext(existingContext)
+                    let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: row[entityClass.schema.primaryKey.fieldName]})
                     return await this.resolveMutations<T>(record, input.mutations, existingContext)
                 }))
             } else {
@@ -1441,18 +1440,18 @@ export class Database{
                         } else if(numUpdates === 0){
                             return null
                         } else {
-                            let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
+                            let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pk})
                             return await this.resolveMutations<T>(record, input.mutations, existingContext)
                         }
                     } else if (config.knexConfig.client.startsWith('sqlite')) {
-                        let found = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
+                        let found = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pk})
                         let data = input.entityData!
                         let unmatchedKey = Object.keys(data).filter( k => data[k] !== found[k])
                         if( unmatchedKey.length > 0 ){
                             console.log('Unmatched prop values', unmatchedKey.map(k => `${k}: ${data[k]} != ${found[k]}` ))
                             throw new Error(`The record cannot be updated. `)
                         }
-                        let record = await this.findOne(entityClass, {[entityClass.schema.primaryKey.name]: pk}).usingContext(existingContext)
+                        let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pk})
                         return await this.resolveMutations<T>(record, input.mutations, existingContext)
     
                     } else {
@@ -1670,19 +1669,19 @@ export class Entity {
     }
 
     static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DBRunner<I[]>{
-        return Database.createEach(this, arrayOfData)
+        return Database.createEach(this, null, arrayOfData)
     }
 
     static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): DBRunner<I>{
-        return Database.createOne(this, data)
+        return Database.createOne(this, null, data)
     }
 
     static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I>{
-        return Database.updateOne(this, data, applyFilter)
+        return Database.updateOne(this, null, data, applyFilter)
     }
 
     static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I[]>{
-        return Database.update(this, data, applyFilter)
+        return Database.update(this, null, data, applyFilter)
     }
 
     /**
@@ -1691,7 +1690,7 @@ export class Entity {
      * @returns the found record
      */
     static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DBRunner<I>{
-        return Database.findOne(this, applyFilter)
+        return Database.findOne(this, null, applyFilter)
     }
 
     /**
@@ -1700,7 +1699,7 @@ export class Entity {
      * @returns the found record
      */
     static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DBRunner<Array<I>>{
-        return Database.find(this, applyFilter)
+        return Database.find(this, null, applyFilter)
     }
 
 
@@ -1716,7 +1715,7 @@ export class Dual extends Entity {
     }
 }
 
-export const models = registeredModels
+export const models = globalContext.models
 
 export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
 

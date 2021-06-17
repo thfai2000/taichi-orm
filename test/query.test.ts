@@ -118,7 +118,7 @@ const initializeDatabase = async () => {
         
         schema.prop('mainColor', 
           new Types.ObjectOf(Color, {
-            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt: Knex.QueryBuilder, relatedSelector: Selector, throughSelector: Selector) => {
+            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
               return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })

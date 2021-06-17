@@ -28,7 +28,7 @@ services:
     adminer:
         image: adminer
         ports:
-            - '9000:8080'
+            - '9001:8080'
         environment:
             - TZ=Asia/Hong_Kong
             - ADMINER_DEFAULT_SERVER=postgres-db

@@ -147,11 +147,10 @@ describe('Basic Read and Write', () => {
         expect.objectContaining(expectedProduct2)
       ]
     )
-
     let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
-  }, 10000);
+  });
 
 })
 
