@@ -104,14 +104,14 @@ export const isColumn = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector | null, from?: Knex.QueryBuilder) : Knex.QueryBuilder {
+export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Knex.QueryBuilder) : Knex.QueryBuilder {
     let sealBuilder: Knex.QueryBuilder
-    if(from){
-        if(!isRow(from)){
+    if(cloneFrom){
+        if(!isRow(cloneFrom)){
             throw new Error('Unexpected Flow.')
         }
-        sealBuilder = from.__realClone()
-        sealBuilder.__selectItems = from.__selectItems.map(item => {
+        sealBuilder = cloneFrom.__realClone()
+        sealBuilder.__selectItems = cloneFrom.__selectItems.map(item => {
             return {
                 actualAlias: item.actualAlias,
                 value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
