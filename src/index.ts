@@ -220,7 +220,6 @@ export class Schema {
             this.uuid = new NamedProperty(
                 ormConfig.uuidColumnName,
                 new Types.String({nullable: false, length: 255})
-                //TODO: allow unique: true
             )
             this.namedProperties = [this.primaryKey, this.uuid]
         } else {
@@ -293,11 +292,9 @@ export class NamedProperty {
     constructor(
         public name: string,
         public definition: PropertyDefinition,
-        // public computedFunc?: ComputedFunction | null,
         public options?: NamedPropertyOptions){
             this.name = name
             this.definition = definition
-            // this.computedFunc = computedFunc
             this.options = options
 
             if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){

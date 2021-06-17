@@ -64,8 +64,9 @@ export const ComputeFn = {
 
 export const MutateFn = {
 
-    hasCollection: (entityClass: typeof Entity, propName: string) => {
+    mutateOwned: (entityClass: typeof Entity, propName: string) => {
         return async function(this: typeof Entity, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) {
+            
             const rootClass = this
 
             if(!Array.isArray(data)){
@@ -117,5 +118,8 @@ export const MutateFn = {
                 throw new Error(`Unexpected Action Name '${actionName}'`)
             }
         }
+    },
+    mutateLinkage: (entityClass: typeof Entity, propName: string) => {
+
     }
 }
