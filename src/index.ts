@@ -925,7 +925,7 @@ export type CompiledComputeFunctionPromise = (queryObject?: QueryOptions) => Pro
 
 export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-export type QueryOptions = QueryFunction | QueryObject | QueryWhere | null
+export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryWhere, Function> | null
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
