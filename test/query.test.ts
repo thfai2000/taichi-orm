@@ -220,7 +220,7 @@ describe('Select - Simple Query', () => {
 
   test('Query with limit', async () => {
     let limit = 2
-    let records = await models.Shop.find( (stmt, root) => {
+    let records = await models.Shop.find( function(stmt, root){
         return stmt.where(root.pk, '>', 2).limit(limit)
     })
 

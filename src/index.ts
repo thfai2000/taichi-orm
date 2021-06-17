@@ -1388,7 +1388,7 @@ export class Database{
         
         const schema = entityClass.schema
         const s = entityClass.selector()
-        let {fieldValues, mutations} = Database._prepareNewData(data, schema, 'update')
+        let {fieldValues, mutations} = Database._prepareNewData(data, schema, isDelete?'delete':'update')
         if(!applyFilter || !(applyFilter instanceof SimpleObjectClass) ){
             throw new Error('Invalid Query Options')
         }
@@ -1756,6 +1756,14 @@ export class Entity {
         return Database.update(this, null, data, applyFilter)
     }
 
+    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I>{
+        return Database.deleteOne(this, null, data, applyFilter)
+    }
+
+    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I[]>{
+        return Database.delete(this, null, data, applyFilter)
+    }
+
     /**
      * find one record
      * @param applyFilter 
@@ -1799,50 +1807,3 @@ export const mutate = (actionName: string, value: any): MutateFunctionProducer =
         return prop.definition.mutationFunc(actionName, value, rootValue, existingContext)
     }
 }
-
-
-
-
-
-
-/**
- * 
- * 
- *  Below is for experiment code... exploring tricks for cache
- * 
- */
-
-// export const select = function(...args: any[]){
-
-//     let alias: string[] = args.map(s => /\[\[(.*)\]\]/g.exec(s)?.[1] || '' ).filter(s => s.length > 0)
-    
-//     let info = alias.map(a => {
-//         let parts = a.split('|')
-//         return {
-//             fullName: `[[${a}]]`,
-//             tableName: parts[0],
-//             aliasName: parts[1],
-//             fieldName: parts[2]
-//         }
-//     })
-
-//     let distinctNames: string[] = [...new Set(info.map(i => `${i.tableName} as ${i.aliasName}`))]
-//     // let [firstName, ...otherNames] = distinctNames
-
-//     let stmt = getKnexInstance().select(...args)
-//     if(distinctNames.length === 1){
-//         stmt = stmt.from(distinctNames[0])
-//     }
-
-//     // stmt = distinctNames.reduce((acc, name) => acc.from(name, {only:false}), stmt)
-//     console.log(stmt.toSQL())
-//     return stmt
-// }
-
-// select('[[SKU|t1|name]].name', '[[SKU|t1|abc]].abc')
-
-
-
-// type d<Type> = {
-//     [key in keyof Type as `$${string}`] : boolean
-// }

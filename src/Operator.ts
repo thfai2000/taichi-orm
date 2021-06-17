@@ -73,6 +73,23 @@ class ContainOperator extends ValueOperator {
     }
 }
 
+class NotContainOperator extends ValueOperator {
+    rightOperands: any[]
+    constructor(...rightOperands: any[]){
+        super()
+        this.rightOperands = rightOperands
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
 class LikeOperator extends ValueOperator {
     rightOperand: any
     constructor(rightOperand: any[]){
@@ -82,6 +99,23 @@ class LikeOperator extends ValueOperator {
 
     toRaw(leftOperand: Column){
         return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
+    }
+    
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class NotLikeOperator extends ValueOperator {
+    rightOperand: any
+    constructor(rightOperand: any[]){
+        super()
+        this.rightOperand = rightOperand
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} NOT LIKE ?`, [rightOperand]) )
     }
     
     toColumn(leftOperand: Column){
@@ -178,8 +212,10 @@ const Not = (condition: Expression) => new NotOperator(condition)
 const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
 const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
 const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)
+const NotContain = (...rightOperands: Array<any>) => new NotContainOperator(...rightOperands)
 const Like = (rightOperand: any) => new LikeOperator(rightOperand)
+const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
 const IsNull = () => new IsNullOperator()
 const IsNotNull = () => new IsNotNullOperator()
 
-export {And, Or, Not, Equal, NotEqual, Contain, Like, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator}
+export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator}
