@@ -490,7 +490,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
         let casted: QueryObject = queryOptions
         args = casted.args ?? args
     }
-    const computedFunc = prop.definition.computeFunc
+    const computeFunc = prop.definition.computeFunc
     const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
         let process = (stmt: Knex.QueryBuilder) => {
 
@@ -565,7 +565,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
         }
     }
 
-    let subquery = computedFunc(rootSelector.interface!, args ,applyFilterFunc)
+    let subquery = computeFunc.call(prop, rootSelector.interface!, args ,applyFilterFunc)
 
     // if(subquery instanceof Promise){
     //     return subquery.then(value =>  {
@@ -914,7 +914,9 @@ export type QueryObject = ({
     fn?: QueryFunction
 })
 
-export type ComputeFunction = (selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
+export type MutateFunction = (this: NamedProperty, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>
+
+export type ComputeFunction = (this: NamedProperty, selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => NamedColumn
 
@@ -1347,7 +1349,7 @@ export class Database{
         } else {
             throw new Error('Unsupport client.')
         }
-        let dualInstance = this.parseRaw(Dual, rowData)
+        let dualInstance = this.parseRaw(Dual, existingContext, rowData)
         let str = "data" as keyof Dual
         let rows = dualInstance[str] as Array<InstanceType<T>>
         return rows
@@ -1553,9 +1555,11 @@ export class Database{
         return result
     }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, row: EntityPropertyKeyValues): InstanceType<T>{
+    static parseRaw<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, row: EntityPropertyKeyValues): InstanceType<T>{
         // let entityClass = (entityConstructor as unknown as typeof Entity)
         // let entityClass = this
+        existingContext = existingContext ?? globalContext
+
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
             let metaInfo = breakdownMetaFieldAlias(fieldName)
@@ -1593,15 +1597,18 @@ export class Database{
                 value: propValue
             })
             return entityInstance
-        }, new entityClass() as InstanceType<T>)
+        }, new entityClass(existingContext) as InstanceType<T>)
         return entityInstance
     }
 }
 
 export class Entity {
     [key: string]: any
+    
+    constructor(private ctx: ExecutionContext){}
 
-    constructor(){
+    get entityClass() {
+        return this.ctx.models[this.constructor.name]
     }
 
     static get schema(): Schema{
@@ -1733,7 +1740,7 @@ export class Entity {
     }
 
     static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
-        let r = Database.parseRaw(this, row)
+        let r = Database.parseRaw(this, null, row)
         return r as I
     }
 
@@ -1801,6 +1808,6 @@ export const mutate = (actionName: string, value: any): MutateFunctionProducer =
         if(!prop.definition.mutationFunc){
             throw new Error('There is no mutation function defined.')
         }
-        return prop.definition.mutationFunc(actionName, value, rootValue, existingContext)
+        return prop.definition.mutationFunc.call(prop, actionName, value, rootValue, existingContext)
     }
 }

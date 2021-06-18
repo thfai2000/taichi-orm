@@ -1,14 +1,11 @@
-import { Knex } from "knex"
 import { makeBuilder } from "./Builder"
-import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, ExecutionContext} from "."
-import { MutateFunction } from "./PropertyType"
+import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, MutateFunction, ExecutionContext, NamedProperty} from "."
 import { NotContain } from "./Operator"
 
 export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
     relatedFrom: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
-        return function(this: typeof Entity, rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
-            let rootClass = this
+        return function relatedFromFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
             let relatedSelector = entityClass.newSelector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [rootSelector.pk, relatedSelector._[propName] ])
 
@@ -21,8 +18,7 @@ export const ComputeFn = {
     },
 
     relatesThrough: (entityClass: typeof Entity, throughEntity: typeof Entity, relationPropName: string, ownerPropName: string, customFilter?: QueryFunction) => {
-        return function(this: typeof Entity, rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
-            let rootClass = this
+        return function relatesThroughFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
             let relatedSelector = entityClass.newSelector()
             let throughSelector = throughEntity.newSelector()
 
@@ -48,7 +44,7 @@ export const ComputeFn = {
     },
 
     relatesTo: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
-        return (rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction) => {
+        return function relatesToFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
             let relatedSelector = entityClass.newSelector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [relatedSelector.pk, rootSelector._[propName] ])
 
@@ -65,9 +61,10 @@ export const ComputeFn = {
 export const MutateFn = {
 
     mutateOwned: (entityClass: typeof Entity, propName: string) => {
-        return async function(this: typeof Entity, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) {
+        return async function(this: typeof NamedProperty, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) {
             
-            const rootClass = this
+            const prop = this
+            const rootClass = rootValue.entityClass
 
             if(!Array.isArray(data)){
                 throw new Error('data must be array')

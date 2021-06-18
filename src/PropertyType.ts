@@ -1,8 +1,6 @@
 import { Knex } from "knex"
-import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, ExecutionContext } from "."
+import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, MutateFunction } from "."
 
-
-export type MutateFunction = (actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>
 
 export abstract class PropertyDefinition<I = any> {
     private _computeFunc: ComputeFunction | null
