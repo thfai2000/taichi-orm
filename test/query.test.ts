@@ -3,7 +3,6 @@ import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '.
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { Knex } from 'knex'
-// import {clearSysFields} from './util'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
