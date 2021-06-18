@@ -565,7 +565,7 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
         }
     }
 
-    let subquery = computeFunc.call(prop, rootSelector.interface!, args ,applyFilterFunc)
+    let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args ,applyFilterFunc)
 
     // if(subquery instanceof Promise){
     //     return subquery.then(value =>  {
@@ -914,9 +914,9 @@ export type QueryObject = ({
     fn?: QueryFunction
 })
 
-export type MutateFunction = (this: NamedProperty, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>
+export type MutateFunction = (this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>
 
-export type ComputeFunction = (this: NamedProperty, selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
+export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => NamedColumn
 
@@ -1808,6 +1808,6 @@ export const mutate = (actionName: string, value: any): MutateFunctionProducer =
         if(!prop.definition.mutationFunc){
             throw new Error('There is no mutation function defined.')
         }
-        return prop.definition.mutationFunc.call(prop, actionName, value, rootValue, existingContext)
+        return prop.definition.mutationFunc.call(prop.definition, actionName, value, rootValue, existingContext)
     }
 }

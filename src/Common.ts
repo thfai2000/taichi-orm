@@ -1,6 +1,7 @@
 import { makeBuilder } from "./Builder"
 import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, MutateFunction, ExecutionContext, NamedProperty} from "."
 import { NotContain } from "./Operator"
+import { PropertyDefinition } from "./PropertyType"
 
 export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
@@ -61,9 +62,8 @@ export const ComputeFn = {
 export const MutateFn = {
 
     mutateOwned: (entityClass: typeof Entity, propName: string) => {
-        return async function(this: typeof NamedProperty, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) {
+        return async function(this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) {
             
-            const prop = this
             const rootClass = rootValue.entityClass
 
             if(!Array.isArray(data)){
