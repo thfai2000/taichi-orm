@@ -1,6 +1,6 @@
 import {Column, isColumn, makeColumn, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { addBlanketIfNeeds, Selector, SimpleObject, thenResult, thenResultArray } from '.'
+import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
 import { BooleanType } from './PropertyType'
 
 abstract class ValueOperator {

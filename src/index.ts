@@ -66,7 +66,8 @@ export type ORMConfig = {
     // useSoftDeleteAsDefault: boolean
     primaryKeyName: string
     enableUuid: boolean
-    uuidColumnName: string
+    uuidColumnName: string,
+    globalContext: Partial<ExecutionContextConfig>
 }
 
 const ormConfig: ORMConfig = {
@@ -78,6 +79,9 @@ const ormConfig: ORMConfig = {
     models: {},
     knexConfig: {
         client: 'mysql' //default mysql
+    },
+    globalContext: {
+        tablePrefix: ''
     }
 }
 
@@ -126,7 +130,6 @@ export const getKnexInstance = (): Knex => {
     _globalKnexInstance = knex(newKnexConfig)
     return _globalKnexInstance
 }
-
 
 export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
     let knex = getKnexInstance()
@@ -229,9 +232,9 @@ export class Schema {
         
     }
 
-    createTableStmt(){
+    createTableStmt(tablePrefix?: string){
         if(this.tableName.length > 0){
-            return `CREATE TABLE IF NOT EXISTS ${quote(this.tableName)} (\n${
+            return `CREATE TABLE IF NOT EXISTS ${quote( (tablePrefix??'') + this.tableName)} (\n${
                 this.namedProperties.filter(f => !f.definition.computeFunc).map(f => {
                     return `${f.definition.create(f)}`  
                 }).flat().join(',\n')}\n)`;
@@ -567,16 +570,6 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
 
     let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args ,applyFilterFunc)
 
-    // if(subquery instanceof Promise){
-    //     return subquery.then(value =>  {
-    //         checkValid(value)
-    //         return value
-    //     })
-    // } else {
-    //     checkValid(subquery)
-    //     return subquery
-    // }
-
     return thenResult(subquery, subquery => {
         checkValid(subquery)
         return subquery
@@ -585,15 +578,15 @@ const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedP
 
 export const configure = async function(newConfig: Partial<ORMConfig>){
     Object.assign(ormConfig, newConfig)
-
-    let tables: Schema[] = []
+    Object.assign(ormConfig.globalContext, newConfig.globalContext)
+    // let arrayOfSchemas: Schema[] = []
 
     const registerEntity = (entityName: string, entityClass: any) => {
         let s = new Schema(entityName);
         if(entityClass.register){
             entityClass.register(s)
             schemas[entityName] = s
-            tables.push(s)
+            // arrayOfSchemas.push(s)
         }
         registeredModels[entityName] = entityClass
     }
@@ -623,26 +616,14 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
             }
         }))
     }
-
-
-    let sqlStmts: string[] = tables.map(t => t.createTableStmt()).filter(t => t)
-
-    //write schemas into sql file
+    
     if(ormConfig.outputSchemaPath){
-        let path = ormConfig.outputSchemaPath
-        fs.writeFileSync(path, sqlStmts.join(";\n") + ';')
-        // console.debug('schemas files:', Object.keys(schemas))
+        globalContext.outputSchema(ormConfig.outputSchemaPath)
     }
 
-    //create tables
-    // important: sqllite3 doesn't accept multiple statements
     if(ormConfig.createModels){
-        await Promise.all( sqlStmts.map( async(sql) => {
-            await getKnexInstance().raw(sql)
-        }) )
+       await globalContext.createModels()
     }
-
-    return sqlStmts
 }
 
 export type SimpleObject = { [key:string]: any}
@@ -667,7 +648,6 @@ const findGlobalNamedProperty = function(propAlias: string): NamedProperty{
     }
     return r
 }
-
 
 const metaTableAlias = function(schema: Schema): string{
     return schema.entityName + META_FIELD_DELIMITER + makeid(5)
@@ -704,23 +684,25 @@ export const breakdownMetaFieldAlias = function(metaAlias: string){
 export interface Selector extends ExpressionResolver {
     (value: Expression): Promise<Column> | Column
     impl: SelectorImpl
-    entityClass: typeof Entity
-    schema: Schema
-    derivedProps: Array<NamedProperty>
-    _: {[key: string] : NamedColumn}
-    $: {[key: string] : CompiledComputeFunction}
-    $$: {[key: string] : CompiledComputeFunctionPromise}
+    readonly entityClass: typeof Entity
+    readonly executionContext: ExecutionContext
+    readonly schema: Schema
+    readonly derivedProps: Array<NamedProperty>
+    readonly _: {[key: string] : NamedColumn}
+    readonly $: {[key: string] : CompiledComputeFunction}
+    readonly $$: {[key: string] : CompiledComputeFunctionPromise}
     
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
-    all: NamedColumn[]
+    readonly all: NamedColumn[]
     // star: NamedColumn
-    source: Source
+    readonly source: Source
     // sourceRaw: string
-    pk: NamedColumn
-    uuid: NamedColumn | null
+    readonly pk: NamedColumn
+    readonly uuid: NamedColumn | null
     // [key: string]: any
-    tableAlias: string
+    readonly tableAlias: string
+    readonly tableName: string
     registerProp(namedProperty: NamedProperty): CompiledComputeFunction
     getProperties(): NamedProperty[]
 }
@@ -728,25 +710,29 @@ export interface Selector extends ExpressionResolver {
 
 export class SelectorImpl{
     interface: Selector | null | undefined
-    entityClass: typeof Entity
-    schema: Schema
-    derivedProps: Array<NamedProperty> = []
-    _: {[key: string] : NamedColumn}
-    $: {[key: string] : CompiledComputeFunction}
-    $$: {[key: string] : CompiledComputeFunctionPromise}
+    readonly entityClass: typeof Entity
+    readonly executionContext: ExecutionContext
+    readonly schema: Schema
+    readonly derivedProps: Array<NamedProperty> = []
+    readonly _: {[key: string] : NamedColumn}
+    readonly $: {[key: string] : CompiledComputeFunction}
+    readonly $$: {[key: string] : CompiledComputeFunctionPromise}
     // $$: {[key: string] : CompiledFunction}
     // prop: (value: any) => any
-    [key: string]: any
-    tableAlias: string
+    readonly [key: string]: any
+    readonly tableAlias: string
+    readonly tableName: string
 
     // stored any compiled property
     // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
    
-    constructor(entityClass: typeof Entity, schema: Schema){
+    constructor(entityClass: typeof Entity, schema: Schema, executionContext: ExecutionContext){
         let selector = this
         this.schema = schema
         this.tableAlias = metaTableAlias(schema)
+        this.tableName = executionContext.tablePrefix + schema.tableName
         this.entityClass = entityClass
+        this.executionContext = executionContext
         
         this._ = new Proxy( {} ,{
             get: (oTarget, sKey: string) => {
@@ -886,10 +872,6 @@ export type EntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
 
-// export type QuerySelectMap = {
-//     [key: string]: boolean | QueryFunction | Array<QueryFunction | any>
-// }
-
 export type QuerySelect = string[]
 
 export type QueryWhere = Expression
@@ -936,24 +918,25 @@ type DBRunnerAction<I> =  (context: ExecutionContext) => Promise<DBRunnerActionR
 
 
 export type ExecutionContextConfig = {
+    tablePrefix: string
     // isSoftDeleteMode: boolean
     sqlRunCallback: ((sql: string) => void) | null
     trx: Knex.Transaction<any, any[]> | null
 }
 
 export class ExecutionContext{
-    // private _isSoftDeleteMode: boolean
-    private _sqlRunCallback?: ((sql: string) => void) | null
-    // trxProvider: () => Promise<Knex.Transaction<any, any[]>>
-    private _trx?: Knex.Transaction<any, any[]> | null
-    // started: number = 0
-    // success: number = 0
+
+    private _config: Partial<ExecutionContextConfig> | null = null
 
     constructor(config?: Partial<ExecutionContextConfig>){
-        this._trx = config?.trx
-        // this.trxProvider = trxProvider
-        this._sqlRunCallback = config?.sqlRunCallback
-        // this._isSoftDeleteMode = config?.isSoftDeleteMode ?? ormConfig.useSoftDeleteAsDefault
+        this._config = config ?? null
+    }
+
+    get config() {
+        if(!this._config){  
+            return ormConfig.globalContext
+        }
+        return this._config
     }
 
     get models(){
@@ -974,7 +957,7 @@ export class ExecutionContext{
                             //@ts-ignore
                             const referMethod = Database[sKey]
                             if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
-                                return (...args: any[]) => referMethod(entityClass, context, ...args)
+                                return (...args: any[]) => referMethod(newE, context, ...args)
                             }
                             return method
                         }
@@ -988,12 +971,36 @@ export class ExecutionContext{
         return proxyRoot
     }
 
+    schemaSqls(){
+        let m = this.models
+        let sqls = Object.keys(m).map(k => m[k].schema).map(s => s.createTableStmt(this.config.tablePrefix)).filter(t => t)
+        return sqls
+    }
+
+    //write schemas into sql file
+    outputSchema(path: string){
+        fs.writeFileSync(path, this.schemaSqls().join(";\n") + ';')
+        // console.debug('schemas files:', Object.keys(schemas))
+    }
+
+    async createModels() {
+        // create tables
+        // important: sqllite3 doesn't accept multiple statements
+        await Promise.all( this.schemaSqls().map( async(sql) => {
+            await getKnexInstance().raw(sql)
+        }) )
+    }
+
     get sqlRunCallback(){
-        return this._sqlRunCallback
+        return this.config.sqlRunCallback
     }
 
     get trx(){
-        return this._trx
+        return this.config.trx
+    }
+
+    get tablePrefix(){
+        return this.config.tablePrefix ?? ''
     }
 
     // get isSoftDeleteMode(){
@@ -1002,20 +1009,18 @@ export class ExecutionContext{
 
     async startTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
         let result = await startTransaction<T>( async (trx) => {
-            return await func(this.clone({trx, sqlRunCallback: this.sqlRunCallback}))
+            return await func(this.clone({trx}))
         }, this.trx)
         return result
     }
 
-    clone(config: Partial<ExecutionContextConfig>){
-        return new ExecutionContext({
-            trx: config.trx ?? this.trx, 
-            sqlRunCallback: config.sqlRunCallback ?? this.sqlRunCallback
-        })
+    clone(newConfig: Partial<ExecutionContextConfig>){
+        let final = Object.assign({}, newConfig, this.config)
+        return new ExecutionContext(final)
     }
 }
-
 export const globalContext = new ExecutionContext()
+export const models = globalContext.models
 
 // try{
 //     const trx = await this.trxProvider()
@@ -1121,6 +1126,110 @@ export class DBRunner<I> implements PromiseLike<I>{
 }
 export class Database{
     
+    /**
+     * Selector is used for locating the table name / field names / computed functions
+     * field pointers
+     * @returns 
+     */
+    static selector<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null): Selector{
+        let selectorImpl = new SelectorImpl(entityClass, schemas[entityClass.name], existingContext?? globalContext)
+        // let entityClass = this
+
+        let resolveExpression: ExpressionResolver = function(value: Expression): Promise<Column> | Column {
+            if(value instanceof AndOperator){
+                let and = value as AndOperator
+                return and.toColumn(resolveExpression)
+            } else if(value instanceof OrOperator){
+                let or = value as OrOperator
+                return or.toColumn(resolveExpression)
+             } else if(value instanceof NotOperator){
+                let not = value as NotOperator
+                return not.toColumn(resolveExpression)
+            } else if(Array.isArray(value)){
+                return resolveExpression(Or(...value))
+            } else if(value instanceof Function) {
+                return value(selectorImpl.interface!)
+            } else if(isColumn(value) || isRow(value)){
+                return value as Knex.QueryBuilder
+            } else if(value instanceof SimpleObjectClass){
+                let dict = value as SimpleObject
+                let sqls = Object.keys(dict).reduce( (accSqls, key) => {
+                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
+                    if(!prop){
+                        throw new Error(`cannot found property '${key}'`)
+                    }
+
+                    let operator: ValueOperator
+                    if(dict[key] instanceof ValueOperator){
+                        operator = dict[key]
+                    }else if( Array.isArray(dict[key]) ){
+                        operator = Contain(...dict[key])
+                    } else if(dict[key] === null){
+                        operator = IsNull()
+                    } else {
+                        operator = Equal(dict[key])
+                    }
+
+                    if(!prop.definition.computeFunc){
+                        let converted = selectorImpl.getNormalCompiled(key)
+                        accSqls.push( operator.toColumn(converted) )
+                    } else {
+                        let compiled = (selectorImpl.getComputedCompiledPromise(key))()
+                        // if(compiled instanceof Promise){
+                        //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
+                        // } else {
+                        //     accSqls.push( operator.toRaw(compiled) )
+                        // }
+                        accSqls.push( thenResult(compiled, col => operator.toColumn(col)) )
+                    }
+
+                    return accSqls
+
+                }, [] as Array<Promise<Column> | Column> )
+                return resolveExpression(And(...sqls))
+            } else {
+                throw new Error('Unsupport Where clause')
+            }
+        }
+        
+        let selector = resolveExpression as Selector
+
+        // selector._ = selectorImpl._
+        // selector.$ = selectorImpl.$
+        // selector.schema = selectorImpl.schema
+        // selector.entityClass = selectorImpl.entityClass
+        // selector.tableAlias = selectorImpl.tableAlias
+        // selector.getProperties = selectorImpl.getProperties
+        
+        selector = new Proxy(selector, {
+            get: (oTarget, sKey): any => {
+                if(typeof sKey === 'string'){
+                    // if (sKey.length > 2) {
+                    //     if( /^\$\$[^$_]/.test(sKey) ){
+                    //         return oTarget.$$[sKey.slice(2)]
+                    //     }    
+                    // }
+                    if (sKey.length > 1){
+                        if( /^\_/.test(sKey) ){
+                            return selectorImpl._[sKey.slice(1)]
+                        } else if(/^\$\$/.test(sKey) && sKey.length > 2){
+                            return selectorImpl.$$[sKey.slice(2)]
+                        } else if(/^\$[^\$]/.test(sKey) ){
+                            return selectorImpl.$[sKey.slice(1)]
+                        }
+                    }
+                }
+                if(sKey in selectorImpl){
+                    return selectorImpl[sKey.toString()]
+                }
+                else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
+            }
+        })
+
+        selectorImpl.interface = selector
+        selector.impl = selectorImpl
+        return selector
+    }
 
     static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
@@ -1172,7 +1281,7 @@ export class Database{
                 newUuid = uuidv4()
                 fieldValues[ormConfig.uuidColumnName] = newUuid
             }
-            let stmt = getKnexInstance()(schema.tableName).insert(fieldValues)
+            let stmt = getKnexInstance()(existingContext.tablePrefix + schema.tableName).insert(fieldValues)
     
             if (ormConfig.knexConfig.client.startsWith('pg')) {
                stmt = stmt.returning(entityClass.schema.primaryKey.fieldName)
@@ -1316,7 +1425,7 @@ export class Database{
     }
 
     private static async _find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, applyFilter: QueryOptions | null) {   
-        let dualSelector = Dual.newSelector()
+        let dualSelector = existingContext.models.Dual.selector()
         let prop = new NamedProperty(
             'data',
             new Types.ArrayOf(new Types.ObjectOf(
@@ -1626,117 +1735,8 @@ export class Entity {
     static register(schema: Schema) : void{
     }
 
-    /**
-     * alias of produceSelector
-     * @returns Selector
-     */
-    static selector(): Selector {
-        return this.newSelector()
-    }
-
-    /**
-     * Selector is used for locating the table name / field names / computed functions
-     * field pointers
-     * @returns 
-     */
-    static newSelector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Selector{
-        let selectorImpl = new SelectorImpl(this, schemas[this.name])
-        // let entityClass = this
-
-        let resolveExpression: ExpressionResolver = function(value: Expression): Promise<Column> | Column {
-            if(value instanceof AndOperator){
-                let and = value as AndOperator
-                return and.toColumn(resolveExpression)
-            } else if(value instanceof OrOperator){
-                let or = value as OrOperator
-                return or.toColumn(resolveExpression)
-             } else if(value instanceof NotOperator){
-                let not = value as NotOperator
-                return not.toColumn(resolveExpression)
-            } else if(Array.isArray(value)){
-                return resolveExpression(Or(...value))
-            } else if(value instanceof Function) {
-                return value(selectorImpl.interface!)
-            } else if(isColumn(value) || isRow(value)){
-                return value as Knex.QueryBuilder
-            } else if(value instanceof SimpleObjectClass){
-                let dict = value as SimpleObject
-                let sqls = Object.keys(dict).reduce( (accSqls, key) => {
-                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
-                    if(!prop){
-                        throw new Error(`cannot found property '${key}'`)
-                    }
-
-                    let operator: ValueOperator
-                    if(dict[key] instanceof ValueOperator){
-                        operator = dict[key]
-                    }else if( Array.isArray(dict[key]) ){
-                        operator = Contain(...dict[key])
-                    } else if(dict[key] === null){
-                        operator = IsNull()
-                    } else {
-                        operator = Equal(dict[key])
-                    }
-
-                    if(!prop.definition.computeFunc){
-                        let converted = selectorImpl.getNormalCompiled(key)
-                        accSqls.push( operator.toColumn(converted) )
-                    } else {
-                        let compiled = (selectorImpl.getComputedCompiledPromise(key))()
-                        // if(compiled instanceof Promise){
-                        //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
-                        // } else {
-                        //     accSqls.push( operator.toRaw(compiled) )
-                        // }
-                        accSqls.push( thenResult(compiled, col => operator.toColumn(col)) )
-                    }
-
-                    return accSqls
-
-                }, [] as Array<Promise<Column> | Column> )
-                return resolveExpression(And(...sqls))
-            } else {
-                throw new Error('Unsupport Where clause')
-            }
-        }
-        
-        let selector = resolveExpression as Selector
-
-        // selector._ = selectorImpl._
-        // selector.$ = selectorImpl.$
-        // selector.schema = selectorImpl.schema
-        // selector.entityClass = selectorImpl.entityClass
-        // selector.tableAlias = selectorImpl.tableAlias
-        // selector.getProperties = selectorImpl.getProperties
-        
-        selector = new Proxy(selector, {
-            get: (oTarget, sKey): any => {
-                if(typeof sKey === 'string'){
-                    // if (sKey.length > 2) {
-                    //     if( /^\$\$[^$_]/.test(sKey) ){
-                    //         return oTarget.$$[sKey.slice(2)]
-                    //     }    
-                    // }
-                    if (sKey.length > 1){
-                        if( /^\_/.test(sKey) ){
-                            return selectorImpl._[sKey.slice(1)]
-                        } else if(/^\$\$/.test(sKey) && sKey.length > 2){
-                            return selectorImpl.$$[sKey.slice(2)]
-                        } else if(/^\$[^\$]/.test(sKey) ){
-                            return selectorImpl.$[sKey.slice(1)]
-                        }
-                    }
-                }
-                if(sKey in selectorImpl){
-                    return selectorImpl[sKey.toString()]
-                }
-                else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
-            }
-        })
-
-        selectorImpl.interface = selector
-        selector.impl = selectorImpl
-        return selector
+    static selector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
+        return Database.selector(this, null)
     }
 
     static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
@@ -1799,7 +1799,7 @@ export class Dual extends Entity {
     }
 }
 
-export const models = globalContext.models
+
 
 export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
 

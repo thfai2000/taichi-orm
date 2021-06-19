@@ -287,7 +287,7 @@ export const makeNamedColumn = <T = any>(alias: string, col: Column<T>) : NamedC
 }
 
 export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<NamedColumn | string>): Source => {
-    let t = `${quote(selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
+    let t = `${quote(selector.executionContext.tablePrefix + selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
 
     joinText  = (joinText ?? '').trim()
 

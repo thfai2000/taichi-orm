@@ -7,7 +7,7 @@ export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
     relatedFrom: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return function relatedFromFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
-            let relatedSelector = entityClass.newSelector()
+            let relatedSelector = entityClass.selector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [rootSelector.pk, relatedSelector._[propName] ])
 
             if(!customFilter){
@@ -20,8 +20,8 @@ export const ComputeFn = {
 
     relatesThrough: (entityClass: typeof Entity, throughEntity: typeof Entity, relationPropName: string, ownerPropName: string, customFilter?: QueryFunction) => {
         return function relatesThroughFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
-            let relatedSelector = entityClass.newSelector()
-            let throughSelector = throughEntity.newSelector()
+            let relatedSelector = entityClass.selector()
+            let throughSelector = throughEntity.selector()
 
             // let stmt = makeBuilder().select(relatedSelector.all).from(relatedSelector.source)
             //     .joinRaw(`INNER JOIN ${throughSelector.sourceRaw} ON ${throughSelector._[relationPropName]} = ${relatedSelector._.id}`)
@@ -46,7 +46,7 @@ export const ComputeFn = {
 
     relatesTo: (entityClass: typeof Entity, propName: string, customFilter?: QueryFunction) => {
         return function relatesToFn(rootSelector: Selector, args: ComputeArguments, applyFilter: ApplyNextQueryFunction){
-            let relatedSelector = entityClass.newSelector()
+            let relatedSelector = entityClass.selector()
             let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [relatedSelector.pk, rootSelector._[propName] ])
 
             if(!customFilter){

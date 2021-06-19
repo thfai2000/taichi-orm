@@ -20,9 +20,12 @@ const initializeDatabase = async () => {
         models: {Shop},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
 }
 

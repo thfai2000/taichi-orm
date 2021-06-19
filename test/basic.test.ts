@@ -1,4 +1,4 @@
-import {builder, raw, configure, Schema, Entity, Types, models} from '../dist/'
+import {builder, raw, configure, Schema, Entity, Types, models, globalContext} from '../dist/'
 import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -44,9 +44,12 @@ const initializeDatabase = async () => {
         models: {Shop, Product, StrictProduct},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
 }
 
@@ -69,6 +72,7 @@ afterEach(() => {
 
 describe('Basic Read and Write', () => {
   test('Create and Find Shop', async () => {
+
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
