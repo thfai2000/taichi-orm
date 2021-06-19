@@ -242,10 +242,6 @@ export const ClassicRelation = {
             mutate: MutateFn.mutateOwned(entityClass, relatedByPropName)
         })
     },
-
-    ownedBy: {
-
-    },
     
     hasMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
         return new Types.ArrayOf(new Types.ObjectOf(entityClass, {

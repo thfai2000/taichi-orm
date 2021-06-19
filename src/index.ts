@@ -28,9 +28,9 @@ export function thenResultArray<T, R>(value: Array<T | Promise<T>>, fn: (value: 
     return fn(value as Array<T>)
 }
 
-export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>) ):  (R | Promise<R>) {
+export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>), errorFn?: (error: any) => (R | Promise<R>) ):  (R | Promise<R>) {
     if(value instanceof Promise){
-        return value.then(fn)
+        return value.then(fn, errorFn)
     }
     return fn(value)
 }
@@ -133,67 +133,38 @@ export const getKnexInstance = (): Knex => {
 
 export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
     let knex = getKnexInstance()
-    return await new Promise((resolve, reject)=> {
-        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
-            try{
-                const AsyncFunction = (async () => {}).constructor;
-                if(func instanceof AsyncFunction){
-                    let called = func(trx) as Promise<T>
-                    called.then(
-                        (result: T) => {
-                            if(!isExistingTrx){
-                                trx.commit().then( 
-                                    () => resolve(result),
-                                    (error) => reject(error)
-                                )
-                            } else {
-                                resolve(result)
-                            }
-                        },
-                        (error: any) => {
-                            if(!isExistingTrx){
-                                trx.rollback().then(
-                                    () => reject(error),
-                                    () => reject(error)
-                                )
-                            } else {
-                                reject(error)
-                            }
-                        }
-                    )
-                }else{
-                    let result = func(trx)
-                    if(!isExistingTrx){
-                        trx.commit().then( 
-                            () => resolve(result),
-                            (error) => reject(error)
-                        )
-                    } else {
-                        resolve(result)
-                    }
-                }
-            }catch(error){
-                if(!isExistingTrx){
-                    trx.rollback().then(
-                        () => reject(error),
-                        () => reject(error)
-                    )
-                } else {
-                    reject(error)
-                }
+    const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
+        return thenResult( func(trx), async(result) => {
+            if(!isExistingTrx){
+                await trx.commit()
             }
+            return result
+        }, async (error) => {
+            if(!isExistingTrx){
+                await trx.rollback()
+            }
+            throw error
+        })
+    }
+        
+    if(existingTrx){
+        // use existing
+        return useTrx(existingTrx, true)
+    } else {
+        // use new
+        // let result: T | Promise<T>, error
+        
+        try{
+            //{isolationLevel: 'read committed'}
+            const trx = await knex.transaction()
+            return await useTrx(trx, false)
+        }catch(e){
+            // console.log('herere error', e)
+            // error = e
+            throw e
         }
-
-        if(existingTrx){
-            // use existing
-            useTrx(existingTrx, true)
-        } else {
-            // use new 
-            knex.transaction( (trx) => {
-                useTrx(trx, false)
-            })
-        }
-    })
+    }
+    
 }
 
 let schemas: {
@@ -881,8 +852,10 @@ export type ExecutionContextConfig = {
 export class ExecutionContext{
 
     private _config: Partial<ExecutionContextConfig> | null = null
+    readonly name
 
-    constructor(config?: Partial<ExecutionContextConfig>){
+    constructor(name: string, config?: Partial<ExecutionContextConfig>){
+        this.name = name
         this._config = config ?? null
     }
 
@@ -961,19 +934,26 @@ export class ExecutionContext{
     //     return this._isSoftDeleteMode
     // }
 
-    async startTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
+    async withTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
         let result = await startTransaction<T>( async (trx) => {
-            return await func(this.clone({trx}))
+            return await func(trx === this.trx? this: this.clone({trx}))
         }, this.trx)
         return result
     }
 
+    async withNewTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
+        let result = await startTransaction<T>( async (trx) => {
+            return await func(this.clone({trx}))
+        })
+        return result
+    }
+
     clone(newConfig: Partial<ExecutionContextConfig>){
-        let final = Object.assign({}, newConfig, this.config)
-        return new ExecutionContext(final)
+        let final = Object.assign({}, this.config, newConfig)
+        return new ExecutionContext(this.name + '>' + makeid(5), final)
     }
 }
-export const globalContext = new ExecutionContext()
+export const globalContext = new ExecutionContext('global')
 export const models = globalContext.models
 
 export class DBRunner<I> implements PromiseLike<I>{
@@ -1206,7 +1186,7 @@ export class Database{
             }
         })
 
-        let fns = await existingContext.startTransaction(async (existingContext) => {
+        let fns = await existingContext.withTransaction(async (existingContext) => {
             let allResults = await Promise.all(inputs.map(async ( input) => {
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
@@ -1438,7 +1418,7 @@ export class Database{
         }
         
         
-        let fns = await existingContext.startTransaction(async (existingContext) => {
+        let fns = await existingContext.withTransaction(async (existingContext) => {
 
             if(!input.selectSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
@@ -1625,8 +1605,11 @@ export class Database{
 
 export class Entity {
     [key: string]: any
+    readonly ctx: ExecutionContext
     
-    constructor(private ctx: ExecutionContext){}
+    constructor(ctx: ExecutionContext){
+        this.ctx = ctx
+    }
 
     get entityClass() {
         return this.ctx.models[this.constructor.name]
