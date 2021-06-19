@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, MutateFunction } from "."
+import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, MutateFunction, ExecutionContext } from "."
 
 export type PropertyDefinitionOptions = { compute?: ComputeFunction | null, mutate?: MutateFunction | null}
 export abstract class PropertyDefinition<I = any> {
@@ -28,9 +28,8 @@ export abstract class PropertyDefinition<I = any> {
     abstract create(prop: NamedProperty) : string[]
     queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
     
-
-    abstract parseRaw(rawValue: any, prop: NamedProperty): I
-    abstract parseProperty(propertyvalue: I, prop: NamedProperty):any
+    abstract parseRaw(rawValue: any, prop: NamedProperty, context: ExecutionContext): I
+    abstract parseProperty(propertyvalue: I, prop: NamedProperty, context: ExecutionContext):any
 }
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
@@ -344,14 +343,14 @@ export class DateTimeType extends PropertyDefinition<Date | null>{
 }
 
 type ObjectOfTypeOptions = PropertyDefinitionOptions & {nullable: boolean }
-export class ObjectOfType<I extends Entity> extends PropertyDefinition<I | null>{
+export class ObjectOfType extends PropertyDefinition{
 
     readonly options: ObjectOfTypeOptions
     readonly transformFromMultipleRows: boolean = true
     readonly transformIntoMultipleRows: boolean = true
     readonly propertyValueIsArray: boolean = false
 
-    constructor(private entityClass: typeof Entity & (new (...args: any[]) => I),
+    constructor(private entityClassName: string,
     options: Partial<ObjectOfTypeOptions> = {}
     ) {
         super(options.compute)
@@ -368,7 +367,7 @@ export class ObjectOfType<I extends Entity> extends PropertyDefinition<I | null>
         return jsonify
     }
     
-    parseRaw(rawValue: any): I | null {
+    parseRaw(rawValue: any, prop: NamedProperty, context: ExecutionContext): Entity | null {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -380,10 +379,11 @@ export class ObjectOfType<I extends Entity> extends PropertyDefinition<I | null>
         } else {
             throw new Error('It is not supported.')
         }
-        return this.entityClass.parseRaw(parsed)
+        const entityClass = context.models[this.entityClassName]
+        return entityClass.parseRaw(parsed)
     }
     
-    parseProperty(propertyvalue: I, prop: NamedProperty): any {
+    parseProperty(propertyvalue: Entity, prop: NamedProperty): any {
         if(!prop.definition.computeFunc){
             throw new Error(`Property ${prop.name} is not a computed field. The data type is not allowed.`)
         }
@@ -441,7 +441,7 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
         }
     }
 
-    parseRaw(rawValue: any, prop: NamedProperty): I[]{
+    parseRaw(rawValue: any, prop: NamedProperty, context: ExecutionContext): I[]{
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -453,7 +453,7 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
             throw new Error('It is not supported.')
         }
         return parsed.map( raw => {
-            return this.type.parseRaw(raw, prop)
+            return this.type.parseRaw(raw, prop, context)
         })
     }
     parseProperty(propertyvalue: Array<I>, prop: NamedProperty): any {

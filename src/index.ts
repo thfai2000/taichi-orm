@@ -200,6 +200,7 @@ let schemas: {
     [key: string]: Schema
 } = {}
 
+
 let registeredModels: {
     [key: string]: typeof Entity
 } = {}
@@ -250,16 +251,6 @@ export class Schema {
         ))
         this.checkProps()
     }
-
-    // computedProp(name:string, definition: any, computedFunc: ComputedFunction, options?: any){
-    //     this.namedProperties.push(new NamedProperty(
-    //         name,
-    //         definition,
-    //         computedFunc,
-    //         options
-    //     ))
-    //     this.checkProps()
-    // }
 
     private checkProps(){
         this.namedProperties.reduce( (acc, p) => {
@@ -319,60 +310,6 @@ export class NamedProperty {
 
 }
 
-const compileAs_ = (rootSelector: SelectorImpl, prop: NamedProperty) => {
-    if(prop.definition.computeFunc){
-        throw new Error('Computed Property cannot be compiled as normal field.')
-    } 
-    let tableAlias = quote(rootSelector.tableAlias)
-    let fieldName: string = quote(prop.fieldName)
-    let alias = metaFieldAlias(prop)
-    let rawTxt = `${tableAlias}.${fieldName}`
-
-    return makeNamedColumn(alias, makeColumn(raw(rawTxt), prop.definition) )
-}
-
-const compileAs$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledComputeFunction => {
-    return (queryOptions?: QueryOptions) => {
-        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector)
-
-        let process = (subquery: Knex.QueryBuilder): NamedColumn => {
-            let alias = metaFieldAlias(prop)
-            return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
-        }
-        if(subquery instanceof Promise){
-            throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
-        } else {
-            return process(subquery)
-        }
-    }
-}
-
-const compileAs$$ = (rootSelector: SelectorImpl, prop: NamedProperty): CompiledComputeFunctionPromise => {
-    return (queryOptions?: QueryOptions) => {
-        let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = executeComputeFunc(queryOptions, prop, rootSelector)
-
-        let process = (subquery: Knex.QueryBuilder): NamedColumn => {
-            let alias = metaFieldAlias(prop)
-            return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
-        }
-
-        return thenResult(subquery, query => process(query))
-
-        // if(subquery instanceof Promise){
-        //     return new Promise<NamedColumn>( (resolve, reject)=> {
-        //         if(subquery instanceof Promise){
-        //             subquery.then((query: Knex.QueryBuilder)=>{
-        //                 resolve(process(query))
-        //             },reject)
-        //         } else {
-        //             throw new Error('Unexpected flow. Subquery is updated.')
-        //         }
-        //     })
-        // } else {
-        //     return process(subquery)
-        // }
-    }
-}
 
 const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryObject) => {
 
@@ -482,98 +419,6 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
         stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions)) )
     }
     return stmtOrPromise
-}
-
-const executeComputeFunc = (queryOptions: QueryOptions | undefined, prop: NamedProperty, rootSelector: SelectorImpl) => {
-    if(!prop.definition.computeFunc){
-        throw new Error('Normal Property cannot be compiled as computed field.')
-    }
-    let args: QueryArguments = {}
-    if(queryOptions instanceof SimpleObjectClass){
-        let casted: QueryObject = queryOptions
-        args = casted.args ?? args
-    }
-    const computeFunc = prop.definition.computeFunc
-    const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
-        let process = (stmt: Knex.QueryBuilder) => {
-
-            // If the function object placed into the Knex.QueryBuilder, 
-            // Knex.QueryBuilder will call it and pass itself as the parameter
-            // That's why we can say likely our compiled function didn't be called.
-            if (queryOptions && !(queryOptions instanceof Function) && !(queryOptions instanceof SimpleObjectClass)) {
-                console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
-                throw new Error('The QueryFunction is not instanceof Function.')
-            }
-
-            // !! VERY IMPORTANT: must clone a new one for next filtering
-            stmt = stmt.clone()
-            
-            if(!queryOptions){
-                return stmt
-            } else {
-                if(!isRow(stmt)){
-                    throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
-                }
-                if(queryOptions instanceof Function){
-                    let queryFunction = queryOptions as QueryFunction
-                    return queryFunction(stmt, firstSelector, ...restSelectors)
-                } else if(queryOptions instanceof SimpleObjectClass){
-                    // Mix usage of Object and function
-                    // combine the sql statement
-                    let queryObject = queryOptions as QueryObject
-                    let result = simpleQuery(stmt, firstSelector, queryOptions)
-                    if(queryObject.fn){
-                        let queryFunction = queryObject.fn
-                        // if(result instanceof Promise){
-                        //     return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
-                        // } else {
-                        //     return queryFunction(result, firstSelector, ...restSelectors)
-                        // }
-                        return thenResult(result, value => queryFunction(value, firstSelector, ...restSelectors) )
-                    }
-                    return result
-                }
-            }
-            throw new Error('It is not support. Only Function and Object can be passed as filters.')
-        }
-
-        return thenResult(stmt, stmt => process(stmt))
-
-        // if (stmt instanceof Promise) {
-        //     return new Promise<Knex.QueryBuilder>((resolve, reject) => {
-        //         if (stmt instanceof Promise) {
-        //             stmt.then((query: Knex.QueryBuilder) => {
-        //                 resolve(process(query))
-        //             }, reject)
-        //         } else {
-        //             throw new Error('Unexpected flow. Subquery is updated.')
-        //         }
-        //     })
-        // } else {
-        //     return process(stmt)
-        // }
-    }
-
-    let checkValid = (subquery: Knex.QueryBuilder | Column) => {
-        if(!isRow(subquery) && !isColumn(subquery)){
-            throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
-        }
-        if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
-            console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-            throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-        }
-        if(!prop.definition.transformFromMultipleRows && !isColumn(subquery)){
-            console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-            throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-        }
-    }
-
-    let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args ,applyFilterFunc)
-
-    return thenResult(subquery, subquery => {
-        checkValid(subquery)
-        return subquery
-    })
 }
 
 export const configure = async function(newConfig: Partial<ORMConfig>){
@@ -760,7 +605,7 @@ export class SelectorImpl{
         }
         let prop = selector.getProperties().find((prop) => prop.name === sKey)
         selector.checkDollar(prop, sKey)
-        return compileAs$$(selector, prop!)
+        return this.compileAs$$(prop!)
     }
 
     getComputedCompiled(sKey: string) {
@@ -775,7 +620,7 @@ export class SelectorImpl{
         // }
         let prop = selector.getProperties().find((prop) => prop.name === sKey)
         selector.checkDollar(prop, sKey)
-        return compileAs$(selector, prop!)
+        return this.compileAs$(prop!)
     }
 
     getNormalCompiled(sKey: string) {
@@ -790,7 +635,7 @@ export class SelectorImpl{
         // }
         let prop = this.getProperties().find((prop) => prop.name === sKey)
         this.checkDash(prop, sKey)
-        return compileAs_(selector, prop!)
+        return this.compileAs_(prop!)
     }
 
     private checkDollar(prop: NamedProperty | undefined, sKey: string) {
@@ -816,21 +661,6 @@ export class SelectorImpl{
         }
         return makeSource(null, this.interface!)
     }
-
-    // get sourceRaw(): string{
-    //     if(this.schema.tableName.length === 0){
-    //         throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
-    //     }
-    //     return `${quote(this.schema.tableName)} AS ${quote(this.tableAlias)}`
-    // }
-
-    // get star(): NamedColumn{
-    //     if(this.schema.tableName.length === 0){
-    //         throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [star] for selection.`)
-    //     }
-    //     // return `${this.tableAlias}.$star`
-    //     return makeNamedColumn(this.interface!, '*', null)
-    // }
 
     get all(): NamedColumn[] {
         if(this.schema.tableName.length === 0){
@@ -866,6 +696,130 @@ export class SelectorImpl{
             return this.getComputedCompiledPromise(namedProperty.name)
         }
     }
+
+
+    compileAs_(prop: NamedProperty) {
+        const rootSelector: SelectorImpl = this
+        if(prop.definition.computeFunc){
+            throw new Error('Computed Property cannot be compiled as normal field.')
+        } 
+        let tableAlias = quote(rootSelector.tableAlias)
+        let fieldName: string = quote(prop.fieldName)
+        let alias = metaFieldAlias(prop)
+        let rawTxt = `${tableAlias}.${fieldName}`
+
+        return makeNamedColumn(alias, makeColumn(raw(rawTxt), prop.definition) )
+    }
+
+    compileAs$(prop: NamedProperty): CompiledComputeFunction {
+        const rootSelector: SelectorImpl = this
+        return (queryOptions?: QueryOptions) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryOptions, prop)
+
+            let process = (subquery: Knex.QueryBuilder): NamedColumn => {
+                let alias = metaFieldAlias(prop)
+                return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
+            }
+            if(subquery instanceof Promise){
+                throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
+            } else {
+                return process(subquery)
+            }
+        }
+    }
+
+    compileAs$$(prop: NamedProperty): CompiledComputeFunctionPromise {
+        const rootSelector: SelectorImpl = this
+        return (queryOptions?: QueryOptions) => {
+            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryOptions, prop)
+
+            let process = (subquery: Knex.QueryBuilder): NamedColumn => {
+                let alias = metaFieldAlias(prop)
+                return makeNamedColumn(alias, makeColumn(subquery, prop.definition) )
+            }
+
+            return thenResult(subquery, query => process(query))
+        }
+    }
+
+    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty) {
+        const rootSelector: SelectorImpl = this
+        if(!prop.definition.computeFunc){
+            throw new Error('Normal Property cannot be compiled as computed field.')
+        }
+        let args: QueryArguments = {}
+        if(queryOptions instanceof SimpleObjectClass){
+            let casted: QueryObject = queryOptions
+            args = casted.args ?? args
+        }
+        const computeFunc = prop.definition.computeFunc
+        const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
+            let process = (stmt: Knex.QueryBuilder) => {
+
+                // If the function object placed into the Knex.QueryBuilder, 
+                // Knex.QueryBuilder will call it and pass itself as the parameter
+                // That's why we can say likely our compiled function didn't be called.
+                if (queryOptions && !(queryOptions instanceof Function) && !(queryOptions instanceof SimpleObjectClass)) {
+                    console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
+                    throw new Error('The QueryFunction is not instanceof Function.')
+                }
+
+                // !! VERY IMPORTANT: must clone a new one for next filtering
+                stmt = stmt.clone()
+                
+                if(!queryOptions){
+                    return stmt
+                } else {
+                    if(!isRow(stmt)){
+                        throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
+                    }
+                    if(queryOptions instanceof Function){
+                        let queryFunction = queryOptions as QueryFunction
+                        return queryFunction(stmt, firstSelector, ...restSelectors)
+                    } else if(queryOptions instanceof SimpleObjectClass){
+                        // Mix usage of Object and function
+                        // combine the sql statement
+                        let queryObject = queryOptions as QueryObject
+                        let result = simpleQuery(stmt, firstSelector, queryOptions)
+                        if(queryObject.fn){
+                            let queryFunction = queryObject.fn
+                            // if(result instanceof Promise){
+                            //     return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
+                            // } else {
+                            //     return queryFunction(result, firstSelector, ...restSelectors)
+                            // }
+                            return thenResult(result, value => queryFunction(value, firstSelector, ...restSelectors) )
+                        }
+                        return result
+                    }
+                }
+                throw new Error('It is not support. Only Function and Object can be passed as filters.')
+            }
+
+            return thenResult(stmt, stmt => process(stmt))
+        }
+
+        let checkValid = (subquery: Knex.QueryBuilder | Column) => {
+            if(!isRow(subquery) && !isColumn(subquery)){
+                throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
+            }
+            if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
+                console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
+                throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
+            }
+            if(!prop.definition.transformFromMultipleRows && !isColumn(subquery)){
+                console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
+                throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
+            }
+        }
+
+        let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext, applyFilterFunc)
+
+        return thenResult(subquery, subquery => {
+            checkValid(subquery)
+            return subquery
+        })
+    }
 }
 
 export type EntityPropertyKeyValues = {
@@ -896,9 +850,9 @@ export type QueryObject = ({
     fn?: QueryFunction
 })
 
-export type MutateFunction = (this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>
+export type MutateFunction = (this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) => any | Promise<any>
 
-export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
+export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => NamedColumn
 
@@ -1021,48 +975,6 @@ export class ExecutionContext{
 }
 export const globalContext = new ExecutionContext()
 export const models = globalContext.models
-
-// try{
-//     const trx = await this.trxProvider()
-//     this.started++
-//     let result = await func(this)
-//     this.success++
-//     return result
-// }catch(error){
-//     throw error
-// }
-
-// let _trx: Knex.Transaction | null = null
-
-// const trxProvider = getKnexInstance().transactionProvider()
-// let ctx = new ExecutionContext(trxProvider, options.onSqlRun ?? null)
-// try{
-//     let result = await func(ctx);
-//     if(ctx.success > 0){
-//         const trx = await trxProvider()
-//         await trx.commit()
-//     }
-//     return result
-// }catch(error){
-//     if(ctx.started > 0){
-//         const trx = await trxProvider()
-//         await trx.rollback()
-//         throw error
-//     }
-//     throw error
-// }
-// static async start<T = any>(
-//     options: {onSqlRun?: ((sql: string) => void) | null}, 
-//     func: (context: ExecutionContext) => Promise<T> ): Promise<T> {
-// }
-
-// export const startTransaction = async (logic: (context: ExecutionContext) => any ) => {
-//     return await ExecutionContext.start({}, async(context) => {
-//         return context.startTransaction( async(context: ExecutionContext) => {
-//             return await logic(context)
-//         })
-//     })
-// }
 
 export class DBRunner<I> implements PromiseLike<I>{
     private ctx: ExecutionContext
@@ -1275,7 +1187,7 @@ export class Database{
 
         let inputs = values.map( data => {
             let newUuid = null
-            let {fieldValues, mutations} = Database._prepareNewData(data, schema, 'create')
+            let {fieldValues, mutations} = Database._prepareNewData(data, schema, 'create', existingContext)
     
             if(useUuid){
                 newUuid = uuidv4()
@@ -1345,7 +1257,7 @@ export class Database{
         return fns
     }
 
-    private static _prepareNewData(data: EntityPropertyKeyValues, schema: Schema, actionName: string) {
+    private static _prepareNewData(data: EntityPropertyKeyValues, schema: Schema, actionName: string, context: ExecutionContext) {
         return Object.keys(data).reduce(( {fieldValues, mutations}, propName) => {
             let prop = schema.namedProperties.find(p => {
                 return p.name === propName
@@ -1355,7 +1267,7 @@ export class Database{
             }
             
             if(!prop.definition.computeFunc){
-                fieldValues[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop)
+                fieldValues[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop, context)
             } else {
                 const currentProp = prop
                 let action: MutateFunctionProducer
@@ -1367,7 +1279,7 @@ export class Database{
                 }
                 mutations[currentProp.fieldName] = (rootValue: Entity, existingContext: ExecutionContext) => {
                     let value = action(currentProp, rootValue, existingContext)
-                    return currentProp.definition.parseProperty(value, currentProp)
+                    return currentProp.definition.parseProperty(value, currentProp, context)
                 }
             }
             
@@ -1401,10 +1313,10 @@ export class Database{
          return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-            let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
-            return {
-                resultData: rows[0] ?? null
-            }
+                let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
+                return {
+                    resultData: rows[0] ?? null
+                }
         })
      }
 
@@ -1417,10 +1329,10 @@ export class Database{
         return new DBRunner< Array<InstanceType<T>> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
-            let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
-            return {
-                resultData: rows
-            }
+                let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
+                return {
+                    resultData: rows
+                }
         })
     }
 
@@ -1429,8 +1341,8 @@ export class Database{
         let prop = new NamedProperty(
             'data',
             new Types.ArrayOf(new Types.ObjectOf(
-                entityClass, {
-                    compute: (root, {}, applyFilter) => {
+                entityClass.name, {
+                    compute: (root, {}, context, applyFilter) => {
                         let currentEntitySelector = entityClass.selector()
                         let stmt: Knex.QueryBuilder = builder(currentEntitySelector)
                         return applyFilter(stmt, currentEntitySelector)
@@ -1496,7 +1408,7 @@ export class Database{
         
         const schema = entityClass.schema
         const s = entityClass.selector()
-        let {fieldValues, mutations} = Database._prepareNewData(data, schema, isDelete?'delete':'update')
+        let {fieldValues, mutations} = Database._prepareNewData(data, schema, isDelete?'delete':'update', existingContext)
         if(!applyFilter || !(applyFilter instanceof SimpleObjectClass) ){
             throw new Error('Invalid Query Options')
         }
@@ -1667,7 +1579,7 @@ export class Database{
     static parseRaw<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, row: EntityPropertyKeyValues): InstanceType<T>{
         // let entityClass = (entityConstructor as unknown as typeof Entity)
         // let entityClass = this
-        existingContext = existingContext ?? globalContext
+        const context = existingContext ?? globalContext
 
         let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
@@ -1697,7 +1609,7 @@ export class Database{
              * it can be boolean, string, number, Object, Array of Object (class)
              * Depends on the props..
              */
-            let propValue = namedProperty?.definition!.parseRaw(row[fieldName], namedProperty)
+            let propValue = namedProperty?.definition!.parseRaw(row[fieldName], namedProperty, context)
             
             Object.defineProperty(entityInstance, namedProperty?.name!, {
                 configurable: true,
@@ -1706,7 +1618,7 @@ export class Database{
                 value: propValue
             })
             return entityInstance
-        }, new entityClass(existingContext) as InstanceType<T>)
+        }, new entityClass(context) as InstanceType<T>)
         return entityInstance
     }
 }

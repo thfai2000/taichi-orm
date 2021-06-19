@@ -50,8 +50,8 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
         schema.prop('name', new Types.String({length: 255}))
         schema.prop('location', new Types.String({length: 255}))
-        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf(Product, {
-          compute: Builtin.ComputeFn.relatedFrom(Product, 'shopId')
+        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf('Product', {
+          compute: Builtin.ComputeFn.relatedFrom('Product', 'shopId')
         }) ) )
         schema.prop('productCount', new Types.Number({
           compute: (shop) => {
@@ -105,19 +105,19 @@ const initializeDatabase = async () => {
         schema.prop('createdAt', new Types.DateTime({precision: 6}))
         schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.prop('shop', new Types.ObjectOf(Shop, {
-          compute: Builtin.ComputeFn.relatesTo(Shop, 'shopId')
+        schema.prop('shop', new Types.ObjectOf('Shop', {
+          compute: Builtin.ComputeFn.relatesTo('Shop', 'shopId')
         }))
 
         schema.prop('colors', 
-          new Types.ArrayOf(new Types.ObjectOf(Color, {
-            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId') 
+          new Types.ArrayOf(new Types.ObjectOf('Color', {
+            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId') 
           }))
         )
         
         schema.prop('mainColor', 
-          new Types.ObjectOf(Color, {
-            compute: Builtin.ComputeFn.relatesThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+          new Types.ObjectOf('Color', {
+            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
               return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })
