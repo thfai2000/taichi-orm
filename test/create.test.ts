@@ -70,6 +70,7 @@ describe('Test Create - No transaction', () => {
     ]
 
     let records = await models.Shop.createEach(shopData)
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -142,6 +143,7 @@ describe('Test Create - with transaction', () => {
       return await models.Shop.createEach(shopData).usingConnection(trx)
     })
 
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))

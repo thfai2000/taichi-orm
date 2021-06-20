@@ -7,7 +7,7 @@ export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator} from './Operator'
+import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator, SelectorFunction} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -1046,19 +1046,13 @@ export class Database{
         // let entityClass = this
 
         let resolveExpression: ExpressionResolver = function(value: Expression): Promise<Column> | Column {
-            if(value instanceof AndOperator){
-                let and = value as AndOperator
-                return and.toColumn(resolveExpression)
-            } else if(value instanceof OrOperator){
-                let or = value as OrOperator
-                return or.toColumn(resolveExpression)
-             } else if(value instanceof NotOperator){
-                let not = value as NotOperator
-                return not.toColumn(resolveExpression)
+            if(value instanceof ConditionOperator){
+                return value.toColumn(resolveExpression)
             } else if(Array.isArray(value)){
                 return resolveExpression(Or(...value))
             } else if(value instanceof Function) {
-                return value(selectorImpl.interface!)
+                const casted = value as SelectorFunction
+                return casted(selectorImpl.interface!)
             } else if(isColumn(value) || isRow(value)){
                 return value as Knex.QueryBuilder
             } else if(value instanceof SimpleObjectClass){
@@ -1173,7 +1167,6 @@ export class Database{
     }
 
     private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: EntityPropertyKeyValues[]) {
-        
         const schema = entityClass.schema
         
         let useUuid: boolean = !!ormConfig.enableUuid
@@ -1182,7 +1175,7 @@ export class Database{
                 throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
             }
         }
-
+        
         let inputs = values.map( data => {
             let newUuid = null
             let {fieldValues, mutations} = Database._prepareNewData(data, schema, 'create', existingContext)
@@ -1435,13 +1428,7 @@ export class Database{
             mutations
         }
 
-        console.log('ccccc')
-        
-        
         let fns = await existingContext.withTransaction(async (existingContext) => {
-
-            console.log('ffff')
-
             if(!input.selectSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
             }
@@ -1487,8 +1474,6 @@ export class Database{
                         return []
                     }
                 }
-
-                console.log('eeeeee', pks)
     
                 return await Promise.all(pks.flatMap( async (pkValue) => {
                     if (ormConfig.knexConfig.client.startsWith('mysql')) {
@@ -1522,7 +1507,6 @@ export class Database{
                         }
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
                         let finalRecord = await this.resolveMutations<T>(record, input.mutations, existingContext)
-                        console.log('aaaaa', finalRecord)
                         if(isDelete){
                             await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
