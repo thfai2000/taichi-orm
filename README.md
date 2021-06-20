@@ -3,6 +3,13 @@ A new way to deal with your Data Logic. Build your ORM by Data Brick.
 WARNING: Don't use it for productio
 It is still under heavy development. The API specification can be changed in the future.
 
+TODO:
+- context allow global filter on specific tables (use case: soft delete)
+- creating table statement should be carried out within context, it allows partition of data (use table prefix)
+- context allow read-only transaction... speed up query and safe to graphql query
+- query array of data with total count(before limit rows)
+
+
 # Introduction
 
 - Introduce a concept `ComputedProperty`for Data Model

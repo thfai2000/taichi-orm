@@ -1,14 +1,16 @@
-import {configure, Schema, Entity, Types, Relations, models, raw, column} from '../dist'
+import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector} from '../dist'
+import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-// import {clearSysFields} from './util'
+import { Knex } from 'knex'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
   { id: 2, name: 'Shop 2', location: 'Yuen Long'},
   { id: 3, name: 'Shop 3', location: 'Tsuen Wan'},
   { id: 4, name: 'Shop 4', location: 'Tsuen Wan'},
-  { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
+  { id: 5, name: 'Shop 5', location: 'Tsuen Wan'},
+  { id: 6, name: 'Shop 6', location: null}
 ]
 
 let productData = [
@@ -48,8 +50,8 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
         schema.prop('name', new Types.String({length: 255}))
         schema.prop('location', new Types.String({length: 255}))
-        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf(Product, {
-          compute: Relations.has(Product, 'shopId')
+        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf('Product', {
+          compute: Builtin.ComputeFn.relatedFrom('Product', 'shopId')
         }) ) )
         schema.prop('productCount', new Types.Number({
           compute: (shop) => {
@@ -84,6 +86,15 @@ const initializeDatabase = async () => {
           }
         }))
 
+        schema.prop('hasTwoProductsAndlocationHasLetterA', new Types.Boolean({
+          compute: (shop, args) => {
+            return shop({
+              location: Like('%a%'),
+              productCount: 2
+            })
+          }
+        }))
+
       }
     }
     
@@ -94,19 +105,19 @@ const initializeDatabase = async () => {
         schema.prop('createdAt', new Types.DateTime({precision: 6}))
         schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.prop('shop', new Types.ObjectOf(Shop, {
-          compute: Relations.belongsTo(Shop, 'shopId')
+        schema.prop('shop', new Types.ObjectOf('Shop', {
+          compute: Builtin.ComputeFn.relatesTo('Shop', 'shopId')
         }))
 
         schema.prop('colors', 
-          new Types.ArrayOf(new Types.ObjectOf(Color, {
-            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId') 
+          new Types.ArrayOf(new Types.ObjectOf('Color', {
+            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId') 
           }))
         )
         
         schema.prop('mainColor', 
-          new Types.ObjectOf(Color, {
-            compute: Relations.relateThrough(Color, ProductColor, 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+          new Types.ObjectOf('Color', {
+            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
               return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })
@@ -141,9 +152,12 @@ const initializeDatabase = async () => {
         models: {Shop, Product, Color, ProductColor},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
 
     await Promise.all(shopData.map( async(d) => {
@@ -177,7 +191,9 @@ afterAll(() => {
     return clearDatabase();
 });
 
-describe('Simple Query', () => {
+
+
+describe('Select - Simple Query', () => {
 
   test('Query by object filter', async () => {
     let id = 2
@@ -185,6 +201,7 @@ describe('Simple Query', () => {
 
     expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
   })
+
 
   test('Query by object filter + select computed fields', async () => {
     let id = 2
@@ -205,7 +222,7 @@ describe('Simple Query', () => {
 
   test('Query with limit', async () => {
     let limit = 2
-    let records = await models.Shop.find( (stmt, root) => {
+    let records = await models.Shop.find( function(stmt, root){
         return stmt.where(root.pk, '>', 2).limit(limit)
     })
 
@@ -214,7 +231,7 @@ describe('Simple Query', () => {
 
 })
 
-describe('Computed Fields using Standard Relations', () => {
+describe('Select - Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
     let records = await models.Shop.find( (stmt, root) => {
         return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
@@ -285,7 +302,7 @@ describe('Computed Fields using Standard Relations', () => {
 
 })
 
-describe('custom Computed Fields', () => {
+describe('Select - Custom Computed Fields', () => {
 
   test('Query computed field', async () => {
     let id = 2
@@ -299,17 +316,17 @@ describe('custom Computed Fields', () => {
 })
 
 
-describe('Mixed Query', () => {
+describe('Select - Mixed Query', () => {
 
   test("Standard", async() => {
     const time = '2020-01-01 12:20:01'
 
     let records = await models.Shop.find({
-      select: [
-        'productCount', 
-        {'products': {select: ['colors']} }, 
-        {'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })} 
-      ],
+      select: {
+        'productCount': true, 
+        'products': {select: ['colors']} , 
+        'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
+      },
     })
 
     expect(records).toEqual( expect.arrayContaining(
@@ -357,19 +374,17 @@ describe('Mixed Query', () => {
 })
 
 
-describe('Mixed Query', () => {
+describe('Select - Use Query Arguments', () => {
 
   test('Use Query Arguments', async () => {
     let expectedCount = 3
     let records = await models.Shop.find({
-      select: [
-        'products',
-        {
-          'hasEnoughProducts': { 
-            args: {count : expectedCount}
-          }
+      select: {
+        'products': true,
+        'hasEnoughProducts': { 
+          args: {count : expectedCount}
         }
-      ]
+      }
     })
 
     expect(records).toEqual( expect.arrayContaining(
@@ -387,4 +402,163 @@ describe('Mixed Query', () => {
 
   })
 
+})
+
+describe('Where - Operators', () => {
+
+  test('Query by object filter - Equal and IsNull', async () => {
+    let id = 2
+    let records = await models.Shop.find({id: Equal(id)})
+
+    expect(records).toHaveLength(1)
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id).map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - IsNull', async () => {
+
+    let records = await models.Shop.find({location: IsNull()})
+    let records2 = await models.Shop.find({location: null})
+
+    const expected = shopData.filter(s => s.location === null)
+
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+
+    expect(records2).toHaveLength(expected.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - IsNotNull', async () => {
+    let records = await models.Shop.find({location: IsNotNull()})
+    const expected = shopData.filter(s => s.location !== null)
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Not Equal', async () => {
+    let id = 2
+    let records = await models.Shop.find({id: NotEqual(id)})
+    const expected = shopData.filter(s => s.id !== id)
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Not', async () => {
+    let records = await models.Shop.find({where: Not({
+      location: 'Tsuen Wan',
+      name: 'Shop 4'
+    })})
+
+    const expected = shopData.filter(s => !(s.location === 'Tsuen Wan' && s.name === 'Shop 4') )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Contain', async () => {
+    let ids = [2,4,100]
+    let expectedShops = shopData.filter(s => ids.includes(s.id) )
+    let records = await models.Shop.find({id: ids})
+
+    expect(records).toHaveLength(expectedShops.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+    
+    let records2 = await models.Shop.find({id: Contain(...ids)})
+    expect(records2).toHaveLength(expectedShops.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Like', async () => {
+    const likeStr = '2'
+    let expectedShops = shopData.filter( s => s.name.includes(likeStr))
+    let records = await models.Shop.find({name: Like(`%${likeStr}%`) })
+
+    expect(records).toHaveLength(1)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Or Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: Or(
+        {id},
+        {name}
+      )
+    })
+    expect(records).toHaveLength(2)
+    expect(records).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+    let records2 = await models.Shop.find({
+      where: [
+        {id},
+        {name}
+      ]
+    })
+    expect(records2).toHaveLength(2)
+    expect(records2).toEqual( expect.arrayContaining(
+      shopData.filter(s => s.id === id || s.name === name).map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+
+  test('Query by object filter - And Case', async () => {
+    let id = 2, name = 'Shop 4'
+    let records = await models.Shop.find({
+      where: And(
+        {id},
+        {name}
+      )
+    })
+
+    expect(records).toHaveLength(0)
+
+    let records2 = await models.Shop.find({
+      where: [
+        And({id: 2}, {name: 'Shop 2'}),
+        And({id: 4}, {name: 'Shop 4'})
+      ]
+    })
+    const expectedShopData = shopData.filter(s => [2,4].includes(s.id) )
+    expect(records2).toHaveLength(expectedShopData.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShopData.map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+
+  test('Filter by Computed Field', async () => {
+    let records = await models.Shop.find({
+      hasTwoProductsAndlocationHasLetterA: true
+    })
+
+    const expectedShopData = shopData.filter(s => productData.filter(p => p.shopId === s.id).length === 2 && s.location?.includes('a') )
+    expect(records).toHaveLength(expectedShopData.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShopData.map( s => expect.objectContaining(s))
+    ))
+
+  })
+
+  
 })

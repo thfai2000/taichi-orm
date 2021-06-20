@@ -1,5 +1,6 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds } from "."
+import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -23,6 +24,7 @@ declare module "knex" {
 
         interface Raw {
             clone: Function
+            __type: 'Raw' | 'Column' | 'Source' | 'Row'
         }
     }
 }
@@ -45,6 +47,7 @@ export interface Column<T = any> extends Knex.Raw {
     __expression: Knex.QueryBuilder | Knex.Raw
     count(): Column<NumberType> 
     exists(): Column<BooleanType> 
+    equals: (value: any) => Column<BooleanType>
     is(operator: string, value: any): Column<BooleanType> 
     toColumn(): Column<T>
     clone(): Column<T>
@@ -68,6 +71,14 @@ export interface Source extends Knex.Raw {
 //     }
 //     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
 // }
+
+export const isRaw = (builder: any) : boolean => {
+    //@ts-ignore
+    if(builder.__type === 'Raw' ){
+        return true
+    }
+    return false
+}
 
 export const isRow = (builder: any) : boolean => {
     //@ts-ignore
@@ -93,14 +104,14 @@ export const isColumn = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector | null, from?: Knex.QueryBuilder) : Knex.QueryBuilder {
+export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Knex.QueryBuilder) : Knex.QueryBuilder {
     let sealBuilder: Knex.QueryBuilder
-    if(from){
-        if(!isRow(from)){
+    if(cloneFrom){
+        if(!isRow(cloneFrom)){
             throw new Error('Unexpected Flow.')
         }
-        sealBuilder = from.__realClone()
-        sealBuilder.__selectItems = from.__selectItems.map(item => {
+        sealBuilder = cloneFrom.__realClone()
+        sealBuilder.__selectItems = cloneFrom.__selectItems.map(item => {
             return {
                 actualAlias: item.actualAlias,
                 value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
@@ -212,6 +223,7 @@ export const makeRaw = (first: any, ...args: any[]) => {
     r.clone = () => {
         return makeRaw(r.toString())
     }
+    r.__type = 'Raw'
     return r
 }
 
@@ -219,9 +231,7 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
 
     let text = expression.toString().trim()
 
-    if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
-        text = `(${text})`
-    }
+    text = addBlanketIfNeeds(text)
     let column: Column<any> = makeRaw(text) as Column<any>
     column.__type = 'Column'
     column.__expression = expression.clone()
@@ -245,6 +255,11 @@ export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, de
         }
 
         return makeColumn<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
+    }
+
+    column.equals = (value: any): Column<BooleanType> => {
+
+        return makeColumn<BooleanType>( Equal(value).toRaw(column), new Types.Boolean())
     }
 
     column.is = (operator: string, value: any): Column<BooleanType> => {
@@ -272,7 +287,7 @@ export const makeNamedColumn = <T = any>(alias: string, col: Column<T>) : NamedC
 }
 
 export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<NamedColumn | string>): Source => {
-    let t = `${quote(selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
+    let t = `${quote(selector.executionContext.tablePrefix + selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
 
     joinText  = (joinText ?? '').trim()
 

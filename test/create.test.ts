@@ -20,9 +20,12 @@ const initializeDatabase = async () => {
         models: {Shop},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
 }
 
@@ -66,7 +69,8 @@ describe('Test Create - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    let records = await models.Shop.create(shopData)
+    let records = await models.Shop.createEach(shopData)
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -136,9 +140,10 @@ describe('Test Create - with transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
     let records = await startTransaction( async(trx) => {
-      return await models.Shop.create(shopData).usingConnection(trx)
+      return await models.Shop.createEach(shopData).usingConnection(trx)
     })
 
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -161,7 +166,7 @@ describe('Test Create - with transaction', () => {
     let errorMessage = 'It is failed.'
 
     let t = async() => await startTransaction( async(trx) => {
-      let records = await models.Shop.create(shopData).usingConnection(trx)
+      let records = await models.Shop.createEach(shopData).usingConnection(trx)
       expect(records).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))
