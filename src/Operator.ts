@@ -3,14 +3,20 @@ import {Knex} from 'knex'
 import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
 import { BooleanType } from './PropertyType'
 
+abstract class ConditionOperator {
+    abstract toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>
+    abstract toColumn(resolver: ExpressionResolver): Column | Promise<Column>
+}
+
 abstract class ValueOperator {
     abstract toRaw(leftOperand: Column ): Knex.Raw | Promise<Knex.Raw>
     abstract toColumn(leftOperand: Column ): Column | Promise<Column>
 }
 
-class AndOperator {
+class AndOperator extends ConditionOperator{
     args: Array<Expression>
     constructor(...args: Array<Expression>){
+        super()
         this.args = args
     }
     toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
@@ -24,9 +30,10 @@ class AndOperator {
     }
 }
 
-class OrOperator{
+class OrOperator extends ConditionOperator{
     args: Array<Expression>
     constructor(...args: Array<Expression>){
+        super()
         this.args = args
     }
     toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
@@ -40,9 +47,10 @@ class OrOperator{
     }
 }
 
-class NotOperator {
+class NotOperator extends ConditionOperator{
     arg: Expression
     constructor(arg: Expression){
+        super()
         this.arg = arg
     }
 
@@ -204,7 +212,9 @@ class IsNotNullOperator extends ValueOperator {
 
 export type ExpressionResolver = (value: Expression) => Promise<Column> | Column
 export type SelectorFunction = (selector: Selector) => Column
-export type Expression = AndOperator | OrOperator | Column | Promise<Column> | SimpleObject | SelectorFunction | Array<Expression>
+export type PropertyValue = null|number|string|boolean|Date|ValueOperator
+export type PropertyKeyValues = {[key:string]: PropertyValue | PropertyValue[]}
+export type Expression = ConditionOperator | Column | Promise<Column> | PropertyKeyValues | SelectorFunction | Array<Expression>
 
 const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
 const Or = (...condition: Array<Expression>) => new OrOperator(...condition)
@@ -218,4 +228,4 @@ const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
 const IsNull = () => new IsNullOperator()
 const IsNotNull = () => new IsNotNullOperator()
 
-export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator}
+export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator, ConditionOperator}

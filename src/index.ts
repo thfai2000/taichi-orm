@@ -7,7 +7,7 @@ export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator} from './Operator'
+import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -311,49 +311,67 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
 
     let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-    if (queryOptions.select && queryOptions.select.length > 0) {
+    let select: {[key:string]: boolean | QueryOptions | PropertyDefinition}
+    if(queryOptions.select instanceof Array){
+        select = queryOptions.select.reduce( (acc, key)=> {
+            acc[key] = true
+            return acc
+        },{} as {[key:string]: boolean | QueryOptions | PropertyDefinition} )
+    }else {
+        select = queryOptions.select ?? {}
+    }
 
-        let normalProps = queryOptions.select.map( (item: any) => {
-            if (typeof item === 'string') {
-                let prop = selector.schema.namedProperties.find(p => p.name === item)
+    if (select && Object.keys(select).length > 0) {
+
+        let removeNormalPropNames = Object.keys(select).map( (key: string) => {
+            const item = select[key]
+            if (item === false) {
+                let prop = selector.schema.namedProperties.find(p => p.name === key)
                 if(!prop){
-                    throw new Error(`The property ${item} cannot be found in schema '${selector.entityClass.name}'`)
-                }
-                if(!prop.definition.computeFunc){
-                    return selector._[prop.name]
+                    throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
+                } else {
+                    if(!prop.definition.computeFunc){
+                        return prop.name
+                    }
                 }
             }
             return null
         }).filter(notEmpty)
 
-        if(normalProps.length > 0){
-            stmt = stmt.clearSelect().select(...normalProps)
+        if(removeNormalPropNames.length > 0){
+            const shouldIncludes = selector.schema.namedProperties.filter(p => !removeNormalPropNames.includes( p.name) )
+            stmt = stmt.clearSelect().select(...shouldIncludes)
         }
 
-        //TODO: (the lifecycle) must separate into 2 steps ... register all first, then compile all
-        let executedProps = queryOptions.select.flatMap( (item: any) => {
-            if (typeof item === 'string'){
-                let prop = selector.schema.namedProperties.find(p => p.name === item)
+        //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
+        let executedProps = Object.keys(select).map( (key: string) => {
+            const item = select[key]
+            if (item === true){
+                let prop = selector.schema.namedProperties.find(p => p.name === key)
                 if(!prop){
-                    throw new Error(`The property ${item} cannot be found in schema '${selector.entityClass.name}'`)
+                    throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
                 }
                 if(prop.definition.computeFunc){
                     return selector.$$[prop.name]()
                 }
             } else if (item instanceof SimpleObjectClass) {
-                let options = item as SimpleObject
-                return Object.keys(options).map( name => {
-                    if( options[name] instanceof PropertyDefinition){
-                        selector.registerProp( new NamedProperty(name, options[name]) )
-                        return selector.$$[name]()
+                let options = item as QueryOptions
+
+                let prop = selector.schema.namedProperties.find(p => p.name === key && p.definition.computeFunc)
+
+                if(!prop){
+                    if( options instanceof PropertyDefinition){
+                        selector.registerProp( new NamedProperty(key, options) )
+                        return selector.$$[key]()
                     } else {
-                        let prop = selector.schema.namedProperties.find(p => p.name === name && p.definition.computeFunc)
-                        if(!prop){
-                            throw new Error(`The property ${name} cannot be found in schema '${selector.entityClass.name}'`)
-                        }
-                        return selector.$$[prop.name](options[name])
+                        throw new Error('Temp Property must be propertyDefinition')
                     }
-                })
+                } else {
+                    if(!prop.definition.computeFunc){
+                        throw new Error('Only COmputeProperty allows QueryOptions')
+                    }
+                    return selector.$$[key](options)
+                }
             }
             return null
         }).filter(notEmpty) 
@@ -387,7 +405,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
         isOnlyWhere = false
     }
     if(isOnlyWhere){
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions)) )
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions as QueryWhere)) )
     }
     return stmtOrPromise
 }
@@ -498,7 +516,7 @@ export const breakdownMetaFieldAlias = function(metaAlias: string){
 }
 
 export interface Selector extends ExpressionResolver {
-    (value: Expression): Promise<Column> | Column
+    (value: QueryWhere): Promise<Column> | Column
     impl: SelectorImpl
     readonly entityClass: typeof Entity
     readonly executionContext: ExecutionContext
@@ -751,7 +769,7 @@ export class SelectorImpl{
                         // Mix usage of Object and function
                         // combine the sql statement
                         let queryObject = queryOptions as QueryObject
-                        let result = simpleQuery(stmt, firstSelector, queryOptions)
+                        let result = simpleQuery(stmt, firstSelector, queryObject)
                         if(queryObject.fn){
                             let queryFunction = queryObject.fn
                             // if(result instanceof Promise){
@@ -797,7 +815,7 @@ export type EntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
 
-export type QuerySelect = string[]
+export type QuerySelect = {[key:string]: boolean | QueryOptions | PropertyDefinition} | string[]
 
 export type QueryWhere = Expression
 
@@ -811,7 +829,7 @@ export class FutureArgument<Input = any, Output = any>{
     constructor(private fnc: (futureValue: Input) => Output ){}
 }
 
-export type QueryObject = ({
+export type QueryObject = {
     select?: QuerySelect,
     where?: QueryWhere,
     limit?: number,
@@ -819,7 +837,7 @@ export type QueryObject = ({
     orderBy?: QueryOrderBy
     args?: QueryArguments
     fn?: QueryFunction
-})
+}
 
 export type MutateFunction = (this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) => any | Promise<any>
 
@@ -1416,9 +1434,13 @@ export class Database{
             entityData: data,
             mutations
         }
+
+        console.log('ccccc')
         
         
         let fns = await existingContext.withTransaction(async (existingContext) => {
+
+            console.log('ffff')
 
             if(!input.selectSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
@@ -1465,6 +1487,8 @@ export class Database{
                         return []
                     }
                 }
+
+                console.log('eeeeee', pks)
     
                 return await Promise.all(pks.flatMap( async (pkValue) => {
                     if (ormConfig.knexConfig.client.startsWith('mysql')) {
@@ -1484,7 +1508,7 @@ export class Database{
                             await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
                         return finalRecord
-                    
+                        
                     } else if (ormConfig.knexConfig.client.startsWith('sqlite')) {
                         if(updateStmt){
                             let updateResult = await this.executeStatement(updateStmt.clone().andWhereRaw('?? = ?', [entityClass.schema.primaryKey.fieldName, pkValue]), existingContext)
@@ -1498,6 +1522,7 @@ export class Database{
                         }
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
                         let finalRecord = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                        console.log('aaaaa', finalRecord)
                         if(isDelete){
                             await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }

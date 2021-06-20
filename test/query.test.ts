@@ -322,11 +322,11 @@ describe('Select - Mixed Query', () => {
     const time = '2020-01-01 12:20:01'
 
     let records = await models.Shop.find({
-      select: [
-        'productCount', 
-        {'products': {select: ['colors']} }, 
-        {'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })} 
-      ],
+      select: {
+        'productCount': true, 
+        'products': {select: ['colors']} , 
+        'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
+      },
     })
 
     expect(records).toEqual( expect.arrayContaining(
@@ -379,14 +379,12 @@ describe('Select - Use Query Arguments', () => {
   test('Use Query Arguments', async () => {
     let expectedCount = 3
     let records = await models.Shop.find({
-      select: [
-        'products',
-        {
-          'hasEnoughProducts': { 
-            args: {count : expectedCount}
-          }
+      select: {
+        'products': true,
+        'hasEnoughProducts': { 
+          args: {count : expectedCount}
         }
-      ]
+      }
     })
 
     expect(records).toEqual( expect.arrayContaining(
