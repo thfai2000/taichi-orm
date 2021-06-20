@@ -119,7 +119,7 @@ export class NumberType extends PropertyDefinition<number | null> {
     readonly propertyValueIsArray: boolean = false
     
     constructor(options: Partial<NumberTypeOptions> ={}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
         
@@ -158,7 +158,7 @@ export class DecimalType extends PropertyDefinition<number | null> {
     readonly propertyValueIsArray: boolean = false
     
     constructor(options: Partial<DecimalTypeOptions> = {}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
 
@@ -195,7 +195,7 @@ export class BooleanType extends PropertyDefinition<boolean | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<BooleanTypeOptions> = {}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
 
@@ -241,7 +241,7 @@ export class StringType extends PropertyDefinition<string | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<StringTypeOptions> = {}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
 
@@ -278,7 +278,7 @@ export class DateType extends PropertyDefinition<Date | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTypeOptions> = {}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
 
@@ -314,7 +314,7 @@ export class DateTimeType extends PropertyDefinition<Date | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
 
@@ -353,7 +353,7 @@ export class ObjectOfType extends PropertyDefinition{
     constructor(private entityClassName: string,
     options: Partial<ObjectOfTypeOptions> = {}
     ) {
-        super(options.compute)
+        super(options.compute, options.mutate)
         this.options = {nullable: true, ...options}
     }
                 
@@ -413,6 +413,10 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
 
     get computeFunc(){
         return this.type.computeFunc
+    }
+
+    get mutationFunc() {
+        return this.type.mutationFunc
     }
 
     get transformIntoMultipleRows(){
