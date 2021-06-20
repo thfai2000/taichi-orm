@@ -57,11 +57,6 @@ afterEach(() => {
     return clearDatabase();
 });
 
-// test('test jest', () => {
-//   expect([1,2,3]).toEqual([1,3,2]);
-
-// })
-
 describe('Test Context Usage', () => {
 
   test('Create One - Success', async () => {
