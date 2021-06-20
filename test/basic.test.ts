@@ -1,4 +1,4 @@
-import {run, builder, raw, configure, Schema, Entity, Types, models} from '../dist/'
+import {builder, raw, configure, Schema, Entity, Types, models, globalContext} from '../dist/'
 import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 // import {clearSysFields} from './util'
@@ -8,29 +8,29 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', new Types.String(false, 255))
+          schema.prop('location', new Types.String({nullable: false, length: 255}))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String(true, 255))
-          schema.prop('isActive', new Types.Boolean(true))
-          schema.prop('price', new Types.Decimal(true, 7, 2))
-          schema.prop('createdAt', new Types.DateTime(true, 6))
-          schema.prop('shopId', new Types.Number(true))
+          schema.prop('name', new Types.String({nullable: true, length: 255}))
+          schema.prop('isActive', new Types.Boolean())
+          schema.prop('price', new Types.Decimal({precision: 7, scale: 2}))
+          schema.prop('createdAt', new Types.DateTime({precision: 6}))
+          schema.prop('shopId', new Types.Number())
       }
     }
 
     class StrictProduct extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String(false, 255))
-          schema.prop('isActive', new Types.Boolean(false))
-          schema.prop('price', new Types.Decimal(false, 5, 2))
-          schema.prop('createdAt', new Types.DateTime(false))
-          schema.prop('shopId', new Types.Number(false))
+          schema.prop('name', new Types.String({nullable: false, length: 255}))
+          schema.prop('isActive', new Types.Boolean({nullable: false}))
+          schema.prop('price', new Types.Decimal({nullable: false, precision: 5, scale: 2}))
+          schema.prop('createdAt', new Types.DateTime({nullable: false}))
+          schema.prop('shopId', new Types.Number({nullable: false}))
       }
     }
 
@@ -44,13 +44,13 @@ const initializeDatabase = async () => {
         models: {Shop, Product, StrictProduct},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
-
-    // console.log("sql", sql)
-    // console.log('xxxxx', await getKnexInstance().raw('SELECT * FROM sqlite_master WHERE type=\'table\';') )
 }
 
 const clearDatabase = () => {
@@ -72,6 +72,7 @@ afterEach(() => {
 
 describe('Basic Read and Write', () => {
   test('Create and Find Shop', async () => {
+
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
@@ -150,11 +151,10 @@ describe('Basic Read and Write', () => {
         expect.objectContaining(expectedProduct2)
       ]
     )
-
     let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
-  }, 10000);
+  });
 
 })
 

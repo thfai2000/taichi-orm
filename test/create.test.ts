@@ -1,14 +1,13 @@
-import {run, builder, raw, startTransaction, configure, Schema, Entity, Types, models} from '../dist/'
+import {builder, raw, startTransaction, configure, Schema, Entity, Types, models} from '../dist/'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 
 const initializeDatabase = async () => {
     // configure the orm
     class Shop extends Entity{
-
       static register(schema: Schema){
-          schema.prop('name', new Types.String(true, 255))
-          schema.prop('location', new Types.String(false, 255))
+          schema.prop('name', new Types.String({length: 255, nullable: false}))
+          schema.prop('location', new Types.String({length: 255, nullable: false}))
       }
     }
 
@@ -21,9 +20,12 @@ const initializeDatabase = async () => {
         models: {Shop},
         createModels: true,
         enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => tablePrefix + snakeCase(className),
+        entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config
+        knexConfig: config,
+        globalContext: {
+          tablePrefix
+        }
     })
 }
 
@@ -49,6 +51,12 @@ describe('Test Create - No transaction', () => {
     expect(record).toEqual( expect.objectContaining({
       ...shopData
     }))
+
+    //try to find it again, to prove it can get it
+    let found = await models.Shop.findOne({id: 5})
+    expect(found).toEqual( expect.objectContaining({
+      ...shopData
+    }))
   })
 
 
@@ -61,10 +69,18 @@ describe('Test Create - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    let records = await models.Shop.create(shopData)
+    let records = await models.Shop.createEach(shopData)
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
+
+    //try to find it again, to prove it can get it
+    let found = await models.Shop.find()
+    expect(found).toEqual(shopData.map(shop => expect.objectContaining({
+      ...shop
+    })))
+
   })
 
 })
@@ -124,9 +140,10 @@ describe('Test Create - with transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
     let records = await startTransaction( async(trx) => {
-      return await models.Shop.create(shopData).usingConnection(trx)
+      return await models.Shop.createEach(shopData).usingConnection(trx)
     })
 
+    expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -149,7 +166,7 @@ describe('Test Create - with transaction', () => {
     let errorMessage = 'It is failed.'
 
     let t = async() => await startTransaction( async(trx) => {
-      let records = await models.Shop.create(shopData).usingConnection(trx)
+      let records = await models.Shop.createEach(shopData).usingConnection(trx)
       expect(records).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))

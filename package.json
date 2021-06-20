@@ -1,17 +1,21 @@
 {
-  "name": "bricky-orm",
+  "name": "taichi-orm",
   "version": "0.0.9",
-  "description": "Low-level Object Relation Mapper for SQL Database. Build Data Logic like Brick",
+  "description": "Object Relation Mapper for SQL Database. Flexible and Strong",
   "keywords": [
-    "ORM",
-    "SQL Database",
-    "Data Query",
-    "GraphQL",
-    "Knex",
-    "Brick",
+    "data modeling",
+    "orm",
+    "sql",
+    "database",
+    "data query",
+    "graphqL",
+    "taichi",
+    "knex",
     "mysql",
     "sqlite",
-    "postegres"
+    "postegres",
+    "high performance",
+    "developer friendly"
   ],
   "main": "./dist/index.js",
   "exports": "./dist/index.js",
@@ -29,17 +33,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/thfai2000/bricky-orm.git"
+    "url": "git+https://github.com/thfai2000/taichi-orm.git"
   },
   "author": "Eddie Tang",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/thfai2000/bricky-orm/issues"
+    "url": "https://github.com/thfai2000/taichi-orm/issues"
   },
-  "homepage": "https://github.com/thfai2000/bricky-orm#readme",
+  "homepage": "https://github.com/thfai2000/taichi-orm#readme",
   "runkitExampleFilename": "runkit-example.js",
   "engines": {
-    "node": ">=10"
+    "node": ">=14"
   },
   "devDependencies": {
     "@types/jest": "^26.0.23",

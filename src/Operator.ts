@@ -1,0 +1,231 @@
+import {Column, isColumn, makeColumn, makeRaw as raw} from './Builder'
+import {Knex} from 'knex'
+import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
+import { BooleanType } from './PropertyType'
+
+abstract class ConditionOperator {
+    abstract toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>
+    abstract toColumn(resolver: ExpressionResolver): Column | Promise<Column>
+}
+
+abstract class ValueOperator {
+    abstract toRaw(leftOperand: Column ): Knex.Raw | Promise<Knex.Raw>
+    abstract toColumn(leftOperand: Column ): Column | Promise<Column>
+}
+
+class AndOperator extends ConditionOperator{
+    args: Array<Expression>
+    constructor(...args: Array<Expression>){
+        super()
+        this.args = args
+    }
+    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression>) => raw( 
+            args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
+        ))
+    }
+    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
+        const p = this.toRaw(resolver)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class OrOperator extends ConditionOperator{
+    args: Array<Expression>
+    constructor(...args: Array<Expression>){
+        super()
+        this.args = args
+    }
+    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression>) => raw(
+            `(${args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
+        ))
+    }
+    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
+        const p = this.toRaw(resolver)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class NotOperator extends ConditionOperator{
+    arg: Expression
+    constructor(arg: Expression){
+        super()
+        this.arg = arg
+    }
+
+    toRaw(resolver: ExpressionResolver){
+        return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
+    }
+    
+    toColumn(resolver: ExpressionResolver){
+        const p = this.toRaw(resolver)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class ContainOperator extends ValueOperator {
+    rightOperands: any[]
+    constructor(...rightOperands: any[]){
+        super()
+        this.rightOperands = rightOperands
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class NotContainOperator extends ValueOperator {
+    rightOperands: any[]
+    constructor(...rightOperands: any[]){
+        super()
+        this.rightOperands = rightOperands
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class LikeOperator extends ValueOperator {
+    rightOperand: any
+    constructor(rightOperand: any[]){
+        super()
+        this.rightOperand = rightOperand
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
+    }
+    
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class NotLikeOperator extends ValueOperator {
+    rightOperand: any
+    constructor(rightOperand: any[]){
+        super()
+        this.rightOperand = rightOperand
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} NOT LIKE ?`, [rightOperand]) )
+    }
+    
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class EqualOperator extends ValueOperator {
+    rightOperand: any
+    constructor(rightOperand: any){
+        super()
+        this.rightOperand = rightOperand
+    }
+
+    toRaw(leftOperand: Column){
+        return thenResult(this.rightOperand, (value: any) => {
+            if(isColumn(value)){
+                return raw( `${leftOperand} = ??`, [value.toString()])
+            }
+            else return raw( `${leftOperand} = ?`, [value])
+        })
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+class NotEqualOperator extends ValueOperator {
+    rightOperand: any
+    constructor(rightOperand: any){
+        super()
+        this.rightOperand = rightOperand
+    }
+
+    toRaw(leftOperand: Column): Knex.Raw | Promise<Knex.Raw> {
+        return thenResult(this.rightOperand, (value: any) => {
+            if(isColumn(value)){
+                return raw( `${leftOperand} <> ??`, [value.toString()])
+            }
+            else return raw( `${leftOperand} <> ?`, [value])
+        })
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class IsNullOperator extends ValueOperator {
+    constructor(){
+        super()
+    }
+
+    toRaw(leftOperand: Column): Knex.Raw {
+        return raw(`${leftOperand} IS NULL`)
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+class IsNotNullOperator extends ValueOperator {
+    constructor(){
+        super()
+    }
+
+    toRaw(leftOperand: Column): Knex.Raw {
+        return raw(`${leftOperand} IS NOT NULL`)
+    }
+
+    toColumn(leftOperand: Column){
+        const p = this.toRaw(leftOperand)
+        return thenResult(p, r => makeColumn(r, new BooleanType()))
+    }
+}
+
+//TODO: GreaterThan
+//TODO: LessThan
+//TODO: GreaterThanOrEqual
+//TODO: LessThanOrEqual
+
+export type ExpressionResolver = (value: Expression) => Promise<Column> | Column
+export type SelectorFunction = (selector: Selector) => Column
+export type PropertyValue = null|number|string|boolean|Date|ValueOperator
+export type PropertyKeyValues = {[key:string]: PropertyValue | PropertyValue[]}
+export type Expression = ConditionOperator | Column | Promise<Column> | PropertyKeyValues | SelectorFunction | Array<Expression>
+
+const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
+const Or = (...condition: Array<Expression>) => new OrOperator(...condition)
+const Not = (condition: Expression) => new NotOperator(condition)
+const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
+const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
+const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)
+const NotContain = (...rightOperands: Array<any>) => new NotContainOperator(...rightOperands)
+const Like = (rightOperand: any) => new LikeOperator(rightOperand)
+const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
+const IsNull = () => new IsNullOperator()
+const IsNotNull = () => new IsNotNullOperator()
+
+export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator, ConditionOperator}

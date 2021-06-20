@@ -1,10 +1,10 @@
 {
-  "name": "bricky-orm-examples",
+  "name": "taichi-orm-examples",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
     "dev": "npm install && nodemon",
-    "build": "etsc",
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -18,6 +18,9 @@
   },
   "homepage": "https://github.com/thfai2000/lorm-examples#readme",
   "description": "",
+  "engines": {
+    "node": ">= 14"
+  },
   "dependencies": {
     "knex": "^0.95.5",
     "lodash": "^4.17.21",

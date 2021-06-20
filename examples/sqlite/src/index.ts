@@ -131,6 +131,6 @@ let productColorData = [
           return stmt.select(p.$.colors())
         }))
     })
-    // console.log('=========================', await execContext.toSQLString())
+    // console.log('=========================', records)
     
 })()

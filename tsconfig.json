@@ -10,7 +10,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "declarationDir": "dist"
+    "declarationDir": "dist",
+    "typeRoots": [
+      "src/customTypings",
+      "node_modules/@types"
+    ]
   },
   "include": ["src"],
   "watchOptions": {
