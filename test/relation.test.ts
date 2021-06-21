@@ -1,6 +1,6 @@
-import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector, mutate} from '../dist'
+import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector} from '../dist'
 import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
-import {ClassicRelation} from '../dist/Common'
+import {relationProp} from '../dist/Common'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { Knex } from 'knex'
@@ -51,7 +51,8 @@ const initializeDatabase = async () => {
       static register(schema: Schema){
         schema.prop('name', new Types.String({length: 255}))
         schema.prop('location', new Types.String({length: 255}))
-        schema.prop('products', ClassicRelation.hasMany('Product', 'shopId'))
+        relationProp(schema, 'products').hasMany('Product', 'shopId')
+        
         schema.prop('productCount', new Types.Number({
           compute: (shop) => {
             return shop.$.products().count()
@@ -67,17 +68,16 @@ const initializeDatabase = async () => {
         schema.prop('createdAt', new Types.DateTime({precision: 6}))
         schema.prop('shopId', new Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.prop('shop', ClassicRelation.belongsTo('Shop', 'shopId'))
+        relationProp(schema, 'shop').belongsTo('Shop', 'shopId')
 
-        schema.prop('productColors', ClassicRelation.ownMany('ProductColor', 'productId'))
+        relationProp(schema, 'productColors').ownMany('ProductColor', 'productId')
 
-        schema.prop('colors', ClassicRelation.hasManyThrough('Color', 'ProductColor', 'colorId', 'productId'))
+        relationProp(schema, 'colors').hasManyThrough('Color', 'ProductColor', 'colorId', 'productId')
+
+        relationProp(schema, 'mainColor').hasManyThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
+            return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
+        })
         
-        schema.prop('mainColor', 
-            ClassicRelation.hasManyThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
-                return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
-            })
-        )
       }
     }
     
@@ -96,7 +96,7 @@ const initializeDatabase = async () => {
         schema.prop('productId', new Types.Number({nullable: false}))
         
         schema.prop('colorId', new Types.Number({nullable: false}))
-        schema.prop('color', ClassicRelation.belongsTo('Color', 'colorId'))
+        relationProp(schema, 'color').belongsTo('Color', 'colorId')
       }
     }
 
@@ -127,7 +127,6 @@ const initializeDatabase = async () => {
       return await models.Product.createOne(d)
     }))
 
-
     await Promise.all(colorData.map( async(d) => {
       return await models.Color.createOne(d)
     }))
@@ -151,22 +150,50 @@ afterAll(() => {
 
 
 describe('relations', () => {
-    test('Query computed field', async () => {
+    test('Create by OwnedMany + hasMany', async () => {
 
-        await models.Product.createOne({
-          name: 'Product X',
-          productColors: [
-            {type: 'main', color: await models.Color.findOne({id: 1}) },
-            {type: 'second', color: await models.Color.findOne({id: 2}) }
-          ]
-        })
-  
-        // models.Shop.createOne({
-        //   name: 'Shop X',
-        //   location: 'Kowloon',
-        //   products: mutate('create')
-        // })
-  
-  
+      let expectedData = [
+        {id: 30, name: 'Product X1', productColors: [{type: 'main', color: 1}, {type: 'second', color: 2}]},
+        {id: 31, name: 'Product X2', productColors: [{type: 'main', color: 3}, {type: 'second', color: 4}]}
+      ]
+
+      const createdProducts = await models.Product.createEach(
+        await Promise.all(
+          expectedData.map( async(d) => ({...d, productColors: 
+              await Promise.all(d.productColors.map(
+                async(pc) => ({...pc, color: await models.Color.findOne({id: pc.color}) })
+              ))
+            })
+          )
+        )
+      )
+
+      expect(createdProducts).toHaveLength(expectedData.length)
+      expect(createdProducts).toEqual( expect.arrayContaining(
+        expectedData.map(d => expect.objectContaining({
+                ...d,
+                productColors: expect.arrayContaining(d.productColors.map( pc => 
+                  expect.objectContaining({
+                    ...pc,
+                    productId: d.id,
+                    colorId: pc.color,
+                    color: expect.objectContaining( colorData.find(d => d.id === pc.color) )
+                  })
+                ))
+              })
+          )
+        )
+      )
+
+      // console.log('xxxxx', createdProducts)
+
+      // const createdShop = await models.Shop.createOne({
+      //   name: 'Shop X',
+      //   location: 'Kowloon',
+      //   products: [createdProducts]
+      // })
+
+
+
     })
 })

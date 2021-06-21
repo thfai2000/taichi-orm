@@ -1,7 +1,6 @@
 import { makeBuilder } from "./Builder"
-import { Entity, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, MutateFunction, ExecutionContext, NamedProperty, Types} from "."
+import { Schema, Selector, QueryFunction, ApplyNextQueryFunction, ComputeArguments, ComputeFunction, ExecutionContext, NamedProperty, Types, HookAction, Hook, HookInfo, HookName} from "."
 import { NotContain } from "./Operator"
-import { PropertyDefinition } from "./PropertyType"
 
 export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
@@ -60,36 +59,44 @@ export const ComputeFn = {
 
 export const MutateFn = {
 
-    mutateOwned: (entityClassName: string, propName: string) => {
-        return async function(this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) {
-            
-            const entityClass = context.models[entityClassName]
-            const rootClass = rootValue.entityClass
+    mutateOwned: (schema: Schema, propName: string, entityClassName: string, relatedByPropName: string) => {
 
-            if( !Array.isArray(data) && this.propertyValueIsArray ){
-                throw new Error('data must be an array')
+        schema.hook(new Hook('afterMutation', async (context: ExecutionContext, rootValue: any, info: HookInfo) => {
+            const {rootClassName, propertyName, propertyValue, propertyDefinition, mutationName} = info
+
+            const entityClass = context.models[entityClassName]
+            const rootClass = context.models[rootClassName]
+
+            if(propertyName === null || propertyValue === null || propertyDefinition === null){
+                throw new Error('Unexpected')
+            }
+
+            if( !Array.isArray(propertyValue) && propertyDefinition.propertyValueIsArray ){
+                throw new Error('[Hook] data must be an array')
             }
 
             let inputData: any[]
-            if(!this.propertyValueIsArray){
-                inputData = [data]
+            if(!propertyDefinition.propertyValueIsArray){
+                inputData = [propertyValue]
             }else{
-                inputData = data
+                inputData = propertyValue
             }
 
             const pkNameOfOwned = entityClass.schema.primaryKey.name
             const pkNameOfRoot = rootClass.schema.primaryKey.name
             const pkValueOfRoot = rootValue[pkNameOfRoot]
 
-            if(actionName === 'create'){
+            if(mutationName === 'create'){
 
-                let created = entityClass.createEach(inputData.map(d => ({
+                let created = await entityClass.createEach(inputData.map(d => ({
                     ...d,
-                    [propName]: pkValueOfRoot
+                    [relatedByPropName]: pkValueOfRoot
                 }))).usingContext(context)
-                return created
 
-            } else if(actionName === 'update') {
+                rootValue[propertyName] = created
+                return rootValue
+
+            } else if(mutationName === 'update') {
 
                 let dataWithIds = inputData.filter(d => d[pkNameOfOwned])
                 let dataWithoutIds = inputData.filter(d => !d[pkNameOfOwned])
@@ -102,102 +109,126 @@ export const MutateFn = {
 
                 let created = await entityClass.createEach(dataWithoutIds.map(d => ({
                     ...d,
-                    [propName]: pkValueOfRoot
+                    [relatedByPropName]: pkValueOfRoot
                 }))).usingContext(context)
 
                 const result = [...records, ...created]
 
                 await entityClass.delete({}, {
                     [pkNameOfOwned]: NotContain( result.map(c =>  c[pkNameOfOwned]) ),
-                    [propName]: pkValueOfRoot
+                    [relatedByPropName]: pkValueOfRoot
                 }).usingContext(context)
 
-                return result
-            } else if (actionName === 'delete') {
+                rootValue[propertyName] = result
 
-                return await entityClass.delete({}, {
-                    [propName]: pkValueOfRoot
+                return rootValue
+
+            } else if (mutationName === 'delete') {
+
+                let result = await entityClass.delete({}, {
+                    [relatedByPropName]: pkValueOfRoot
                 }).usingContext(context)
+
+                rootValue[propertyName] = []
+                return rootValue
 
             } else {
-                throw new Error(`Unexpected Action Name '${actionName}'`)
+                throw new Error(`Unexpected Action Name '${mutationName}'`)
             }
-        }
+                        
+        }).onPropertyChange(propName))
     },
 
-    mutateRelatedFrom: (entityClassName: string, propName: string) => {
-        return async function(this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) {
-            
-            const entityClass = context.models[entityClassName]
-            const rootClass = rootValue.entityClass
+    mutateRelatedFrom: (schema: Schema, propName: string, entityClassName: string, relatedByPropName: string) => {
+        return schema.hook(new Hook('afterMutation', async (context: ExecutionContext, rootValue: any, info: HookInfo) => {
+            const {rootClassName, propertyName, propertyValue, propertyDefinition, mutationName} = info
 
-            if( !Array.isArray(data) && this.propertyValueIsArray ){
+            console.log('ssssssssss', mutationName, schema.entityName, propertyName, entityClassName, relatedByPropName)
+
+            const entityClass = context.models[entityClassName]
+            const rootClass = context.models[rootClassName]
+
+            if(propertyName === null || propertyValue === null || propertyDefinition === null){
+                throw new Error('Unexpected')
+            }
+
+            if( !Array.isArray(propertyValue) && propertyDefinition.propertyValueIsArray ){
                 throw new Error('data must be an array')
             }
 
             let inputData: any[]
-            if(!this.propertyValueIsArray){
-                inputData = [data]
+            if(!propertyDefinition.propertyValueIsArray){
+                inputData = [propertyValue]
             }else{
-                inputData = data
+                inputData = propertyValue
             }
 
             const pkNameOfRelatedFrom = entityClass.schema.primaryKey.name
             const pkNameOfRoot = rootClass.schema.primaryKey.name
             const pkValueOfRoot = rootValue[pkNameOfRoot]
 
-            if(actionName === 'create' || actionName === 'update') {
+            if(mutationName === 'create' || mutationName === 'update') {
 
-                let dataWithIds = inputData.filter(d => d[pkNameOfRelatedFrom])
-                let dataWithoutIds = inputData.filter(d => !d[pkNameOfRelatedFrom])
-                if(dataWithoutIds.length > 0){
+                // console.log('zzzzzz', schema.entityName, propName, entityClassName, relatedByPropName)
+
+                let dataWithPks = inputData.filter(d => d[pkNameOfRelatedFrom])
+                let dataWithoutPks = inputData.filter(d => !d[pkNameOfRelatedFrom])
+                if(dataWithoutPks.length > 0){
                     throw new Error('Not allow.')
                 }
-                
+                // console.log('ccccc', propertyName, relatedByPropName, pkValueOfRoot, pkNameOfRelatedFrom)
                 // remove all existing related
                 await entityClass.update({
-                    [propName]: null
+                    [relatedByPropName]: null
                 }, {
-                    [propName]: pkValueOfRoot,
-                    [pkNameOfRelatedFrom]: NotContain(dataWithIds)
+                    [relatedByPropName]: pkValueOfRoot,
+                    [pkNameOfRelatedFrom]: NotContain(dataWithPks.map(d => d[pkNameOfRelatedFrom]))
                 }).usingContext(context)
 
                 // add new related
-                let records = await Promise.all(dataWithIds.map( async(d) => {
+                let records = await Promise.all(dataWithPks.map( async(d) => {
                     return await entityClass.updateOne({
-                        [propName]: pkValueOfRoot
+                        [relatedByPropName]: pkValueOfRoot
                     }, {
                         [pkNameOfRelatedFrom]: d[pkNameOfRelatedFrom]
                     }).usingContext(context)
                 }))
-
-                return records
-            } else if (actionName === 'delete') {
+                rootValue[propertyName] = records
+                return rootValue
+            } else if (mutationName === 'delete') {
 
                 // remove all existing related
-                await entityClass.update({
-                    [propName]: null
+                let records = await entityClass.update({
+                    [relatedByPropName]: null
                 }, {
-                    [propName]: pkValueOfRoot
+                    [relatedByPropName]: pkValueOfRoot
                 }).usingContext(context)
 
-                return []
+                rootValue[propertyName] = []
+                return rootValue
+
             } else {
-                throw new Error(`Unexpected Action Name '${actionName}'`)
+                throw new Error(`Unexpected Action Name '${mutationName}'`)
             }
-        }
+        }).onPropertyChange(propName))
     },
 
-    mutateRelatedTo: (entityClassName: string, propName: string) => {
-        return async function(this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) {
-            const entityClass = context.models[entityClassName]
-            const rootClass = rootValue.entityClass
+    mutateRelatedTo: (schema: Schema, propName: string, entityClassName: string, relatedByPropName: string) => {
+        schema.hook(new Hook('beforeMutation', async (context: ExecutionContext, rootValue: any, info: HookInfo) => {
+            const {rootClassName, propertyName, propertyValue, propertyDefinition, mutationName} = info
 
-            if( !Array.isArray(data) && this.propertyValueIsArray ){
-                throw new Error('data must be an array')
+            const entityClass = context.models[entityClassName]
+            const rootClass = context.models[rootClassName]
+
+            if(propertyName === null || propertyValue === null || propertyDefinition === null){
+                throw new Error('Unexpected')
             }
 
-            if(this.propertyValueIsArray){
+            if( !Array.isArray(propertyValue) && propertyDefinition.propertyValueIsArray ){
+                throw new Error('[Hook] data must be an array')
+            }
+
+            if(propertyDefinition.propertyValueIsArray){
                 throw new Error('Unexpected')
             }
 
@@ -205,74 +236,87 @@ export const MutateFn = {
             const pkNameOfRoot = rootClass.schema.primaryKey.name
             const pkValueOfRoot = rootValue[pkNameOfRoot]
 
-            if(actionName === 'create' || actionName === 'update'){
+            if(mutationName === 'create' || mutationName === 'update'){
 
-                await rootClass.updateOne({[propName]: data[pkNameOfRelatedTo]}, {
-                    [pkNameOfRoot]: pkValueOfRoot
-                }).usingContext(context)
+                let f = await entityClass.findOne({[pkNameOfRelatedTo]: rootValue[relatedByPropName] ?? rootValue[propertyName][pkNameOfRelatedTo] }).usingContext(context)
+                if(!f){
+                    throw new Error('[Hook] Cannot find the related entity.')
+                }
+                rootValue[relatedByPropName] = f[pkNameOfRelatedTo]
+                rootValue[propertyName] = f
 
-                return await entityClass.findOne({[pkNameOfRelatedTo]: data[pkNameOfRelatedTo]}).usingContext(context)
+                // console.log('xxxxx', propertyName, f)
 
-            } else if (actionName === 'delete') {
-                //remove relation
-                await rootClass.updateOne({[propName]: null}, {
-                    [pkNameOfRoot]: pkValueOfRoot
-                }).usingContext(context)
+                return rootValue
 
-                return null
+            } else if (mutationName === 'delete') {
+
+                rootValue[relatedByPropName] = null
+                rootValue[propertyName] = null
+
+                return rootValue
             } else {
-                throw new Error(`Unexpected Action Name '${actionName}'`)
+                throw new Error(`[Hook] Unexpected Action Name '${mutationName}'`)
             }
+        }).onPropertyChange(propName))
+    }
+}
+
+export const relationProp = function(schema: Schema, propName: string){
+
+    return {
+
+        ownMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
+            })))
+
+            MutateFn.mutateOwned(schema, propName, entityClass, relatedByPropName)
+        },
+
+        ownOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
+            }))
+
+            MutateFn.mutateOwned(schema, propName, entityClass, relatedByPropName)
+        },
+        
+        hasMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
+            })))
+
+            MutateFn.mutateRelatedFrom(schema, propName, entityClass, relatedByPropName)
+        },
+
+        hasOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
+            }))
+
+            MutateFn.mutateRelatedFrom(schema, propName, entityClass, relatedByPropName)
+        },
+
+        belongsTo: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatesTo(entityClass, relatedByPropName, customFilter)
+            }))
+
+            MutateFn.mutateRelatedTo(schema, propName, entityClass, relatedByPropName)
+        },
+
+        hasManyThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
+            })))
+        },
+
+        hasOneThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
+            schema.prop(propName, new Types.ObjectOf(entityClass, {
+                compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
+            }))
         }
     }
-}
 
-export const ClassicRelation = {
-
-    ownMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-        return new Types.ArrayOf(new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter),
-            mutate: MutateFn.mutateOwned(entityClass, relatedByPropName)
-        }))
-    },
-
-    ownOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-        return new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter),
-            mutate: MutateFn.mutateOwned(entityClass, relatedByPropName)
-        })
-    },
-    
-    hasMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-        return new Types.ArrayOf(new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter),
-            mutate: MutateFn.mutateRelatedFrom(entityClass, relatedByPropName)
-        }))
-    },
-
-    hasOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-        return new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter),
-            mutate: MutateFn.mutateRelatedFrom(entityClass, relatedByPropName)
-        })
-    },
-
-    belongsTo: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-        return new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatesTo(entityClass, relatedByPropName, customFilter),
-            mutate: MutateFn.mutateRelatedTo(entityClass, relatedByPropName)
-        })
-    },
-
-    hasManyThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
-        return new Types.ArrayOf(new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
-        }))
-    },
-
-    hasOneThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
-        return new Types.ObjectOf(entityClass, {
-            compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
-        })
-    }
-}
+}  

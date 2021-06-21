@@ -7,7 +7,7 @@ export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, AndOperator, OrOperator, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator, SelectorFunction} from './Operator'
+import {And, Or, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator, SelectorFunction} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -15,12 +15,6 @@ function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
 
-// function then<T>(value: T | Promise<T>, fn: (value: T) => void):  (T | Promise<T>) {
-//     if(value instanceof Promise){
-//         return value.then(fn).then( () =>  )
-//     }
-//     return value
-// }
 export function thenResultArray<T, R>(value: Array<T | Promise<T>>, fn: (value: Array<T>) => (R | Promise<R>) ):  (R | Promise<R>) {
     if(value.some(v => v instanceof Promise)){
         return Promise.all(value).then(fn)
@@ -66,7 +60,7 @@ export type ORMConfig = {
     // useSoftDeleteAsDefault: boolean
     primaryKeyName: string
     enableUuid: boolean
-    uuidColumnName: string,
+    uuidPropName: string,
     globalContext: Partial<ExecutionContextConfig>
 }
 
@@ -74,7 +68,7 @@ const ormConfig: ORMConfig = {
     primaryKeyName: 'id',
     enableUuid: false,
     // useSoftDeleteAsDefault: true,
-    uuidColumnName: 'uuid',
+    uuidPropName: 'uuid',
     createModels: false,
     models: {},
     knexConfig: {
@@ -180,7 +174,8 @@ export class Schema {
 
     tableName: string
     entityName: string
-    namedProperties: NamedProperty[]
+    namedProperties: NamedProperty[] = []
+    hooks: Hook[] = []
     primaryKey: NamedProperty
     uuid: NamedProperty | null
 
@@ -193,7 +188,7 @@ export class Schema {
         )
         if(ormConfig.enableUuid){
             this.uuid = new NamedProperty(
-                ormConfig.uuidColumnName,
+                ormConfig.uuidPropName,
                 new Types.String({nullable: false, length: 255})
             )
             this.namedProperties = [this.primaryKey, this.uuid]
@@ -231,6 +226,10 @@ export class Schema {
             }
             return acc
         }, {} as SimpleObject)
+    }
+
+    hook(newHook: Hook){
+        this.hooks.push(newHook)
     }
 }
 
@@ -281,6 +280,29 @@ export class NamedProperty {
 
 }
 
+export type MutationName = 'create'|'update'|'delete'
+export type HookName = 'beforeMutation' | 'afterMutation'
+
+export class Hook {
+    propName?: string | null
+    constructor(readonly name: HookName, readonly action: HookAction) {}
+
+    onPropertyChange(propName: string){
+        this.propName = propName
+        return this
+    }
+}
+
+export type HookInfo = {
+    hookName: string,
+    mutationName: MutationName,
+    propertyName: string | null,
+    propertyDefinition: PropertyDefinition | null,
+    propertyValue: any | null,
+    rootClassName: string
+}
+
+export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
 
 const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryObject) => {
 
@@ -839,8 +861,6 @@ export type QueryObject = {
     fn?: QueryFunction
 }
 
-export type MutateFunction = (this: PropertyDefinition, actionName: string, data: any, rootValue: Entity, context: ExecutionContext) => any | Promise<any>
-
 export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Column | Promise<Column>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => NamedColumn
@@ -1066,6 +1086,7 @@ export class Database{
                     let operator: ValueOperator
                     if(dict[key] instanceof ValueOperator){
                         operator = dict[key]
+                        console.log('aaaaa', operator)
                     }else if( Array.isArray(dict[key]) ){
                         operator = Contain(...dict[key])
                     } else if(dict[key] === null){
@@ -1168,6 +1189,7 @@ export class Database{
 
     private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: EntityPropertyKeyValues[]) {
         const schema = entityClass.schema
+        const actionName = 'create'
         
         let useUuid: boolean = !!ormConfig.enableUuid
         if (ormConfig.knexConfig.client.startsWith('sqlite')) {
@@ -1176,29 +1198,29 @@ export class Database{
             }
         }
         
-        let inputs = values.map( data => {
-            let newUuid = null
-            let {fieldValues, mutations} = Database._prepareNewData(data, schema, 'create', existingContext)
-    
-            if(useUuid){
-                newUuid = uuidv4()
-                fieldValues[ormConfig.uuidColumnName] = newUuid
-            }
-            let stmt = getKnexInstance()(existingContext.tablePrefix + schema.tableName).insert(fieldValues)
-    
-            if (ormConfig.knexConfig.client.startsWith('pg')) {
-               stmt = stmt.returning(entityClass.schema.primaryKey.fieldName)
-            }
-    
-            return {
-                sqlString: stmt,
-                uuid: newUuid,
-                mutations
-            }
-        })
-
         let fns = await existingContext.withTransaction(async (existingContext) => {
-            let allResults = await Promise.all(inputs.map(async ( input) => {
+            let allResults = await Promise.all(values.map(async (value) => {
+
+                let propValues = await Database._prepareNewData(value, schema, actionName, existingContext)
+                
+                let newUuid = null
+                if(useUuid){
+                    newUuid = uuidv4()
+                    propValues[ormConfig.uuidPropName] = newUuid
+                }
+                let stmt = getKnexInstance()(existingContext.tablePrefix + schema.tableName).insert( this.extractRealField(schema, propValues) )
+        
+                if (ormConfig.knexConfig.client.startsWith('pg')) {
+                stmt = stmt.returning(entityClass.schema.primaryKey.fieldName)
+                }
+        
+                let input = {
+                    sqlString: stmt,
+                    uuid: newUuid
+                }
+
+                // let afterMutationHooks = schema.hooks.filter()
+
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
                 // console.debug('========================')
@@ -1209,7 +1231,7 @@ export class Database{
                     insertedId = r[0][0].insertId
                     let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
                     
-                    let b = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                    let b = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                     return b
                 } else if (ormConfig.knexConfig.client.startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
@@ -1221,7 +1243,7 @@ export class Database{
                         } else {
                             let uuid = input.uuid
                             let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid]))
-                            return await this.resolveMutations<T>(record, input.mutations, existingContext)
+                            return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         }
                     } else {
                         return null
@@ -1234,7 +1256,7 @@ export class Database{
                     
                     insertedId = r.rows[0][ entityClass.schema.primaryKey.fieldName]
                     let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
-                    return await this.resolveMutations<T>(record, input.mutations, existingContext)
+                    return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
 
                 } else {
                     throw new Error('Unsupport client')
@@ -1248,50 +1270,107 @@ export class Database{
         return fns
     }
 
-    private static _prepareNewData(data: EntityPropertyKeyValues, schema: Schema, actionName: string, context: ExecutionContext) {
-        return Object.keys(data).reduce(( {fieldValues, mutations}, propName) => {
-            let prop = schema.namedProperties.find(p => {
+    private static async _prepareNewData(data: EntityPropertyKeyValues, schema: Schema, actionName: MutationName, context: ExecutionContext) {
+        
+        let propValues = Object.keys(data).reduce(( propValues, propName) => {
+            let foundProp = schema.namedProperties.find(p => {
                 return p.name === propName
             })
-            if (!prop) {
-                throw new Error(`The Property [${propName}] doesn't exist`)
+            if (!foundProp) {
+                throw new Error(`The Property [${propName}] doesn't exist in ${schema.entityName}`)
             }
-            
-            if(!prop.definition.computeFunc){
-                fieldValues[prop.fieldName] = prop.definition.parseProperty(data[prop.name], prop, context)
-            } else {
-                const currentProp = prop
-                let action: MutateFunctionProducer
+            const prop = foundProp
+            const propertyValue = prop.definition.parseProperty(data[prop.name], prop, context)
+            propValues[prop.name] = propertyValue
+            return propValues
+        }, {} as EntityPropertyKeyValues)
 
-                if(data[prop.name] instanceof Function){
-                    action = data[currentProp.name]
-                } else {
-                    action = mutate(actionName, data[prop.name])
-                }
-                mutations[currentProp.fieldName] = (rootValue: Entity, existingContext: ExecutionContext) => {
-                    let value = action(currentProp, rootValue, existingContext)
-                    return currentProp.definition.parseProperty(value, currentProp, context)
-                }
+        let hooks1 = schema.hooks.filter(h => h.name === 'beforeMutation' && h.propName && Object.keys(propValues).includes(h.propName) )
+        let hooks2 = schema.hooks.filter(h => h.name === 'beforeMutation' && !h.propName )
+
+        propValues = await hooks1.reduce( async (recordP, h) => {
+            let record = await recordP
+            let foundProp = schema.namedProperties.find(p => {
+                return p.name === h.propName
+            })
+            if(!foundProp){
+                throw new Error('Unexpected.')
             }
-            
-            return {fieldValues, mutations}
-        }, {fieldValues: {}, mutations: {}} as {
-            fieldValues: EntityPropertyKeyValues,
-            mutations: { [key:string]: (rootValue: Entity, existingContext: ExecutionContext) => any}
-        })
+            record = await h.action(context, record, {
+                hookName: h.name,
+                mutationName: actionName,
+                propertyName: foundProp.name,
+                propertyDefinition: foundProp.definition,
+                propertyValue: record[foundProp.name],
+                rootClassName: schema.entityName
+            })
+            return record
+        }, Promise.resolve(propValues) )
+
+        propValues = await hooks2.reduce( async(recordP, h) => {
+            let record = await recordP
+            record = await h.action(context, record, {
+                hookName: h.name,
+                mutationName: actionName,
+                propertyName: null,
+                propertyDefinition: null,
+                propertyValue: null,
+                rootClassName: schema.entityName
+            })
+            return record
+        }, Promise.resolve(propValues))
+        
+        return propValues
     }
 
-    private static async resolveMutations<T extends typeof Entity>(record: InstanceType<T>, 
-        mutations: {[key: string]: (rootValue: Entity, existingContext: ExecutionContext) => any | Promise<any>}, 
-        existingContext: ExecutionContext): Promise<InstanceType<T>> {
-        let mutationValues = await Object.keys(mutations).reduce( async (accP, key) => {
-            let acc = await accP
-            const action = mutations[key]
-            acc[key] = await action(record, existingContext)
-            return acc
-        }, {} as {[key:string]: any})
+    private static async afterMutation<T extends typeof Entity>(
+        record: InstanceType<T>, 
+        schema: Schema,
+        actionName: MutationName,
+        inputProps: EntityPropertyKeyValues, 
+        context: ExecutionContext): Promise<InstanceType<T>> {
 
-        record = Object.assign(record, mutationValues)
+        Object.keys(inputProps).forEach( key => {
+            if( !(key in record) ){
+                record = Object.assign(record, { [key]: inputProps[key]})
+            }
+        })
+
+        const hooks1 = schema.hooks.filter(h => h.name === 'afterMutation' && h.propName && Object.keys(inputProps).includes(h.propName) )
+        const hooks2 = schema.hooks.filter(h => h.name === 'afterMutation' && !h.propName )
+
+        record = await hooks1.reduce( async (recordP, h) => {
+            let record = await recordP
+            let foundProp = schema.namedProperties.find(p => {
+                return p.name === h.propName
+            })
+            if(!foundProp){
+                throw new Error('Unexpected.')
+            }
+            record = await h.action(context, record, {
+                hookName: h.name,
+                mutationName: actionName,
+                propertyName: foundProp.name,
+                propertyDefinition: foundProp.definition,
+                propertyValue: record[foundProp.name] ?? inputProps[foundProp.name],
+                rootClassName: schema.entityName
+            })
+            return record
+        }, Promise.resolve(record) )
+
+        record = await hooks2.reduce( async(recordP, h) => {
+            let record = await recordP
+            record = await h.action(context, record, {
+                hookName: h.name,
+                mutationName: actionName,
+                propertyName: null,
+                propertyDefinition: null,
+                propertyValue: null,
+                rootClassName: schema.entityName
+            })
+            return record
+        }, Promise.resolve(record))
+
         return record
     }
 
@@ -1367,7 +1446,7 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1379,7 +1458,7 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1392,18 +1471,19 @@ export class Database{
     }
 
     private static async _update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, data: EntityPropertyKeyValues,  
-        applyFilter: QueryOptions | null, 
+        applyFilter: QueryWhere | null, 
         isOneOnly: boolean,
         isDelete: boolean
        ) {
         
         const schema = entityClass.schema
-        const s = entityClass.selector()
-        let {fieldValues, mutations} = Database._prepareNewData(data, schema, isDelete?'delete':'update', existingContext)
-        if(!applyFilter || !(applyFilter instanceof SimpleObjectClass) ){
-            throw new Error('Invalid Query Options')
-        }
+        const actionName = isDelete?'delete':'update'
 
+        const s = entityClass.selector()
+        let propValues = await Database._prepareNewData(data, schema, actionName, existingContext)
+        // if(!applyFilter || !(applyFilter instanceof SimpleObjectClass) ){
+        //     throw new Error('Invalid Query Options')
+        // }
 
         // let deleteMode: 'soft' | 'real' | null = null
         // if(isDelete){
@@ -1420,12 +1500,11 @@ export class Database{
         //
         // if function...
         //      become the update stmt starting point  + update(newData)
-
+        const realFieldValues = this.extractRealField(schema, propValues)
         const input = {
-            updateSqlString: !isDelete && Object.keys(fieldValues).length > 0? builder(s).where(applyFilter).update(fieldValues) : null,
-            selectSqlString: builder(s).where(applyFilter),
-            entityData: data,
-            mutations
+            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder(s).where(s(applyFilter)): builder(s) ).update(realFieldValues) : null,
+            selectSqlString: (applyFilter? builder(s).where(s(applyFilter)): builder(s) ),
+            entityData: data
         }
 
         let fns = await existingContext.withTransaction(async (existingContext) => {
@@ -1447,7 +1526,7 @@ export class Database{
                 let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
                     let pkValue = row[entityClass.schema.primaryKey.fieldName]
                     let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue} )
-                    let finalRecord = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                    let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                     if(isDelete){
                         await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                     }
@@ -1488,7 +1567,7 @@ export class Database{
                             } 
                         }
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
-                        let finalRecord = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                        let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
                             await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
@@ -1506,7 +1585,7 @@ export class Database{
                             }
                         }
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
-                        let finalRecord = await this.resolveMutations<T>(record, input.mutations, existingContext)
+                        let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
                             await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
@@ -1523,7 +1602,7 @@ export class Database{
         return fns.filter(notEmpty)
     }
 
-    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T> >{
+    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner< InstanceType<T> >{
         return new DBRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1535,7 +1614,7 @@ export class Database{
         )
     }
 
-    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner< InstanceType<T>[] >{
+    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner< InstanceType<T>[] >{
         return new DBRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1610,18 +1689,31 @@ export class Database{
         }, new entityClass(context) as InstanceType<T>)
         return entityInstance
     }
+
+    static extractRealField(schema: Schema, fieldValues: EntityPropertyKeyValues): any {
+        return Object.keys(fieldValues).reduce( (acc, key) => {
+            let prop = schema.namedProperties.find(p => p.name === key)
+            if(!prop){
+                throw new Error('Unexpected')
+            }
+            if(!prop.definition.computeFunc){
+                acc[prop.fieldName] = fieldValues[key]
+            }
+            return acc
+        }, {} as EntityPropertyKeyValues)        
+    }
 }
 
 export class Entity {
     [key: string]: any
-    readonly ctx: ExecutionContext
+    readonly _ctx: ExecutionContext
     
     constructor(ctx: ExecutionContext){
-        this.ctx = ctx
+        this._ctx = ctx
     }
 
     get entityClass() {
-        return this.ctx.models[this.constructor.name]
+        return this._ctx.models[this.constructor.name]
     }
 
     static get schema(): Schema{
@@ -1656,19 +1748,19 @@ export class Entity {
         return Database.createOne(this, null, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner<I>{
         return Database.updateOne(this, null, data, applyFilter)
     }
 
-    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I[]>{
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner<I[]>{
         return Database.update(this, null, data, applyFilter)
     }
 
-    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I>{
+    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner<I>{
         return Database.deleteOne(this, null, data, applyFilter)
     }
 
-    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryOptions): DBRunner<I[]>{
+    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DBRunner<I[]>{
         return Database.delete(this, null, data, applyFilter)
     }
 
@@ -1703,15 +1795,13 @@ export class Dual extends Entity {
     }
 }
 
+// export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
 
-
-export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
-
-export const mutate = (actionName: string, value: any): MutateFunctionProducer => {
-    return (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => {
-        if(!prop.definition.mutationFunc){
-            throw new Error('There is no mutation function defined.')
-        }
-        return prop.definition.mutationFunc.call(prop.definition, actionName, value, rootValue, existingContext)
-    }
-}
+// export const mutate = (actionName: string, value: any): MutateFunctionProducer => {
+//     return (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => {
+//         if(!prop.definition.mutationFunc){
+//             throw new Error(`There is no mutation function defined for Property '${prop.name}'`)
+//         }
+//         return prop.definition.mutationFunc.call(prop.definition, actionName, value, rootValue, existingContext)
+//     }
+// }

@@ -1,25 +1,24 @@
-import { Knex } from "knex"
-import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, MutateFunction, ExecutionContext } from "."
+// import { Knex } from "knex"
+import { Entity, client, quote, SimpleObject, makeid, SQLString, NamedProperty, ComputeFunction, ExecutionContext } from "."
 
-export type PropertyDefinitionOptions = { compute?: ComputeFunction | null, mutate?: MutateFunction | null}
+export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
 export abstract class PropertyDefinition<I = any> {
     private _computeFunc: ComputeFunction | null
-    private _mutationFunc: MutateFunction | null
+    // private _mutationFunc: MutateFunction | null
 
     constructor(
-        computeFunc?: ComputeFunction | null, 
-        mutationFunc?: MutateFunction | null){
+        computeFunc?: ComputeFunction | null){
         this._computeFunc = computeFunc ?? null
-        this._mutationFunc = mutationFunc ?? null
+        // this._mutationFunc = mutationFunc ?? null
     }
 
     get computeFunc(){
         return this._computeFunc
     }
 
-    get mutationFunc(){
-        return this._mutationFunc
-    }
+    // get mutationFunc(){
+    //     return this._mutationFunc
+    // }
     
     abstract readonly transformFromMultipleRows: boolean
     abstract readonly transformIntoMultipleRows: boolean
@@ -119,7 +118,7 @@ export class NumberType extends PropertyDefinition<number | null> {
     readonly propertyValueIsArray: boolean = false
     
     constructor(options: Partial<NumberTypeOptions> ={}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
         
@@ -158,7 +157,7 @@ export class DecimalType extends PropertyDefinition<number | null> {
     readonly propertyValueIsArray: boolean = false
     
     constructor(options: Partial<DecimalTypeOptions> = {}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
 
@@ -195,7 +194,7 @@ export class BooleanType extends PropertyDefinition<boolean | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<BooleanTypeOptions> = {}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
 
@@ -241,7 +240,7 @@ export class StringType extends PropertyDefinition<string | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<StringTypeOptions> = {}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
 
@@ -278,7 +277,7 @@ export class DateType extends PropertyDefinition<Date | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTypeOptions> = {}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
 
@@ -314,7 +313,7 @@ export class DateTimeType extends PropertyDefinition<Date | null>{
     readonly propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
 
@@ -353,7 +352,7 @@ export class ObjectOfType extends PropertyDefinition{
     constructor(private entityClassName: string,
     options: Partial<ObjectOfTypeOptions> = {}
     ) {
-        super(options.compute, options.mutate)
+        super(options.compute)
         this.options = {nullable: true, ...options}
     }
                 
@@ -415,9 +414,9 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
         return this.type.computeFunc
     }
 
-    get mutationFunc() {
-        return this.type.mutationFunc
-    }
+    // get mutationFunc() {
+    //     return this.type.mutationFunc
+    // }
 
     get transformIntoMultipleRows(){
         return false
