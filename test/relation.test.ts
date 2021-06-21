@@ -190,7 +190,7 @@ describe('relations', () => {
       // const createdShop = await models.Shop.createOne({
       //   name: 'Shop X',
       //   location: 'Kowloon',
-      //   products: [createdProducts]
+      //   products: createdProducts
       // })
 
 

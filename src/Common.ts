@@ -143,7 +143,7 @@ export const MutateFn = {
         return schema.hook(new Hook('afterMutation', async (context: ExecutionContext, rootValue: any, info: HookInfo) => {
             const {rootClassName, propertyName, propertyValue, propertyDefinition, mutationName} = info
 
-            console.log('ssssssssss', mutationName, schema.entityName, propertyName, entityClassName, relatedByPropName)
+            // console.log('ssssssssss', mutationName, schema.entityName, propertyName, entityClassName, relatedByPropName)
 
             const entityClass = context.models[entityClassName]
             const rootClass = context.models[rootClassName]
@@ -155,7 +155,7 @@ export const MutateFn = {
             if( !Array.isArray(propertyValue) && propertyDefinition.propertyValueIsArray ){
                 throw new Error('data must be an array')
             }
-
+            // console.log('yyyyyy', propertyValue, propertyDefinition)
             let inputData: any[]
             if(!propertyDefinition.propertyValueIsArray){
                 inputData = [propertyValue]
@@ -169,7 +169,7 @@ export const MutateFn = {
 
             if(mutationName === 'create' || mutationName === 'update') {
 
-                // console.log('zzzzzz', schema.entityName, propName, entityClassName, relatedByPropName)
+                // console.log('zzzzzz', inputData, propertyDefinition, schema.entityName, propName, entityClassName, relatedByPropName)
 
                 let dataWithPks = inputData.filter(d => d[pkNameOfRelatedFrom])
                 let dataWithoutPks = inputData.filter(d => !d[pkNameOfRelatedFrom])
