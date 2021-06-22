@@ -873,12 +873,12 @@ export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryWhere, Fun
 
 export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
 
-type DatabaseActionResult<T> = {
-    resultData: T
+type DatabaseActionResult<T> = T
+type DatabaseActionOptions = {
+    failIfNone: boolean
+    querySelect: QuerySelect
 }
-
-type DatabaseAction<I> =  (context: ExecutionContext) => Promise<DatabaseActionResult<I>>
-type DatabaseMutation<I> = (context: ExecutionContext, querySelect?: QuerySelect) => Promise<DatabaseActionResult<I>>
+type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
 
 export type ExecutionContextConfig = {
     tablePrefix: string
@@ -994,9 +994,11 @@ export class ExecutionContext{
 export const globalContext = new ExecutionContext('global')
 export const models = globalContext.models
 
-export class DatabaseActionRunner<I> implements PromiseLike<I>{
+
+class DatabaseActionRunnerBase<I> implements PromiseLike<I>{
     protected ctx: ExecutionContext
     protected action: DatabaseAction<I>
+    protected options: Partial<DatabaseActionOptions> = {}
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
@@ -1007,7 +1009,7 @@ export class DatabaseActionRunner<I> implements PromiseLike<I>{
     }
 
     protected async execAction(){
-        return await this.action(this.ctx)
+        return await this.action(this.ctx, this.options)
     }
 
     async then<TResult1, TResult2 = never>(
@@ -1018,7 +1020,7 @@ export class DatabaseActionRunner<I> implements PromiseLike<I>{
         try{
             let result = await this.execAction()
             if(onfulfilled){
-                return onfulfilled(result.resultData)
+                return onfulfilled(result)
             } else {
                 return this.then(onfulfilled, onrejected)
             }
@@ -1033,40 +1035,49 @@ export class DatabaseActionRunner<I> implements PromiseLike<I>{
 
     async exec(){
         let result = await this.execAction()
-        return result.resultData
+        return result
     }
 
-    usingConnection(trx: Knex.Transaction): DatabaseActionRunner<I>{
+    usingConnection(trx: Knex.Transaction): this{
         this.ctx = this.ctx.clone({trx})
         return this
     }
 
-    onSqlRun(callback: ((sql: string) => void) | null ){
+    onSqlRun(callback: ((sql: string) => void) | null ) : this{
         this.ctx = this.ctx.clone({sqlRunCallback: callback})
         return this
     }
 
-    usingContext(ctx: ExecutionContext) {
+    usingContext(ctx: ExecutionContext) : this{
         this.ctx = ctx
+        return this
+    }
+} 
+
+export class DatabaseQueryRunner<I> extends DatabaseActionRunnerBase<I> {
+
+
+    async failIfNone<T>(){
+        this.options = {
+            ...this.options,
+            failIfNone: true
+        }
         return this
     }
 }
 
-export class DatabaseMutationRunner<I> extends DatabaseActionRunner<I>{
-    protected querySelect?: QuerySelect
-    override action: DatabaseMutation<I>
+export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
 
     constructor(ctx: ExecutionContext, action: DatabaseAction<I>){
         super(ctx, action)
-        this.action = action
     }
 
-    fetch(options: QuerySelect){
-        this.querySelect = options
-    }
-
-    override async execAction(){
-        return await this.action(this.ctx, this.querySelect)
+    async fetch<T>(querySelect: QuerySelect){
+        this.options = {
+            ...this.options,
+            querySelect: querySelect
+        }
+        return this
     }
 }
 
@@ -1171,34 +1182,30 @@ export class Database{
         return selector
     }
 
-    static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues): DatabaseActionRunner< InstanceType<T> >{
-        return new DatabaseActionRunner< InstanceType<T> >(
+    static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T> >{
+        return new DatabaseMutationRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._create<T>(entityClass, existingContext, [data])
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
-                return {
-                    resultData: result[0]
-                }
+                return result[0]
             }
         )
     }
 
-    static createEach<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: EntityPropertyKeyValues[]): DatabaseActionRunner< InstanceType<T>[] >{
-        return new DatabaseActionRunner< InstanceType<T>[] >(
+    static createEach<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: EntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[] >{
+        return new DatabaseMutationRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let result = await Database._create<T>(entityClass, existingContext, arrayOfData)
-                return {
-                    resultData: result.map( data => {
+                return result.map( data => {
                         if(data === null){
                             throw new Error('Unexpected Flow.')
                         }
                         return data
                     })
-                }
             })
     }
 
@@ -1394,30 +1401,26 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-     static findOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseActionRunner<  InstanceType<T> >{
-         return new DatabaseActionRunner< InstanceType<T> >(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
-                return {
-                    resultData: rows[0] ?? null
-                }
+    static findOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseQueryRunner<  InstanceType<T> >{
+        return new DatabaseQueryRunner< InstanceType<T> >(
+        existingContext?? globalContext,
+        async (existingContext: ExecutionContext) => {
+            let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
+            return rows[0] ?? null
         })
-     }
+    }
 
     /**
      * find array of records
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseActionRunner<  Array<InstanceType<T>> >{
-        return new DatabaseActionRunner< Array<InstanceType<T>> >(
+    static find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseQueryRunner<  Array<InstanceType<T>> >{
+        return new DatabaseQueryRunner< Array<InstanceType<T>> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
                 let rows = await Database._find<T>(entityClass, existingContext, applyFilter?? null)
-                return {
-                    resultData: rows
-                }
+                return rows
         })
     }
 
@@ -1461,26 +1464,22 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner< InstanceType<T> >{
-        return new DatabaseActionRunner< InstanceType<T> >(
+    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+        return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
-            async (existingContext: ExecutionContext, querySelectAfterMutation?: QuerySelect) => {
-                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, true, false,  querySelectAfterMutation ?? null)
-                return {
-                    resultData: result[0] ?? null
-                }
+            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, true, false,  actionOptions)
+                return result[0] ?? null
             }
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
         return new DatabaseMutationRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
-            async (existingContext: ExecutionContext, querySelectAfterMutation?: QuerySelect) => {
-                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, false, false, querySelectAfterMutation ?? null)
-                return {
-                    resultData: result
-                }
+            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, false, false, actionOptions)
+                return result
             }
         )
     }
@@ -1489,7 +1488,7 @@ export class Database{
         applyFilter: QueryWhere | null, 
         isOneOnly: boolean,
         isDelete: boolean,
-        querySelectAfterMutation: QuerySelect | null
+        actionOptions: Partial<DatabaseActionOptions> 
        ) {
         
         const schema = entityClass.schema
@@ -1611,26 +1610,22 @@ export class Database{
         return fns.filter(notEmpty)
     }
 
-    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner< InstanceType<T> >{
-        return new DatabaseActionRunner< InstanceType<T> >(
+    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+        return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, true, true, null)
-                return {
-                    resultData: result[0] ?? null
-                }
+            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, true, true, actionOptions)
+                return result[0] ?? null
             }
         )
     }
 
-    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner< InstanceType<T>[] >{
-        return new DatabaseActionRunner< InstanceType<T>[] >(
+    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
+        return new DatabaseQueryRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, false, true, null)
-                return {
-                    resultData: result
-                }
+            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
+                let result = await Database._update<T>(entityClass, existingContext, data, applyFilter??null, false, true, actionOptions)
+                return result
             }
         )
     }
@@ -1749,27 +1744,27 @@ export class Entity {
         return r as I
     }
 
-    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DatabaseActionRunner<I[]>{
+    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DatabaseQueryRunner<I[]>{
         return Database.createEach(this, null, arrayOfData)
     }
 
-    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): DatabaseActionRunner<I>{
+    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): DatabaseQueryRunner<I>{
         return Database.createOne(this, null, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
         return Database.updateOne(this, null, data, applyFilter)
     }
 
-    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner<I[]>{
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
         return Database.update(this, null, data, applyFilter)
     }
 
-    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner<I>{
+    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
         return Database.deleteOne(this, null, data, applyFilter)
     }
 
-    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseActionRunner<I[]>{
+    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
         return Database.delete(this, null, data, applyFilter)
     }
 
@@ -1778,7 +1773,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseActionRunner<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseQueryRunner<I>{
         return Database.findOne(this, null, applyFilter)
     }
 
@@ -1787,7 +1782,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseActionRunner<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseQueryRunner<Array<I>>{
         return Database.find(this, null, applyFilter)
     }
 
@@ -1803,14 +1798,3 @@ export class Dual extends Entity {
         schema.tableName = ''
     }
 }
-
-// export type MutateFunctionProducer = (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => any
-
-// export const mutate = (actionName: string, value: any): MutateFunctionProducer => {
-//     return (prop: NamedProperty, rootValue: Entity, existingContext: ExecutionContext) => {
-//         if(!prop.definition.mutationFunc){
-//             throw new Error(`There is no mutation function defined for Property '${prop.name}'`)
-//         }
-//         return prop.definition.mutationFunc.call(prop.definition, actionName, value, rootValue, existingContext)
-//     }
-// }
