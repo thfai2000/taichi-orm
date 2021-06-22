@@ -1,9 +1,8 @@
 import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector} from '../dist'
 import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
 import {relationProp} from '../dist/Common'
-import {snakeCase} from 'lodash'
+import {snakeCase, omit} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-import { Knex } from 'knex'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -152,14 +151,14 @@ afterAll(() => {
 describe('relations', () => {
     test('Create by OwnedMany + hasMany', async () => {
 
-      let expectedData = [
+      let expectedProducts = [
         {id: 30, name: 'Product X1', productColors: [{type: 'main', color: 1}, {type: 'second', color: 2}]},
         {id: 31, name: 'Product X2', productColors: [{type: 'main', color: 3}, {type: 'second', color: 4}]}
       ]
 
       const createdProducts = await models.Product.createEach(
         await Promise.all(
-          expectedData.map( async(d) => ({...d, productColors: 
+          expectedProducts.map( async(d) => ({...d, productColors: 
               await Promise.all(d.productColors.map(
                 async(pc) => ({...pc, color: await models.Color.findOne({id: pc.color}) })
               ))
@@ -168,9 +167,9 @@ describe('relations', () => {
         )
       )
 
-      expect(createdProducts).toHaveLength(expectedData.length)
-      expect(createdProducts).toEqual( expect.arrayContaining(
-        expectedData.map(d => expect.objectContaining({
+      const expectedProductsForAsserts = (add?: {[key:string]:any}) => {
+        return expect.arrayContaining(
+          expectedProducts.map(d => expect.objectContaining({
                 ...d,
                 productColors: expect.arrayContaining(d.productColors.map( pc => 
                   expect.objectContaining({
@@ -179,21 +178,58 @@ describe('relations', () => {
                     colorId: pc.color,
                     color: expect.objectContaining( colorData.find(d => d.id === pc.color) )
                   })
-                ))
+                )),
+                ...add
               })
           )
         )
-      )
+      }
+
+      expect(createdProducts).toHaveLength(expectedProducts.length)
+      expect(createdProducts).toEqual(expectedProductsForAsserts())
 
       // console.log('xxxxx', createdProducts)
+      const expectedShop = {
+        id: 10000,
+        name: 'Shop X',
+        location: 'Kowloon'
+      }
 
-      // const createdShop = await models.Shop.createOne({
-      //   name: 'Shop X',
-      //   location: 'Kowloon',
-      //   products: createdProducts
-      // })
+      const createdShop = await models.Shop.createOne({
+        ...expectedShop,
+        products: createdProducts
+      })
 
+      expect(createdShop).toEqual(
+        expect.objectContaining({
+          ...expectedShop,
+          products: expect.arrayContaining( expectedProducts.map(d => expect.objectContaining({
+            ...omit(d, ['productColors']),
+            shopId: createdShop.id,
+          })))
+        })
+      )
 
+      let foundShop = await models.Shop.findOne({
+        select: {
+          products: {
+            select: {
+              colors: true,
+              productColors: {
+                select: ['color']
+              }
+            }
+          }
+        },
+        where: {id: expectedShop.id}
+      })
+
+      expect(foundShop).toEqual(
+        expect.objectContaining({
+          ...expectedShop,
+          products: expectedProductsForAsserts({shopId: foundShop.id})
+        })
+      )
 
     })
 })
