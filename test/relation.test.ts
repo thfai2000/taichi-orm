@@ -149,7 +149,7 @@ afterAll(() => {
 
 
 describe('relations', () => {
-    test('Create by OwnedMany + hasMany', async () => {
+    test('Create by OwnedMany + hasMany ', async () => {
 
       let expectedProducts = [
         {id: 30, name: 'Product X1', productColors: [{type: 'main', color: 1}, {type: 'second', color: 2}]},
@@ -232,4 +232,72 @@ describe('relations', () => {
       )
 
     })
+
+
+    test('Create by belongsTo ', async () => {
+
+      let expectedProducts = [
+        {id: 60, name: 'Product X1', productColors: [{type: 'main', color: 1}, {type: 'second', color: 2}]},
+        {id: 61, name: 'Product X2', productColors: [{type: 'main', color: 3}, {type: 'second', color: 4}]}
+      ]
+
+      let expectedShop = await models.Shop.findOne({id: 2})
+
+
+      const createdProducts = await models.Product.createEach(
+        await Promise.all(
+          expectedProducts.map( async(d, idx) => ({
+            ...d,
+            ...(idx%2 === 0?{shop: expectedShop}: {shopId: expectedShop.id} ),
+            productColors: 
+              await Promise.all(d.productColors.map(
+                async(pc) => ({...pc, color: await models.Color.findOne({id: pc.color}) })
+              ))
+            })
+          )
+        )
+      )
+
+      const expectedProductsForAsserts = (add?: {[key:string]:any}) => {
+        return expect.arrayContaining(
+          expectedProducts.map(d => expect.objectContaining({
+                ...d,
+                shopId: expectedShop.id,
+                productColors: expect.arrayContaining(d.productColors.map( pc => 
+                  expect.objectContaining({
+                    ...pc,
+                    productId: d.id,
+                    colorId: pc.color,
+                    color: expect.objectContaining( colorData.find(d => d.id === pc.color) )
+                  })
+                )),
+                ...add
+              })
+          )
+        )
+      }
+
+      expect(createdProducts).toHaveLength(expectedProducts.length)
+      expect(createdProducts).toEqual(expectedProductsForAsserts())
+
+      let foundProducts = await models.Product.find({
+        select: {
+          productColors: {
+            select: ['color']
+          }
+        },
+        where: {
+          shopId: expectedShop.id,
+          id: Contain(createdProducts.map(p => p.id))
+        }
+      })
+
+      expect(foundProducts).toHaveLength(expectedProducts.length)
+      expect(foundProducts).toEqual(expectedProductsForAsserts({shopId: expectedShop.id}))
+
+    })
+
+
+    //TODO: when fail ....all rollback
+    //TODO: when fail in tran.....all rollback
 })
