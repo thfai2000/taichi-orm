@@ -117,9 +117,9 @@ export class NumberType extends PropertyDefinition<number | null> {
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
     
-    constructor(options: Partial<NumberTypeOptions> ={}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<NumberTypeOptions> ={}){
+        super(options instanceof Function? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function?{}:options) }
     }
         
     parseRaw(rawValue: any): number | null {
@@ -156,9 +156,9 @@ export class DecimalType extends PropertyDefinition<number | null> {
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
     
-    constructor(options: Partial<DecimalTypeOptions> = {}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<DecimalTypeOptions> = {}){
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
 
     parseRaw(rawValue: any): number | null{
@@ -193,9 +193,9 @@ export class BooleanType extends PropertyDefinition<boolean | null>{
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
 
-    constructor(options: Partial<BooleanTypeOptions> = {}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<BooleanTypeOptions> = {}){
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
 
     parseRaw(rawValue: any): boolean | null {
@@ -239,9 +239,9 @@ export class StringType extends PropertyDefinition<string | null>{
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
 
-    constructor(options: Partial<StringTypeOptions> = {}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<StringTypeOptions> = {}){
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
 
     parseRaw(rawValue: any): string | null {
@@ -276,9 +276,9 @@ export class DateType extends PropertyDefinition<Date | null>{
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
 
-    constructor(options: Partial<DateTypeOptions> = {}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<DateTypeOptions> = {}){
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
 
     parseRaw(rawValue: any): Date | null {
@@ -312,9 +312,9 @@ export class DateTimeType extends PropertyDefinition<Date | null>{
     readonly transformIntoMultipleRows: boolean = false
     readonly propertyValueIsArray: boolean = false
 
-    constructor(options: Partial<DateTimeTypeOptions> = {}){
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+    constructor(options: ComputeFunction | Partial<DateTimeTypeOptions> = {}){
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
 
     parseRaw(rawValue: any): Date | null{
@@ -350,10 +350,10 @@ export class ObjectOfType extends PropertyDefinition{
     readonly propertyValueIsArray: boolean = false
 
     constructor(private entityClassName: string,
-    options: Partial<ObjectOfTypeOptions> = {}
+    options: ComputeFunction | Partial<ObjectOfTypeOptions> = {}
     ) {
-        super(options.compute)
-        this.options = {nullable: true, ...options}
+        super(options instanceof Function ? options : options.compute)
+        this.options = { nullable: true, ...(options instanceof Function ? {} : options)}
     }
                 
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string){

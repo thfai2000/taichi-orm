@@ -74,7 +74,7 @@ const initializeDatabase = async () => {
         relationProp(schema, 'colors').hasManyThrough('Color', 'ProductColor', 'colorId', 'productId')
 
         relationProp(schema, 'mainColor').hasManyThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
-            return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
+            return stmt.toQueryBuilder().andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
         })
         
       }
