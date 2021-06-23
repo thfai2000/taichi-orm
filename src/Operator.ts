@@ -21,7 +21,7 @@ class AndOperator extends ConditionOperator{
     }
     toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<Expression>) => raw( 
-            args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
+            args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
     }
     toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
@@ -38,7 +38,7 @@ class OrOperator extends ConditionOperator{
     }
     toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<Expression>) => raw(
-            `(${args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
+            `(${args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
     }
     toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
@@ -214,7 +214,7 @@ export type ExpressionResolver = (value: Expression) => Promise<Scalar> | Scalar
 export type SelectorFunction = (selector: Selector) => Scalar
 export type PropertyValue = null|number|string|boolean|Date|ValueOperator
 export type PropertyKeyValues = {[key:string]: PropertyValue | PropertyValue[]}
-export type Expression = ConditionOperator | Scalar | Promise<Scalar> | PropertyKeyValues | SelectorFunction | Array<Expression>
+export type Expression = ConditionOperator | Scalar | Promise<Scalar> | PropertyKeyValues | SelectorFunction | Array<Expression> | boolean
 
 const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
 const Or = (...condition: Array<Expression>) => new OrOperator(...condition)

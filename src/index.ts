@@ -2,7 +2,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
-import {makeBuilder as builder, isRow, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Row} from './Builder'
+import {makeBuilder as builder, isRow, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Row, makeRaw} from './Builder'
 export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
@@ -1128,7 +1128,9 @@ export class Database{
         // let entityClass = this
 
         let resolveExpression: ExpressionResolver = function(value: Expression): Promise<Scalar> | Scalar {
-            if(value instanceof ConditionOperator){
+            if (value === true || value === false) {
+                return makeScalar(makeRaw('?', [value]), Types.Boolean())
+            } else if(value instanceof ConditionOperator){
                 return value.toScalar(resolveExpression)
             } else if(Array.isArray(value)){
                 return resolveExpression(Or(...value))
