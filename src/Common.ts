@@ -7,7 +7,7 @@ export const ComputeFn = {
     relatedFrom: (entityClass: string, propName: string, customFilter?: QueryFunction): ComputeFunction => {
         return function relatedFromFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext, applyFilter: ApplyNextQueryFunction){
             let relatedSelector = context.models[entityClass].selector()
-            let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [rootSelector.pk, relatedSelector._[propName] ])
+            let stmt = makeBuilder(relatedSelector).toQueryBuilder().whereRaw("?? = ??", [rootSelector.pk, relatedSelector._[propName] ])
 
             if(!customFilter){
                 return applyFilter(stmt, relatedSelector)
@@ -33,7 +33,7 @@ export const ComputeFn = {
                         '=',
                         relatedSelector.pk
                     )
-                ).whereRaw("?? = ??", [rootSelector.pk, throughSelector._[throughPropNameAsTarget]])
+                ).toQueryBuilder().whereRaw("?? = ??", [rootSelector.pk, throughSelector._[throughPropNameAsTarget]])
 
             if(!customFilter){
                 return applyFilter(stmt, relatedSelector, throughSelector)
@@ -46,7 +46,7 @@ export const ComputeFn = {
     relatesTo: (entityClass: string, propName: string, customFilter?: QueryFunction): ComputeFunction => {
         return function relatesToFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext, applyFilter: ApplyNextQueryFunction){
             let relatedSelector = context.models[entityClass].selector()
-            let stmt = makeBuilder(relatedSelector).whereRaw("?? = ??", [relatedSelector.pk, rootSelector._[propName] ])
+            let stmt = makeBuilder(relatedSelector).toQueryBuilder().whereRaw("?? = ??", [relatedSelector.pk, rootSelector._[propName] ])
 
             if(!customFilter){
                 return applyFilter(stmt, relatedSelector)
@@ -244,9 +244,6 @@ export const MutateFn = {
                 }
                 rootValue[relatedByPropName] = f[pkNameOfRelatedTo]
                 rootValue[propertyName] = f
-
-                // console.log('xxxxx', propertyName, f)
-
                 return rootValue
 
             } else if (mutationName === 'delete') {

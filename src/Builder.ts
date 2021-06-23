@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
@@ -13,18 +13,13 @@ import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyD
 
 declare module "knex" {
     export namespace Knex {
-        interface QueryBuilder {
-            __type: 'Row'
-            __mainSelector?: Selector | null
-            __selectItems: SelectItem[]
-            __realSelect: Function
-            __realClearSelect: Function
-            __realClone: Function //TODO: override the clone function
+        interface QueryBuilder{
+            toRow(): Row
         }
 
         interface Raw {
             clone: Function
-            __type: 'Raw' | 'Column' | 'Source' | 'Row'
+            __type: 'Raw' | 'Scalar' | 'Source' | 'Row'
         }
     }
 }
@@ -34,33 +29,50 @@ type SelectItem = {
     actualAlias: string
 }
 
-export interface NamedColumn<T = any> extends Column<T> {
+export interface Row {
+    __type: 'Row'
+    __mainSelector?: Selector | null
+    __selectItems: SelectItem[]
+    __realSelect: Function
+    __realClearSelect: Function
+    __realClone: Function //TODO: override the clone function
+    extractColumns(): string[]
+    toQueryBuilder(): Knex.QueryBuilder
+    toRow(): Row
+    clone(): Row
+    clearSelect(): Row
+    select(...cols: Column[]): Row
+    filter(queryWhere: QueryWhere): Row
+    from(source: Source): Row
+}
+
+export interface Column<T = any> extends Scalar<T> {
     // __fieldName: string
     __actualAlias: string
-    clone(): NamedColumn<T>
+    clone(): Column<T>
 }
-export interface Column<T = any> extends Knex.Raw {
-    __type: 'Column'
+export interface Scalar<T = any> extends Knex.Raw {
+    __type: 'Scalar'
     // __selector: Selector | null
     // __namedProperty: NamedProperty
     __definition: PropertyDefinition | null
     __expression: Knex.QueryBuilder | Knex.Raw
-    count(): Column<NumberType> 
-    exists(): Column<BooleanType> 
-    equals: (value: any) => Column<BooleanType>
-    is(operator: string, value: any): Column<BooleanType> 
-    toColumn(): Column<T>
-    clone(): Column<T>
-    as(propName: string): NamedColumn<T>         //TODO: implement rename
+    count(): Scalar<NumberType> 
+    exists(): Scalar<BooleanType> 
+    equals: (value: any) => Scalar<BooleanType>
+    is(operator: string, value: any): Scalar<BooleanType> 
+    toScalar(): Scalar<T>
+    clone(): Scalar<T>
+    asColumn(propName: string): Column<T>         //TODO: implement rename
 }
 
 export interface Source extends Knex.Raw {
     __type: 'Source'
     __selector: Selector
     __raw: string
-    innerJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
-    leftJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
-    rightJoin(source: Source, leftColumn: NamedColumn, operator: string, rightColumn: NamedColumn): Source
+    innerJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
+    leftJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
+    rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
     clone(): Source
 }
 
@@ -88,24 +100,24 @@ export const isRow = (builder: any) : boolean => {
     return false
 }
 
-export const isNamedColumn = (builder: any) : boolean => {
-    //@ts-ignore
-    if( isColumn(builder) && builder.__actualAlias){
-        return true
-    }
-    return false
-}
-
 export const isColumn = (builder: any) : boolean => {
     //@ts-ignore
-    if(builder.__type === 'Column' ){
+    if( isScalar(builder) && builder.__actualAlias){
         return true
     }
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Knex.QueryBuilder) : Knex.QueryBuilder {
-    let sealBuilder: Knex.QueryBuilder
+export const isScalar = (builder: any) : boolean => {
+    //@ts-ignore
+    if(builder.__type === 'Scalar' ){
+        return true
+    }
+    return false
+}
+
+export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Row) : Row {
+    let sealBuilder: Row
     if(cloneFrom){
         if(!isRow(cloneFrom)){
             throw new Error('Unexpected Flow.')
@@ -114,11 +126,11 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         sealBuilder.__selectItems = cloneFrom.__selectItems.map(item => {
             return {
                 actualAlias: item.actualAlias,
-                value: isColumn(item)? (item as unknown as Column).clone() : (isRow(item)? (item as unknown as Knex.QueryBuilder).clone(): item.toString() )
+                value: isScalar(item)? (item as unknown as Scalar).clone() : (isRow(item)? (item as unknown as Row).toQueryBuilder().clone(): item.toString() )
             }
         })
     } else {
-        sealBuilder = getKnexInstance().clearSelect()
+        sealBuilder = getKnexInstance().clearSelect() as unknown as Row
         sealBuilder.__selectItems = []
     }
 
@@ -137,10 +149,10 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                 throw new Error('Invalid Select Item.')
             } else if(item === '*'){
                 throw new Error("Currently it doesn't support using '*'. Please use Selector.all")
-            } else if(Array.isArray(item) && item.find( subitem => isNamedColumn(subitem) )){
-                throw new Error("Detected that array of 'Column' is placed into select expression. Please use ES6 spread syntax to place the columns.")
-            } else if(isNamedColumn(item) ){
-                let casted = item as NamedColumn<any>
+            } else if(Array.isArray(item) && item.find( subitem => isColumn(subitem) )){
+                throw new Error("Detected that array of 'Scalar' is placed into select expression. Please use ES6 spread syntax to place the columns.")
+            } else if(isColumn(item) ){
+                let casted = item as Column<any>
                 let expression = casted.__expression
                 let definition = casted.__definition
                 let alias = casted.__actualAlias
@@ -149,14 +161,14 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                 if(definition && definition.queryTransform){
 
                     if(isRow(expression)){
-                        let castedExpression = expression as Knex.QueryBuilder
-                        let extractedColumnNames = extractColumns(castedExpression)
+                        let castedExpression = expression as unknown as Row
+                        let extractedColumnNames = castedExpression.extractColumns()
                         if(extractedColumnNames.length === 0){
                             throw new Error(`There is no selected column to be transformed as Computed Field '${casted.__actualAlias}'. Please check your sql builder.`)
                         }
                         finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1').toString()
                     
-                    } else if(isColumn(expression)){
+                    } else if(isScalar(expression)){
                         finalExpr = definition.queryTransform(expression, null, 'column1').toString()
                     } else {
                         throw new Error('QueryBuilders which are not created through TaiChi are not supported.')
@@ -165,7 +177,6 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                 } else {
                     finalExpr = expression.toSQL().sql
                 }
-
 
                 let text = finalExpr.toString().trim()
 
@@ -208,6 +219,26 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return makeBuilder(null, sealBuilder)
     }
 
+    sealBuilder.extractColumns = (): string[] => {
+    
+        // let ourBuilder = castAsRow(builderOrRaw)
+        return sealBuilder.__selectItems.map(item => {
+            return item.actualAlias
+        })
+    }
+
+    sealBuilder.toQueryBuilder = (): Knex.QueryBuilder => {
+        return sealBuilder as unknown as Knex.QueryBuilder
+    }
+    sealBuilder.toRow = (): Row => {
+        return sealBuilder 
+    }
+
+    sealBuilder.filter = (queryWhere: QueryWhere): Row => {
+        //TODO: handler queryWhere
+        return sealBuilder
+    }
+
     //after the select is override, add default 'all'
     if(mainSelector){
         sealBuilder = sealBuilder.select(...mainSelector.all).from(mainSelector.source)
@@ -227,66 +258,66 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeColumn = <T = any>(expression: Knex.QueryBuilder | Knex.Raw, definition: PropertyDefinition | null = null): Column<T> => {
+export const makeScalar = <T extends PropertyDefinition>(expression: Knex.QueryBuilder | Knex.Raw, definition: T | null = null): Scalar<T> => {
 
     let text = expression.toString().trim()
 
     text = addBlanketIfNeeds(text)
-    let column: Column<any> = makeRaw(text) as Column<any>
-    column.__type = 'Column'
-    column.__expression = expression.clone()
+    let scalar: Scalar<any> = makeRaw(text) as Scalar<any>
+    scalar.__type = 'Scalar'
+    scalar.__expression = expression.clone()
     // column.__fieldName = fieldName
-    column.__definition = definition
+    scalar.__definition = definition
     // column.__selector = selector
 
-    column.count = (): Column<NumberType> => {
+    scalar.count = (): Scalar<NumberType> => {
         if(!expression){
             throw new Error('Only Dataset can apply count')
         }
         let definition = new NumberType()
-        let expr = makeBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`))
+        let expr = makeBuilder().toQueryBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`))
 
-        return makeColumn<NumberType>(expr, definition)
+        return makeScalar<NumberType>(expr, definition)
     }
 
-    column.exists = (): Column<BooleanType> => {
+    scalar.exists = (): Scalar<BooleanType> => {
         if(!expression){
             throw new Error('Only Dataset can apply exists')
         }
 
-        return makeColumn<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
     }
 
-    column.equals = (value: any): Column<BooleanType> => {
+    scalar.equals = (value: any): Scalar<BooleanType> => {
 
-        return makeColumn<BooleanType>( Equal(value).toRaw(column), new Types.Boolean())
+        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), new Types.Boolean())
     }
 
-    column.is = (operator: string, value: any): Column<BooleanType> => {
+    scalar.is = (operator: string, value: any): Scalar<BooleanType> => {
         if(!expression){
             throw new Error('Only Dataset can apply count')
         }
 
-        return makeColumn<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new Types.Boolean())
     }
 
-    column.clone = () =>{
-        return makeColumn<T>(expression, definition)
+    scalar.clone = () =>{
+        return makeScalar<T>(expression, definition)
     }
     
-    return column
+    return scalar
 }
 
-export const makeNamedColumn = <T = any>(alias: string, col: Column<T>) : NamedColumn<T> => {
-    let column = col.clone() as NamedColumn<T>
+export const makeColumn = <T = any>(alias: string, col: Scalar<T>) : Column<T> => {
+    let column = col.clone() as Column<T>
     column.__actualAlias = alias
     column.clone = () =>{
-        return makeNamedColumn<T>(alias, col)
+        return makeColumn<T>(alias, col)
     }
     return column
 }
 
-export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<NamedColumn | string>): Source => {
+export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<Column | string>): Source => {
     let t = `${quote(selector.executionContext.tablePrefix + selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
 
     joinText  = (joinText ?? '').trim()
@@ -298,30 +329,30 @@ export const makeSource = (joinText: string | null, selector: Selector, ...items
     target.__selector = selector
     target.__raw = raw
     
-    target.innerJoin = (source: Source, ...items: Array<NamedColumn | string>) => {
+    target.innerJoin = (source: Source, ...items: Array<Column | string>) => {
         let s = makeSource(`${target.__raw} INNER JOIN`, source.__selector, ...items)
         return s
     }
 
-    target.leftJoin = (source: Source, ...items: Array<NamedColumn | string>) => {
+    target.leftJoin = (source: Source, ...items: Array<Column | string>) => {
         let s = makeSource(`${target.__raw} LEFT JOIN`, source.__selector, ...items)
         return s
     }
 
-    target.rightJoin = (source: Source, ...items: Array<NamedColumn | string>) => {
+    target.rightJoin = (source: Source, ...items: Array<Column | string>) => {
         let s = makeSource(`${target.__raw} RIGHT JOIN`, source.__selector, ...items)
         return s
     }
     return target
 }
 
-export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
+// export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
     
-    // let ourBuilder = castAsRow(builderOrRaw)
-    return builder.__selectItems.map(item => {
-        return item.actualAlias
-    })
-}
+//     // let ourBuilder = castAsRow(builderOrRaw)
+//     return builder.__selectItems.map(item => {
+//         return item.actualAlias
+//     })
+// }
 
 const parseName = (item: any) => {
     let text = item.toString().trim()

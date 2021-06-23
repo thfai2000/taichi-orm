@@ -1,16 +1,16 @@
-import {Column, isColumn, makeColumn, makeRaw as raw} from './Builder'
+import {Scalar, isScalar, makeScalar, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
 import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
 import { BooleanType } from './PropertyType'
 
 abstract class ConditionOperator {
     abstract toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>
-    abstract toColumn(resolver: ExpressionResolver): Column | Promise<Column>
+    abstract toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>
 }
 
 abstract class ValueOperator {
-    abstract toRaw(leftOperand: Column ): Knex.Raw | Promise<Knex.Raw>
-    abstract toColumn(leftOperand: Column ): Column | Promise<Column>
+    abstract toRaw(leftOperand: Scalar ): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(leftOperand: Scalar ): Scalar | Promise<Scalar>
 }
 
 class AndOperator extends ConditionOperator{
@@ -24,9 +24,9 @@ class AndOperator extends ConditionOperator{
             args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
     }
-    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
+    toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -41,9 +41,9 @@ class OrOperator extends ConditionOperator{
             `(${args.length === 1? resolver(args[0]).toString(): args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
     }
-    toColumn(resolver: ExpressionResolver): Column | Promise<Column>{
+    toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -58,9 +58,9 @@ class NotOperator extends ConditionOperator{
         return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
     }
     
-    toColumn(resolver: ExpressionResolver){
+    toScalar(resolver: ExpressionResolver){
         const p = this.toRaw(resolver)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -71,13 +71,13 @@ class ContainOperator extends ValueOperator {
         this.rightOperands = rightOperands
     }
 
-    toRaw(leftOperand: Column){
+    toRaw(leftOperand: Scalar){
         return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -88,13 +88,13 @@ class NotContainOperator extends ValueOperator {
         this.rightOperands = rightOperands
     }
 
-    toRaw(leftOperand: Column){
+    toRaw(leftOperand: Scalar){
         return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -105,13 +105,13 @@ class LikeOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Column){
+    toRaw(leftOperand: Scalar){
         return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     }
     
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -122,13 +122,13 @@ class NotLikeOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Column){
+    toRaw(leftOperand: Scalar){
         return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} NOT LIKE ?`, [rightOperand]) )
     }
     
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -139,18 +139,18 @@ class EqualOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Column){
+    toRaw(leftOperand: Scalar){
         return thenResult(this.rightOperand, (value: any) => {
-            if(isColumn(value)){
+            if(isScalar(value)){
                 return raw( `${leftOperand} = ??`, [value.toString()])
             }
             else return raw( `${leftOperand} = ?`, [value])
         })
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 class NotEqualOperator extends ValueOperator {
@@ -160,18 +160,18 @@ class NotEqualOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Column): Knex.Raw | Promise<Knex.Raw> {
+    toRaw(leftOperand: Scalar): Knex.Raw | Promise<Knex.Raw> {
         return thenResult(this.rightOperand, (value: any) => {
-            if(isColumn(value)){
+            if(isScalar(value)){
                 return raw( `${leftOperand} <> ??`, [value.toString()])
             }
             else return raw( `${leftOperand} <> ?`, [value])
         })
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -180,13 +180,13 @@ class IsNullOperator extends ValueOperator {
         super()
     }
 
-    toRaw(leftOperand: Column): Knex.Raw {
+    toRaw(leftOperand: Scalar): Knex.Raw {
         return raw(`${leftOperand} IS NULL`)
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -195,13 +195,13 @@ class IsNotNullOperator extends ValueOperator {
         super()
     }
 
-    toRaw(leftOperand: Column): Knex.Raw {
+    toRaw(leftOperand: Scalar): Knex.Raw {
         return raw(`${leftOperand} IS NOT NULL`)
     }
 
-    toColumn(leftOperand: Column){
+    toScalar(leftOperand: Scalar){
         const p = this.toRaw(leftOperand)
-        return thenResult(p, r => makeColumn(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
 }
 
@@ -210,11 +210,11 @@ class IsNotNullOperator extends ValueOperator {
 //TODO: GreaterThanOrEqual
 //TODO: LessThanOrEqual
 
-export type ExpressionResolver = (value: Expression) => Promise<Column> | Column
-export type SelectorFunction = (selector: Selector) => Column
+export type ExpressionResolver = (value: Expression) => Promise<Scalar> | Scalar
+export type SelectorFunction = (selector: Selector) => Scalar
 export type PropertyValue = null|number|string|boolean|Date|ValueOperator
 export type PropertyKeyValues = {[key:string]: PropertyValue | PropertyValue[]}
-export type Expression = ConditionOperator | Column | Promise<Column> | PropertyKeyValues | SelectorFunction | Array<Expression>
+export type Expression = ConditionOperator | Scalar | Promise<Scalar> | PropertyKeyValues | SelectorFunction | Array<Expression>
 
 const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
 const Or = (...condition: Array<Expression>) => new OrOperator(...condition)
