@@ -48,45 +48,45 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', new Types.String({length: 255}))
-        schema.prop('location', new Types.String({length: 255}))
-        schema.prop('products', new Types.ArrayOf(new Types.ObjectOf('Product', {
+        schema.prop('name', Types.String({length: 255}))
+        schema.prop('location', Types.String({length: 255}))
+        schema.prop('products', Types.ArrayOf(Types.ObjectOf('Product', {
           compute: Builtin.ComputeFn.relatedFrom('Product', 'shopId')
         }) ) )
-        schema.prop('productCount', new Types.Number({
+        schema.prop('productCount', Types.Number({
           compute: (shop) => {
             // let p = Product.selector()
             // return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
             return shop.$.products().count()
           }
         }))
-        schema.prop('hasProducts', new Types.Boolean({
+        schema.prop('hasProducts', Types.Boolean({
           compute: (shop) => {
             return shop.$.products().exists()
           }
         }))
-        schema.prop('hasNoProducts', new Types.Boolean({
+        schema.prop('hasNoProducts', Types.Boolean({
           compute: (shop) => {
             return shop.$.products().exists().is('=', false)
           }
         }))
-        schema.prop('hasOver2Products', new Types.Boolean({
+        schema.prop('hasOver2Products', Types.Boolean({
           compute: (shop) => {
             return shop.$.productCount().is('>', 2)
           }
         }))
-        schema.prop('hasProductsAsync', new Types.Boolean({
+        schema.prop('hasProductsAsync', Types.Boolean({
           compute: async (shop) => {
             return await shop.$.products().exists()
           }
         }))
-        schema.prop('hasEnoughProducts', new Types.Boolean({
+        schema.prop('hasEnoughProducts', Types.Boolean({
           compute: (shop, args) => {
             return shop.$.productCount().is('>=', args.count)
           }
         }))
 
-        schema.prop('hasTwoProductsAndlocationHasLetterA', new Types.Boolean({
+        schema.prop('hasTwoProductsAndlocationHasLetterA', Types.Boolean({
           compute: (shop, args) => {
             return shop({
               location: Like('%a%'),
@@ -101,24 +101,24 @@ const initializeDatabase = async () => {
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', new Types.String({length: 255}))
-        schema.prop('createdAt', new Types.DateTime({precision: 6}))
-        schema.prop('shopId', new Types.Number())
+        schema.prop('name', Types.String({length: 255}))
+        schema.prop('createdAt', Types.DateTime({precision: 6}))
+        schema.prop('shopId', Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.prop('shop', new Types.ObjectOf('Shop', {
+        schema.prop('shop', Types.ObjectOf('Shop', {
           compute: Builtin.ComputeFn.relatesTo('Shop', 'shopId')
         }))
 
         schema.prop('colors', 
-          new Types.ArrayOf(new Types.ObjectOf('Color', {
+          Types.ArrayOf(Types.ObjectOf('Color', {
             compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId') 
           }))
         )
         
         schema.prop('mainColor', 
-          new Types.ObjectOf('Color', {
+          Types.ObjectOf('Color', {
             compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
-              return stmt.andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
+              return stmt.toQueryBuilder().andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
             })
           })
         )
@@ -127,7 +127,7 @@ const initializeDatabase = async () => {
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', new Types.String({
+        schema.prop('code', Types.String({
           nullable: false,
           length: 50
         }))
@@ -136,9 +136,9 @@ const initializeDatabase = async () => {
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('productId', new Types.Number({nullable: false}))
-        schema.prop('colorId', new Types.Number({nullable: false}))
-        schema.prop('type', new Types.String({nullable: false, length: 50}))
+        schema.prop('productId', Types.Number({nullable: false}))
+        schema.prop('colorId', Types.Number({nullable: false}))
+        schema.prop('type', Types.String({nullable: false, length: 50}))
       }
     }
 
@@ -223,7 +223,7 @@ describe('Select - Simple Query', () => {
   test('Query with limit', async () => {
     let limit = 2
     let records = await models.Shop.find( function(stmt, root){
-        return stmt.where(root.pk, '>', 2).limit(limit)
+        return stmt.toQueryBuilder().where(root.pk, '>', 2).limit(limit)
     })
 
     expect(records).toHaveLength(limit)
@@ -307,7 +307,7 @@ describe('Select - Custom Computed Fields', () => {
   test('Query computed field', async () => {
     let id = 2
     let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select(root.$.productCount()).where(root.pk, '=', id)
+        return stmt.select(root.$.productCount()).toQueryBuilder().where(root.pk, '=', id)
     })
     expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
 
@@ -325,7 +325,7 @@ describe('Select - Mixed Query', () => {
       select: {
         'productCount': true, 
         'products': {select: ['colors']} , 
-        'currentTime': new Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
+        'currentTime': Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
       },
     })
 

@@ -46,8 +46,9 @@ export type ORMConfig = {
         client: string
         connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
     },
+    // types: { [key: string]: typeof PropertyDefinition },
     models: {[key:string]: typeof Entity}
-    createModels?: boolean,
+    createModels: boolean,
     modelsPath?: string,
     outputSchemaPath?: string,
     // waitUtilDatabaseReady?: boolean,
@@ -70,6 +71,7 @@ const ormConfig: ORMConfig = {
     // useSoftDeleteAsDefault: true,
     uuidPropName: 'uuid',
     createModels: false,
+    // types: {},
     models: {},
     knexConfig: {
         client: 'mysql' //default mysql
@@ -170,6 +172,10 @@ let registeredModels: {
     [key: string]: typeof Entity
 } = {}
 
+// let registeredPropertyDefinitions: {
+//     [key: string]: (...args: ConstructorParameters<typeof PropertyDefinition>) => PropertyDefinition
+// }
+
 export class Schema {
 
     tableName: string
@@ -184,12 +190,12 @@ export class Schema {
         this.tableName = ormConfig.entityNameToTableName?ormConfig.entityNameToTableName(entityName):entityName
         this.primaryKey = new NamedProperty(
             ormConfig.primaryKeyName,
-            new Types.PrimaryKey()
+            Types.PrimaryKey()
         )
         if(ormConfig.enableUuid){
             this.uuid = new NamedProperty(
                 ormConfig.uuidPropName,
-                new Types.String({nullable: false, length: 255})
+                Types.String({nullable: false, length: 255})
             )
             this.namedProperties = [this.primaryKey, this.uuid]
         } else {
@@ -436,6 +442,13 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
     Object.assign(ormConfig, newConfig)
     Object.assign(ormConfig.globalContext, newConfig.globalContext)
     // let arrayOfSchemas: Schema[] = []
+
+
+    // Object.keys(ormConfig.types).forEach( k => {
+    //     ormConfig.types[k] 
+    //     const t = ormConfig.types[k]
+    //     registeredPropertyDefinitions[k] = () => new t()
+    // })
 
     const registerEntity = (entityName: string, entityClass: any) => {
         let s = new Schema(entityName);
@@ -727,9 +740,16 @@ export class SelectorImpl{
         return (queryOptions?: QueryOptions) => {
             let subquery = this.executeComputeFunc(queryOptions, prop)
 
-            let process = (subquery: Scalar<any> | Row): Column => {
+            let process = (subquery: ScalarOrRow): Column => {
                 let alias = metaFieldAlias(prop)
-                return makeColumn(alias, makeScalar(subquery.toRaw(), prop.definition) )
+                if(isRow(subquery)){
+                    const casted = subquery as Row
+                    return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition) )
+                } else if( isScalar(subquery)){
+                    const casted = subquery as Scalar
+                    return makeColumn(alias, makeScalar(casted.toRaw(), prop.definition))
+                }
+                throw new Error('Unexpected')
             }
             if(subquery instanceof Promise){
                 throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
@@ -746,7 +766,14 @@ export class SelectorImpl{
 
             let process = (subquery: Scalar<any> | Row): Column => {
                 let alias = metaFieldAlias(prop)
-                return makeColumn(alias, makeScalar(subquery.toRaw(), prop.definition) )
+                if (isRow(subquery)) {
+                    const casted = subquery as Row
+                    return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition))
+                } else if (isScalar(subquery)) {
+                    const casted = subquery as Scalar
+                    return makeColumn(alias, makeScalar(casted.toRaw(), prop.definition))
+                }
+                throw new Error('Unexpected')
             }
 
             return thenResult(subquery, query => process(query))
@@ -826,7 +853,7 @@ export class SelectorImpl{
             // }else if(isScalar(subquery)){
             //     return subquery as Scalar
             // }
-            if(!isRow(subquery) || isScalar(subquery)){
+            if(!isRow(subquery) && !isScalar(subquery)){
                 throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
             }
 
@@ -1436,7 +1463,7 @@ export class Database{
         let dualSelector = existingContext.models.Dual.selector()
         let prop = new NamedProperty(
             'data',
-            new Types.ArrayOf(new Types.ObjectOf(
+            Types.ArrayOf(Types.ObjectOf(
                 entityClass.name, {
                     compute: (root, {}, context, applyFilter) => {
                         let currentEntitySelector = entityClass.selector()

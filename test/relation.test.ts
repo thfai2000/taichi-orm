@@ -48,11 +48,11 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-        schema.prop('name', new Types.String({length: 255}))
-        schema.prop('location', new Types.String({length: 255}))
+        schema.prop('name', Types.String({length: 255}))
+        schema.prop('location', Types.String({length: 255}))
         relationProp(schema, 'products').hasMany('Product', 'shopId')
         
-        schema.prop('productCount', new Types.Number({
+        schema.prop('productCount', Types.Number({
           compute: (shop) => {
             return shop.$.products().count()
           }
@@ -63,9 +63,9 @@ const initializeDatabase = async () => {
     class Product extends Entity{
     
       static register(schema: Schema){
-        schema.prop('name', new Types.String({length: 255}))
-        schema.prop('createdAt', new Types.DateTime({precision: 6}))
-        schema.prop('shopId', new Types.Number())
+        schema.prop('name', Types.String({length: 255}))
+        schema.prop('createdAt', Types.DateTime({precision: 6}))
+        schema.prop('shopId', Types.Number())
         // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
         relationProp(schema, 'shop').belongsTo('Shop', 'shopId')
 
@@ -82,7 +82,7 @@ const initializeDatabase = async () => {
     
     class Color extends Entity{
       static register(schema: Schema){
-        schema.prop('code', new Types.String({
+        schema.prop('code', Types.String({
           nullable: false,
           length: 50
         }))
@@ -91,10 +91,10 @@ const initializeDatabase = async () => {
 
     class ProductColor extends Entity{
       static register(schema: Schema){
-        schema.prop('type', new Types.String({nullable: false, length: 50}))
-        schema.prop('productId', new Types.Number({nullable: false}))
+        schema.prop('type', Types.String({nullable: false, length: 50}))
+        schema.prop('productId', Types.Number({nullable: false}))
         
-        schema.prop('colorId', new Types.Number({nullable: false}))
+        schema.prop('colorId', Types.Number({nullable: false}))
         relationProp(schema, 'color').belongsTo('Color', 'colorId')
       }
     }

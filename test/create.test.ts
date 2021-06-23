@@ -6,8 +6,8 @@ const initializeDatabase = async () => {
     // configure the orm
     class Shop extends Entity{
       static register(schema: Schema){
-          schema.prop('name', new Types.String({length: 255, nullable: false}))
-          schema.prop('location', new Types.String({length: 255, nullable: false}))
+          schema.prop('name', Types.String({length: 255, nullable: false}))
+          schema.prop('location', Types.String({length: 255, nullable: false}))
       }
     }
 
@@ -101,7 +101,7 @@ describe('Test Create - with transaction', () => {
     }))
 
     // try to find it again, to prove it is committed
-    let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+    let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
     expect(found).toEqual( expect.objectContaining({
       ...shopData
     }))
@@ -118,7 +118,7 @@ describe('Test Create - with transaction', () => {
       expect(record).toEqual( expect.objectContaining({
         ...shopData
       }))
-      let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) ).usingConnection(trx)
+      let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) ).usingConnection(trx)
       expect(found).toEqual( expect.objectContaining({
         ...shopData
       }))
@@ -127,7 +127,7 @@ describe('Test Create - with transaction', () => {
 
     await expect(t()).rejects.toThrow(errorMessage)
     // try to find it again, to prove it is committed
-    let found = await models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+    let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
     expect(found).toBeNull()
   })
 

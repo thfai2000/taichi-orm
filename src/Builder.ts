@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere } from "."
+import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere, ScalarOrRow } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
@@ -15,7 +15,7 @@ declare module "knex" {
     export namespace Knex {
         interface QueryBuilder{
             toRow(): Row
-            toRaw(): Knex.Raw
+            // toRaw(): Knex.Raw
             toQueryBuilder(): Knex.QueryBuilder
         }
 
@@ -40,7 +40,7 @@ export interface Row {
     __realClone: Function //TODO: override the clone function
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
-    toRaw(): Knex.Raw
+    // toRaw(): Knex.Raw
     toRow(): Row
     clone(): Row
     clearSelect(): Row
@@ -179,7 +179,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                     }
 
                 } else {
-                    finalExpr = expression.toSQL().sql
+                    finalExpr = expression.toString()
                 }
 
                 let text = finalExpr.toString().trim()
@@ -235,9 +235,9 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return sealBuilder as unknown as Knex.QueryBuilder
     }
 
-    sealBuilder.toRaw = (): Knex.Raw => {
-        return makeRaw(sealBuilder.toQueryBuilder().toString())
-    }
+    // sealBuilder.toRaw = (): Knex.Raw => {
+    //     return makeRaw(sealBuilder.toQueryBuilder().toString())
+    // }
 
     sealBuilder.toRow = (): Row => {
         return sealBuilder 
@@ -267,7 +267,7 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw, definition: T | null = null): Scalar<T> => {
+export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw | Knex.QueryBuilder, definition: T | null = null): Scalar<T> => {
 
     let text = expression.toString().trim()
 
@@ -284,7 +284,7 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw, d
             throw new Error('Only Dataset can apply count')
         }
         let definition = new NumberType()
-        let expr = makeBuilder().toQueryBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`)).toRaw()
+        let expr = makeBuilder().toQueryBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`))
 
         return makeScalar<NumberType>(expr, definition)
     }
@@ -294,12 +294,12 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw, d
             throw new Error('Only Dataset can apply exists')
         }
 
-        return makeScalar<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), Types.Boolean())
     }
 
     scalar.equals = (value: any): Scalar<BooleanType> => {
 
-        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), new Types.Boolean())
+        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), Types.Boolean())
     }
 
     scalar.is = (operator: string, value: any): Scalar<BooleanType> => {
@@ -307,11 +307,15 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw, d
             throw new Error('Only Dataset can apply count')
         }
 
-        return makeScalar<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), Types.Boolean())
     }
 
     scalar.clone = () =>{
         return makeScalar<T>(expression, definition)
+    }
+
+    scalar.toRaw = () => {
+        return scalar
     }
     
     return scalar
@@ -408,7 +412,7 @@ const parseName = (item: any) => {
 //         //     throw new Error('only computedProp can use count()')
 //         // }
 
-//         let p = (col: Column) => makeColumn(null, new NamedProperty(`${prop.name}`, new Types.Number, null), 
+//         let p = (col: Column) => makeColumn(null, new NamedProperty(`${prop.name}`, Types.Number, null), 
 //             makeBuilder().count().from(makeRaw(expression)) )
 
 //         if(col instanceof Promise){

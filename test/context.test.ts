@@ -12,19 +12,19 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('location', new Types.String({nullable: false, length: 255}))
+          schema.prop('name', Types.String({nullable: true, length: 255}))
+          schema.prop('location', Types.String({nullable: false, length: 255}))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('isActive', new Types.Boolean())
-          schema.prop('price', new Types.Decimal({precision: 7, scale: 2}))
-          schema.prop('createdAt', new Types.DateTime({precision: 6}))
-          schema.prop('shopId', new Types.Number())
+          schema.prop('name', Types.String({nullable: true, length: 255}))
+          schema.prop('isActive', Types.Boolean())
+          schema.prop('price', Types.Decimal({precision: 7, scale: 2}))
+          schema.prop('createdAt', Types.DateTime({precision: 6}))
+          schema.prop('shopId', Types.Number())
       }
     }
 
@@ -73,7 +73,7 @@ describe('Test Context Usage', () => {
     }))
 
     // try to find it again, to prove it is committed
-    let found = await globalContext.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+    let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
     expect(found).toEqual( expect.objectContaining({
       ...shopData
     }))
@@ -90,7 +90,7 @@ describe('Test Context Usage', () => {
     expect(record).toEqual( expect.objectContaining({
         ...shopData
     }))
-    let found = await ctx.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+      let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
     expect(found).toEqual( expect.objectContaining({
         ...shopData
     }))
@@ -100,7 +100,7 @@ describe('Test Context Usage', () => {
     await expect(t()).rejects.toThrow(errorMessage)
 
     // try to find it again, to prove it is committed
-    let found = await globalContext.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+    let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
     expect(found).toBeNull()
   })
 
@@ -121,7 +121,7 @@ describe('Test Context Usage', () => {
                 expect(record).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
-                let found = await ctx.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', anotherShopData.id) )
+              let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', anotherShopData.id) )
                 expect(found).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
@@ -130,7 +130,7 @@ describe('Test Context Usage', () => {
             await expect(t()).rejects.toThrow(errorMessage)
 
             // try to find it again, to prove it is committed
-            let found = await ctx.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', anotherShopData.id) )
+          let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', anotherShopData.id) )
 
             expect(found).toBeNull()
             return record
@@ -141,7 +141,7 @@ describe('Test Context Usage', () => {
         }))
     
         // try to find it again, to prove it is committed
-        let found = await globalContext.models.Shop.findOne( (stmt, s) => stmt.where(s.pk, '=', shopData.id) )
+        let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
         expect(found).toEqual( expect.objectContaining({
           ...shopData
         }))

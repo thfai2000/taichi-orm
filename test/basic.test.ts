@@ -8,29 +8,29 @@ const initializeDatabase = async () => {
     class Shop extends Entity{
 
       static register(schema: Schema){
-          schema.prop('location', new Types.String({nullable: false, length: 255}))
+          schema.prop('location', Types.String({nullable: false, length: 255}))
       }
     }
     
     class Product extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('isActive', new Types.Boolean())
-          schema.prop('price', new Types.Decimal({precision: 7, scale: 2}))
-          schema.prop('createdAt', new Types.DateTime({precision: 6}))
-          schema.prop('shopId', new Types.Number())
+          schema.prop('name', Types.String({nullable: true, length: 255}))
+          schema.prop('isActive', Types.Boolean())
+          schema.prop('price', Types.Decimal({precision: 7, scale: 2}))
+          schema.prop('createdAt', Types.DateTime({precision: 6}))
+          schema.prop('shopId', Types.Number())
       }
     }
 
     class StrictProduct extends Entity{
     
       static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: false, length: 255}))
-          schema.prop('isActive', new Types.Boolean({nullable: false}))
-          schema.prop('price', new Types.Decimal({nullable: false, precision: 5, scale: 2}))
-          schema.prop('createdAt', new Types.DateTime({nullable: false}))
-          schema.prop('shopId', new Types.Number({nullable: false}))
+          schema.prop('name', Types.String({nullable: false, length: 255}))
+          schema.prop('isActive', Types.Boolean({nullable: false}))
+          schema.prop('price', Types.Decimal({nullable: false, precision: 5, scale: 2}))
+          schema.prop('createdAt', Types.DateTime({nullable: false}))
+          schema.prop('shopId', Types.Number({nullable: false}))
       }
     }
 
@@ -124,16 +124,16 @@ describe('Basic Read and Write', () => {
 
     expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
-    let foundShop1ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop1.id})))
-    let foundShop1ByLocation = await models.Shop.findOne( (stmt, s) => stmt.where(s({location: expectedShop1.location})))
+    let foundShop1ById = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: shop1.id})))
+    let foundShop1ByLocation = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({location: expectedShop1.location})))
 
     expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
     expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
-    let foundShop2ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop2.id})))
+    let foundShop2ById = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: shop2.id})))
     expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
-    let foundShopNotExists =  await models.Shop.findOne( (stmt, s) => stmt.where(s({id: 100000})))
+    let foundShopNotExists = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: 100000})))
     expect(foundShopNotExists).toBeNull()
 
     let foundAllShop = await models.Shop.find()
@@ -144,14 +144,14 @@ describe('Basic Read and Write', () => {
       ] 
     )
 
-    let foundProductsByShopId1 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop1.id})) )
+    let foundProductsByShopId1 = await models.Product.find((stmt, s) => stmt.toQueryBuilder().where(s({shopId: shop1.id})) )
     expect(foundProductsByShopId1).toEqual( 
       [
         expect.objectContaining(expectedProduct1), 
         expect.objectContaining(expectedProduct2)
       ]
     )
-    let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
+    let foundProductsByShopId2 = await models.Product.find((stmt, s) => stmt.toQueryBuilder().where(s({shopId: shop2.id})) )
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
   });

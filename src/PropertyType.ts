@@ -471,17 +471,20 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
     }
 }
 
-export default {
-    PrimaryKey: PrimaryKeyType,
-    Number: NumberType,
-    Decimal: DecimalType,
-    Boolean: BooleanType,
-    String: StringType,
-    Date: DateType,
-    DateTime: DateTimeType,
-    ObjectOf: ObjectOfType,
-    ArrayOf: ArrayOfType
+
+const types = {
+    PrimaryKey: (...args: ConstructorParameters<typeof PrimaryKeyType>) => new PrimaryKeyType(...args),
+    Number: (...args: ConstructorParameters<typeof NumberType>) => new NumberType(...args),
+    Decimal: (...args: ConstructorParameters<typeof DecimalType>) => new DecimalType(...args),
+    Boolean: (...args: ConstructorParameters<typeof BooleanType>) => new BooleanType(...args),
+    String: (...args: ConstructorParameters<typeof StringType>) => new StringType(...args),
+    Date: (...args: ConstructorParameters<typeof DateType>) => new DateType(...args),
+    DateTime: (...args: ConstructorParameters<typeof DateTimeType>) => new DateTimeType(...args),
+    ObjectOf: (...args: ConstructorParameters<typeof ObjectOfType>) => new ObjectOfType(...args),
+    ArrayOf: (...args: ConstructorParameters<typeof ArrayOfType>) => new ArrayOfType(...args)
 }
+
+export default types
 
 // NativeJSON(nullable: boolean = true): PropertyType {
     //     return {

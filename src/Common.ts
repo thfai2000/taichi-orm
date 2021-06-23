@@ -264,7 +264,7 @@ export const relationProp = function(schema: Schema, propName: string){
     return {
 
         ownMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ArrayOf(Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
             })))
 
@@ -272,7 +272,7 @@ export const relationProp = function(schema: Schema, propName: string){
         },
 
         ownOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
             }))
 
@@ -280,7 +280,7 @@ export const relationProp = function(schema: Schema, propName: string){
         },
         
         hasMany: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ArrayOf(Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
             })))
 
@@ -288,7 +288,7 @@ export const relationProp = function(schema: Schema, propName: string){
         },
 
         hasOne: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatedFrom(entityClass, relatedByPropName, customFilter)
             }))
 
@@ -296,7 +296,7 @@ export const relationProp = function(schema: Schema, propName: string){
         },
 
         belongsTo: (entityClass: string, relatedByPropName: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatesTo(entityClass, relatedByPropName, customFilter)
             }))
 
@@ -304,13 +304,13 @@ export const relationProp = function(schema: Schema, propName: string){
         },
 
         hasManyThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ArrayOf(new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ArrayOf(Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
             })))
         },
 
         hasOneThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction) => {
-            schema.prop(propName, new Types.ObjectOf(entityClass, {
+            schema.prop(propName, Types.ObjectOf(entityClass, {
                 compute: ComputeFn.relatesThrough(entityClass, throughEntity, throughPropNameAsRelated, throughPropNameAsTarget, customFilter)
             }))
         }
