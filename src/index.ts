@@ -304,8 +304,8 @@ export type HookInfo = {
 
 export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
 
-const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, queryOptions: QueryObject) => {
-
+const simpleQuery = (row: Row, selector: Selector, queryOptions: QueryObject) => {
+    let stmt = row.toQueryBuilder()
     // let select: any[] = []
     let isOnlyWhere = true
 
@@ -429,7 +429,7 @@ const simpleQuery = (stmt: Knex.QueryBuilder<any, any>, selector: Selector, quer
     if(isOnlyWhere){
         stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions as QueryWhere)) )
     }
-    return stmtOrPromise
+    return thenResult(stmtOrPromise, stmt => stmt.toRow())
 }
 
 export const configure = async function(newConfig: Partial<ORMConfig>){
@@ -725,11 +725,11 @@ export class SelectorImpl{
     compileAs$(prop: NamedProperty): CompiledComputeFunction {
         const rootSelector: SelectorImpl = this
         return (queryOptions?: QueryOptions) => {
-            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryOptions, prop)
+            let subquery = this.executeComputeFunc(queryOptions, prop)
 
-            let process = (subquery: Knex.QueryBuilder): Column => {
+            let process = (subquery: Scalar<any> | Row): Column => {
                 let alias = metaFieldAlias(prop)
-                return makeColumn(alias, makeScalar(subquery, prop.definition) )
+                return makeColumn(alias, makeScalar(subquery.toRaw(), prop.definition) )
             }
             if(subquery instanceof Promise){
                 throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
@@ -742,18 +742,18 @@ export class SelectorImpl{
     compileAs$$(prop: NamedProperty): CompiledComputeFunctionPromise {
         const rootSelector: SelectorImpl = this
         return (queryOptions?: QueryOptions) => {
-            let subquery: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = this.executeComputeFunc(queryOptions, prop)
+            let subquery = this.executeComputeFunc(queryOptions, prop)
 
-            let process = (subquery: Knex.QueryBuilder): Column => {
+            let process = (subquery: Scalar<any> | Row): Column => {
                 let alias = metaFieldAlias(prop)
-                return makeColumn(alias, makeScalar(subquery, prop.definition) )
+                return makeColumn(alias, makeScalar(subquery.toRaw(), prop.definition) )
             }
 
             return thenResult(subquery, query => process(query))
         }
     }
 
-    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty) {
+    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): (Scalar<any> | Row) | Promise<Scalar<any> | Row> {
         const rootSelector: SelectorImpl = this
         if(!prop.definition.computeFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
@@ -765,7 +765,7 @@ export class SelectorImpl{
         }
         const computeFunc = prop.definition.computeFunc
         const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
-            let process = (stmt: Knex.QueryBuilder) => {
+            let process = (stmt: Row) => {
 
                 // If the function object placed into the Knex.QueryBuilder, 
                 // Knex.QueryBuilder will call it and pass itself as the parameter
@@ -810,7 +810,7 @@ export class SelectorImpl{
             return thenResult(stmt, stmt => process(stmt))
         }
 
-        let cast = (subquery: Knex.QueryBuilder | Scalar) => {
+        let validate = (subquery: ScalarOrRow): ScalarOrRow => {
   
             if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
                 console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
@@ -820,23 +820,22 @@ export class SelectorImpl{
                 console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
                 throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
             }
-
-            if(isRow(subquery)){
-                return subquery as unknown as Row
-            }else if(isScalar(subquery)){
-                return subquery as Scalar
+        
+            // if(isRow(subquery)){
+            //     return subquery as unknown as Row
+            // }else if(isScalar(subquery)){
+            //     return subquery as Scalar
+            // }
+            if(!isRow(subquery) || isScalar(subquery)){
+                throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
             }
 
-            throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
-        
+            return subquery
         }
 
         let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext, applyFilterFunc)
 
-        return thenResult(subquery, subquery => {
-            
-            return cast(subquery)
-        })
+        return thenResult(subquery, subquery => validate(subquery) )
     }
 }
 
@@ -868,17 +867,19 @@ export type QueryObject = {
     fn?: QueryFunction
 }
 
-export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext, applyNextQueryFunction: ApplyNextQueryFunction) => Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Scalar | Promise<Scalar>
+export type ScalarOrRow = Scalar | Row
+
+export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext, applyNextQueryFunction: ApplyNextQueryFunction) => ScalarOrRow | Promise<ScalarOrRow>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => Column
 
 export type CompiledComputeFunctionPromise = (queryObject?: QueryOptions) => Promise<Column> | Column
 
-export type QueryFunction = (stmt: Knex.QueryBuilder, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
+export type QueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
 
 export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryWhere, Function> | null
 
-export type ApplyNextQueryFunction = (stmt: Knex.QueryBuilder | Promise<Knex.QueryBuilder>, ...selectors: Selector[]) => Knex.QueryBuilder | Promise<Knex.QueryBuilder>
+export type ApplyNextQueryFunction = (stmt: Row | Promise<Row>, ...selectors: Selector[]) => Row | Promise<Row>
 
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions = {
@@ -1258,7 +1259,7 @@ export class Database{
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
                     const r = await this.executeStatement(insertStmt, existingContext)
                     insertedId = r[0][0].insertId
-                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId]))
                     
                     let b = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                     return b
@@ -1271,7 +1272,7 @@ export class Database{
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.uuid, uuid]))
+                            let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.uuid, uuid]))
                             return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         }
                     } else {
@@ -1284,7 +1285,7 @@ export class Database{
                     const r = await this.executeStatement(insertStmt, existingContext)
                     
                     insertedId = r.rows[0][ entityClass.schema.primaryKey.fieldName]
-                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.whereRaw('?? = ?', [t.pk, insertedId]))
+                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId]))
                     return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
 
                 } else {
@@ -1439,7 +1440,7 @@ export class Database{
                 entityClass.name, {
                     compute: (root, {}, context, applyFilter) => {
                         let currentEntitySelector = entityClass.selector()
-                        let stmt: Knex.QueryBuilder = builder(currentEntitySelector)
+                        let stmt = builder(currentEntitySelector)
                         return applyFilter(stmt, currentEntitySelector)
                     }
                 }
@@ -1511,8 +1512,8 @@ export class Database{
 
         const realFieldValues = this.extractRealField(schema, propValues)
         const input = {
-            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder(s).where(s(applyFilter)): builder(s) ).update(realFieldValues) : null,
-            selectSqlString: (applyFilter? builder(s).where(s(applyFilter)): builder(s) ),
+            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder(s).toQueryBuilder().where(s(applyFilter)): builder(s) ).toQueryBuilder().update(realFieldValues) : null,
+            selectSqlString: (applyFilter? builder(s).toQueryBuilder().where(s(applyFilter)): builder(s) ),
             entityData: data
         }
 
@@ -1521,7 +1522,7 @@ export class Database{
                 throw new Error('Unexpected Flow.')
             }
             let updateStmt = input.updateSqlString
-            let selectStmt = input.selectSqlString.select(entityClass.schema.primaryKey.fieldName)
+            let selectStmt = input.selectSqlString.toQueryBuilder().select(entityClass.schema.primaryKey.fieldName)
             
             let pks: number[] = []
             if (ormConfig.knexConfig.client.startsWith('pg')) {
@@ -1537,7 +1538,7 @@ export class Database{
                     let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
                     let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                     if(isDelete){
-                        await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
+                        await this.executeStatement( builder(s).toQueryBuilder().where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                     }
 
                     // {
@@ -1584,7 +1585,7 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( builder(s).toQueryBuilder().where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
                         return finalRecord
                         
@@ -1602,7 +1603,7 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[entityClass.schema.primaryKey.name]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( builder(s).where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( builder(s).toQueryBuilder().where( {[entityClass.schema.primaryKey.fieldName]: pkValue} ).del(), existingContext)
                         }
                         return finalRecord
                     } else {

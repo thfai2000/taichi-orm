@@ -15,6 +15,8 @@ declare module "knex" {
     export namespace Knex {
         interface QueryBuilder{
             toRow(): Row
+            toRaw(): Knex.Raw
+            toQueryBuilder(): Knex.QueryBuilder
         }
 
         interface Raw {
@@ -38,6 +40,7 @@ export interface Row {
     __realClone: Function //TODO: override the clone function
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
+    toRaw(): Knex.Raw
     toRow(): Row
     clone(): Row
     clearSelect(): Row
@@ -61,6 +64,7 @@ export interface Scalar<T = any> extends Knex.Raw {
     exists(): Scalar<BooleanType> 
     equals: (value: any) => Scalar<BooleanType>
     is(operator: string, value: any): Scalar<BooleanType> 
+    toRaw(): Knex.Raw
     toScalar(): Scalar<T>
     clone(): Scalar<T>
     asColumn(propName: string): Column<T>         //TODO: implement rename
@@ -230,6 +234,11 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     sealBuilder.toQueryBuilder = (): Knex.QueryBuilder => {
         return sealBuilder as unknown as Knex.QueryBuilder
     }
+
+    sealBuilder.toRaw = (): Knex.Raw => {
+        return makeRaw(sealBuilder.toQueryBuilder().toString())
+    }
+
     sealBuilder.toRow = (): Row => {
         return sealBuilder 
     }
@@ -258,7 +267,7 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeScalar = <T extends PropertyDefinition>(expression: Knex.QueryBuilder | Knex.Raw, definition: T | null = null): Scalar<T> => {
+export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw, definition: T | null = null): Scalar<T> => {
 
     let text = expression.toString().trim()
 
@@ -275,7 +284,7 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.QueryB
             throw new Error('Only Dataset can apply count')
         }
         let definition = new NumberType()
-        let expr = makeBuilder().toQueryBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`))
+        let expr = makeBuilder().toQueryBuilder().count().from(makeRaw(`(${expression.toString()}) AS ${quote(makeid(5))}`)).toRaw()
 
         return makeScalar<NumberType>(expr, definition)
     }

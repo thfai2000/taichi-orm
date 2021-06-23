@@ -414,10 +414,6 @@ export class ArrayOfType<I = any> extends PropertyDefinition<I[]>{
         return this.type.computeFunc
     }
 
-    // get mutationFunc() {
-    //     return this.type.mutationFunc
-    // }
-
     get transformIntoMultipleRows(){
         return false
     }
