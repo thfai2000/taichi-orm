@@ -71,6 +71,7 @@ afterEach(() => {
 // })
 
 describe('Basic Read and Write', () => {
+
   test('Create and Find Shop', async () => {
 
     let expectedShop1 = {
@@ -124,16 +125,16 @@ describe('Basic Read and Write', () => {
 
     expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
-    let foundShop1ById = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: shop1.id})))
-    let foundShop1ByLocation = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({location: expectedShop1.location})))
+    let foundShop1ById = await models.Shop.findOne((stmt, s) => stmt.filter({id: shop1.id}))
+    let foundShop1ByLocation = await models.Shop.findOne((stmt, s) => stmt.filter({location: expectedShop1.location}))
 
     expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
     expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
-    let foundShop2ById = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: shop2.id})))
+    let foundShop2ById = await models.Shop.findOne((stmt, s) => stmt.filter({id: shop2.id}))
     expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
-    let foundShopNotExists = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s({id: 100000})))
+    let foundShopNotExists = await models.Shop.findOne((stmt, s) => stmt.filter({id: 100000}))
     expect(foundShopNotExists).toBeNull()
 
     let foundAllShop = await models.Shop.find()

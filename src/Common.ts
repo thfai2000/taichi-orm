@@ -5,20 +5,20 @@ import { NotContain } from "./Operator"
 export const ComputeFn = {
     // (SQL template) create a basic belongsTo prepared statement 
     relatedFrom: (entityClass: string, propName: string, customFilter?: QueryFunction): ComputeFunction => {
-        return function relatedFromFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext, applyFilter: ApplyNextQueryFunction){
+        return function relatedFromFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext){
             let relatedSelector = context.models[entityClass].selector()
             let stmt = makeBuilder(relatedSelector).toQueryBuilder().whereRaw("?? = ??", [rootSelector.pk, relatedSelector._[propName] ]).toRow()
 
             if(!customFilter){
-                return applyFilter(stmt, relatedSelector)
+                return stmt
             } else{
-                return applyFilter(customFilter(stmt, relatedSelector), relatedSelector)
+                return customFilter(stmt, relatedSelector)
             }
         }
     },
 
     relatesThrough: (entityClass: string, throughEntity: string, throughPropNameAsRelated: string, throughPropNameAsTarget: string, customFilter?: QueryFunction): ComputeFunction => {
-        return function relatesThroughFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext, applyFilter: ApplyNextQueryFunction){
+        return function relatesThroughFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext){
             let relatedSelector = context.models[entityClass].selector()
             let throughSelector = context.models[throughEntity].selector()
 
@@ -36,22 +36,22 @@ export const ComputeFn = {
                 ).toQueryBuilder().whereRaw("?? = ??", [rootSelector.pk, throughSelector._[throughPropNameAsTarget]]).toRow()
 
             if(!customFilter){
-                return applyFilter(stmt, relatedSelector, throughSelector)
+                return stmt
             } else{
-                return applyFilter(customFilter(stmt, relatedSelector, throughSelector), relatedSelector, throughSelector)
+                return customFilter(stmt, relatedSelector, throughSelector)
             }
         }
     },
 
     relatesTo: (entityClass: string, propName: string, customFilter?: QueryFunction): ComputeFunction => {
-        return function relatesToFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext, applyFilter: ApplyNextQueryFunction){
+        return function relatesToFn(rootSelector: Selector, args: ComputeArguments, context: ExecutionContext){
             let relatedSelector = context.models[entityClass].selector()
             let stmt = makeBuilder(relatedSelector).toQueryBuilder().whereRaw("?? = ??", [relatedSelector.pk, rootSelector._[propName] ]).toRow()
 
             if(!customFilter){
-                return applyFilter(stmt, relatedSelector)
+                return stmt
             } else{
-                return applyFilter(customFilter(stmt, relatedSelector), relatedSelector)
+                return customFilter(stmt, relatedSelector)
             }
         }
     }

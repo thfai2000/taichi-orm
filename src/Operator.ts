@@ -1,14 +1,15 @@
 import {Scalar, isScalar, makeScalar, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { Selector, SimpleObject, thenResult, thenResultArray } from '.'
+import { Expression, ExpressionResolver, Selector, SimpleObject, thenResult, thenResultArray } from '.'
 import { BooleanType } from './PropertyType'
 
-abstract class ConditionOperator {
+
+export abstract class ConditionOperator {
     abstract toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>
 }
 
-abstract class ValueOperator {
+export abstract class ValueOperator {
     abstract toRaw(leftOperand: Scalar ): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(leftOperand: Scalar ): Scalar | Promise<Scalar>
 }
@@ -210,11 +211,6 @@ class IsNotNullOperator extends ValueOperator {
 //TODO: GreaterThanOrEqual
 //TODO: LessThanOrEqual
 
-export type ExpressionResolver = (value: Expression) => Promise<Scalar> | Scalar
-export type SelectorFunction = (selector: Selector) => Scalar
-export type PropertyValue = null|number|string|boolean|Date|ValueOperator
-export type PropertyKeyValues = {[key:string]: PropertyValue | PropertyValue[]}
-export type Expression = ConditionOperator | Scalar | Promise<Scalar> | PropertyKeyValues | SelectorFunction | Array<Expression> | boolean
 
 const And = (...condition: Array<Expression> ) => new AndOperator(...condition)
 const Or = (...condition: Array<Expression>) => new OrOperator(...condition)
@@ -228,4 +224,4 @@ const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
 const IsNull = () => new IsNullOperator()
 const IsNotNull = () => new IsNotNullOperator()
 
-export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator, ValueOperator, ConditionOperator}
+export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator}

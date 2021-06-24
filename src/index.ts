@@ -7,7 +7,7 @@ export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, Equal, ValueOperator, Contain, Expression, ExpressionResolver, IsNull, NotOperator, ConditionOperator, SelectorFunction} from './Operator'
+import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -683,7 +683,7 @@ export class SelectorImpl{
         if(this.schema.tableName.length === 0){
             throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
         }
-        return makeSource(null, this.interface!)
+        return makeSource(null, null, this.interface!)
     }
 
     get all(): Column[] {
@@ -780,7 +780,7 @@ export class SelectorImpl{
         }
     }
 
-    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): (Scalar<any> | Row) | Promise<Scalar<any> | Row> {
+    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): ScalarOrRow | Promise<ScalarOrRow> {
         const rootSelector: SelectorImpl = this
         if(!prop.definition.computeFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
@@ -791,7 +791,9 @@ export class SelectorImpl{
             args = casted.args ?? args
         }
         const computeFunc = prop.definition.computeFunc
-        const applyFilterFunc: ApplyNextQueryFunction = (stmt, firstSelector: Selector, ...restSelectors: Selector[]) => {
+        const applyFilterFunc: ApplyNextQueryFunction = (stmt) => {
+            const selectors: Selector[] = stmt.getInvolvedSelectors()
+
             let process = (stmt: Row) => {
 
                 // If the function object placed into the Knex.QueryBuilder, 
@@ -813,20 +815,15 @@ export class SelectorImpl{
                     }
                     if(queryOptions instanceof Function){
                         let queryFunction = queryOptions as QueryFunction
-                        return queryFunction(stmt, firstSelector, ...restSelectors)
+                        return queryFunction(stmt, ...selectors)
                     } else if(queryOptions instanceof SimpleObjectClass){
                         // Mix usage of Object and function
                         // combine the sql statement
                         let queryObject = queryOptions as QueryObject
-                        let result = simpleQuery(stmt, firstSelector, queryObject)
+                        let result = simpleQuery(stmt, selectors[0], queryObject)
                         if(queryObject.fn){
                             let queryFunction = queryObject.fn
-                            // if(result instanceof Promise){
-                            //     return result.then(value => queryFunction(value, firstSelector, ...restSelectors) )
-                            // } else {
-                            //     return queryFunction(result, firstSelector, ...restSelectors)
-                            // }
-                            return thenResult(result, value => queryFunction(value, firstSelector, ...restSelectors) )
+                            return thenResult(result, value => queryFunction(value, ...selectors) )
                         }
                         return result
                     }
@@ -847,12 +844,6 @@ export class SelectorImpl{
                 console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
                 throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
             }
-        
-            // if(isRow(subquery)){
-            //     return subquery as unknown as Row
-            // }else if(isScalar(subquery)){
-            //     return subquery as Scalar
-            // }
             if(!isRow(subquery) && !isScalar(subquery)){
                 throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
             }
@@ -860,13 +851,27 @@ export class SelectorImpl{
             return subquery
         }
 
-        let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext, applyFilterFunc)
+        let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext)
 
-        return thenResult(subquery, subquery => validate(subquery) )
+        return thenResult(subquery, subquery => {
+            subquery = validate(subquery) 
+            if(isRow(subquery)){
+                const row = subquery as Row
+                return applyFilterFunc(row)
+            }
+            return subquery
+        })
     }
 }
 
-export type EntityPropertyKeyValues = {
+export type ExpressionResolver = (value: Expression) => Promise<ScalarOrRow> | ScalarOrRow
+export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
+export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
+export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]}
+export type Expression = ConditionOperator | ScalarOrRow | Promise<ScalarOrRow> | QueryEntityPropertyKeyValues | ExpressionSelectorFunction | Array<Expression> | boolean
+
+
+export type MutationEntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
 
@@ -896,7 +901,7 @@ export type QueryObject = {
 
 export type ScalarOrRow = Scalar | Row
 
-export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext, applyNextQueryFunction: ApplyNextQueryFunction) => ScalarOrRow | Promise<ScalarOrRow>
+export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext) => ScalarOrRow | Promise<ScalarOrRow>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => Column
 
@@ -906,7 +911,7 @@ export type QueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promi
 
 export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryWhere, Function> | null
 
-export type ApplyNextQueryFunction = (stmt: Row | Promise<Row>, ...selectors: Selector[]) => Row | Promise<Row>
+export type ApplyNextQueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
 
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions = {
@@ -1116,6 +1121,67 @@ export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
     }
 }
 
+export function makeExpressionResolver( getSelectorFunc: () => SelectorImpl[] ){
+
+    // console.log('aaaaaa', getSelectorFunc())
+    
+    const resolveExpression: ExpressionResolver = function(value: Expression) {
+        if (value === true || value === false) {
+            return makeScalar(makeRaw('?', [value]), Types.Boolean())
+        } else if(value instanceof ConditionOperator){
+            return value.toScalar(resolveExpression)
+        } else if(Array.isArray(value)){
+            return resolveExpression(Or(...value))
+        } else if(value instanceof Function) {
+            const casted = value as ExpressionSelectorFunction
+            return casted(...(getSelectorFunc() ).map(s => s.interface!))
+        } else if(isScalar(value) || isRow(value)){
+            return value as Knex.QueryBuilder
+        } else if(value instanceof SimpleObjectClass){
+            const firstSelector = getSelectorFunc()[0]
+            let dict = value as SimpleObject
+            let sqls = Object.keys(dict).reduce( (accSqls, key) => {
+                let prop = firstSelector.getProperties().find((prop) => prop.name === key)
+                if(!prop){
+                    throw new Error(`cannot found property '${key}'`)
+                }
+
+                let operator: ValueOperator
+                if(dict[key] instanceof ValueOperator){
+                    operator = dict[key]
+                }else if( Array.isArray(dict[key]) ){
+                    operator = Contain(...dict[key])
+                } else if(dict[key] === null){
+                    operator = IsNull()
+                } else {
+                    operator = Equal(dict[key])
+                }
+
+                if(!prop.definition.computeFunc){
+                    let converted = firstSelector.getNormalCompiled(key)
+                    accSqls.push( operator.toScalar(converted) )
+                } else {
+                    let compiled = (firstSelector.getComputedCompiledPromise(key))()
+                    // if(compiled instanceof Promise){
+                    //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
+                    // } else {
+                    //     accSqls.push( operator.toRaw(compiled) )
+                    // }
+                    accSqls.push( thenResult(compiled, col => operator.toScalar(col)) )
+                }
+
+                return accSqls
+
+            }, [] as Array<Promise<Scalar> | Scalar> )
+            return resolveExpression(And(...sqls))
+        } else {
+            throw new Error('Unsupport Where clause')
+        }
+    }
+    return resolveExpression
+}
+
+
 export class Database{
     
     /**
@@ -1127,58 +1193,7 @@ export class Database{
         let selectorImpl = new SelectorImpl(entityClass, schemas[entityClass.name], existingContext?? globalContext)
         // let entityClass = this
 
-        let resolveExpression: ExpressionResolver = function(value: Expression): Promise<Scalar> | Scalar {
-            if (value === true || value === false) {
-                return makeScalar(makeRaw('?', [value]), Types.Boolean())
-            } else if(value instanceof ConditionOperator){
-                return value.toScalar(resolveExpression)
-            } else if(Array.isArray(value)){
-                return resolveExpression(Or(...value))
-            } else if(value instanceof Function) {
-                const casted = value as SelectorFunction
-                return casted(selectorImpl.interface!)
-            } else if(isScalar(value) || isRow(value)){
-                return value as Knex.QueryBuilder
-            } else if(value instanceof SimpleObjectClass){
-                let dict = value as SimpleObject
-                let sqls = Object.keys(dict).reduce( (accSqls, key) => {
-                    let prop = selectorImpl.getProperties().find((prop) => prop.name === key)
-                    if(!prop){
-                        throw new Error(`cannot found property '${key}'`)
-                    }
-
-                    let operator: ValueOperator
-                    if(dict[key] instanceof ValueOperator){
-                        operator = dict[key]
-                    }else if( Array.isArray(dict[key]) ){
-                        operator = Contain(...dict[key])
-                    } else if(dict[key] === null){
-                        operator = IsNull()
-                    } else {
-                        operator = Equal(dict[key])
-                    }
-
-                    if(!prop.definition.computeFunc){
-                        let converted = selectorImpl.getNormalCompiled(key)
-                        accSqls.push( operator.toScalar(converted) )
-                    } else {
-                        let compiled = (selectorImpl.getComputedCompiledPromise(key))()
-                        // if(compiled instanceof Promise){
-                        //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
-                        // } else {
-                        //     accSqls.push( operator.toRaw(compiled) )
-                        // }
-                        accSqls.push( thenResult(compiled, col => operator.toScalar(col)) )
-                    }
-
-                    return accSqls
-
-                }, [] as Array<Promise<Scalar> | Scalar> )
-                return resolveExpression(And(...sqls))
-            } else {
-                throw new Error('Unsupport Where clause')
-            }
-        }
+        let resolveExpression: ExpressionResolver = makeExpressionResolver( () => [selectorImpl])
         
         let selector = resolveExpression as Selector
 
@@ -1210,16 +1225,19 @@ export class Database{
                 if(sKey in selectorImpl){
                     return selectorImpl[sKey.toString()]
                 }
+                if(sKey === 'impl'){
+                    return selectorImpl
+                }
                 else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
             }
         })
 
         selectorImpl.interface = selector
-        selector.impl = selectorImpl
+        // selector.impl = selectorImpl
         return selector
     }
 
-    static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T> >{
+    static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T> >{
         return new DatabaseMutationRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1232,7 +1250,7 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: EntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[] >{
+    static createEach<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[] >{
         return new DatabaseMutationRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -1246,7 +1264,7 @@ export class Database{
             })
     }
 
-    private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: EntityPropertyKeyValues[]) {
+    private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: MutationEntityPropertyKeyValues[]) {
         const schema = entityClass.schema
         const actionName = 'create'
         
@@ -1329,7 +1347,7 @@ export class Database{
         return fns
     }
 
-    private static async _prepareNewData(data: EntityPropertyKeyValues, schema: Schema, actionName: MutationName, context: ExecutionContext) {
+    private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: Schema, actionName: MutationName, context: ExecutionContext) {
         
         let propValues = Object.keys(data).reduce(( propValues, propName) => {
             let foundProp = schema.namedProperties.find(p => {
@@ -1342,7 +1360,7 @@ export class Database{
             const propertyValue = prop.definition.parseProperty(data[prop.name], prop, context)
             propValues[prop.name] = propertyValue
             return propValues
-        }, {} as EntityPropertyKeyValues)
+        }, {} as MutationEntityPropertyKeyValues)
 
         let hooks1 = schema.hooks.filter(h => h.name === 'beforeMutation' && h.propName && Object.keys(propValues).includes(h.propName) )
         let hooks2 = schema.hooks.filter(h => h.name === 'beforeMutation' && !h.propName )
@@ -1386,7 +1404,7 @@ export class Database{
         record: InstanceType<T>, 
         schema: Schema,
         actionName: MutationName,
-        inputProps: EntityPropertyKeyValues, 
+        inputProps: MutationEntityPropertyKeyValues, 
         context: ExecutionContext): Promise<InstanceType<T>> {
 
         Object.keys(inputProps).forEach( key => {
@@ -1467,10 +1485,11 @@ export class Database{
             'data',
             Types.ArrayOf(Types.ObjectOf(
                 entityClass.name, {
-                    compute: (root, {}, context, applyFilter) => {
+                    compute: (root, {}, context) => {
                         let currentEntitySelector = entityClass.selector()
                         let stmt = builder(currentEntitySelector)
-                        return applyFilter(stmt, currentEntitySelector)
+                        return stmt
+                        // return applyFilter(stmt, currentEntitySelector)
                     }
                 }
             ))
@@ -1501,7 +1520,7 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
         return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1511,7 +1530,7 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
         return new DatabaseMutationRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1521,7 +1540,7 @@ export class Database{
         )
     }
 
-    private static async _update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, data: EntityPropertyKeyValues,  
+    private static async _update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, data: MutationEntityPropertyKeyValues,  
         applyFilter: QueryWhere | null, 
         isOneOnly: boolean,
         isDelete: boolean,
@@ -1647,7 +1666,7 @@ export class Database{
         return fns.filter(notEmpty)
     }
 
-    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
         return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1657,7 +1676,7 @@ export class Database{
         )
     }
 
-    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
+    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
         return new DatabaseQueryRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1685,7 +1704,7 @@ export class Database{
         return result
     }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, row: EntityPropertyKeyValues): InstanceType<T>{
+    static parseRaw<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, row: MutationEntityPropertyKeyValues): InstanceType<T>{
         // let entityClass = (entityConstructor as unknown as typeof Entity)
         // let entityClass = this
         const context = existingContext ?? globalContext
@@ -1731,7 +1750,7 @@ export class Database{
         return entityInstance
     }
 
-    static extractRealField(schema: Schema, fieldValues: EntityPropertyKeyValues): any {
+    static extractRealField(schema: Schema, fieldValues: MutationEntityPropertyKeyValues): any {
         return Object.keys(fieldValues).reduce( (acc, key) => {
             let prop = schema.namedProperties.find(p => p.name === key)
             if(!prop){
@@ -1741,7 +1760,7 @@ export class Database{
                 acc[prop.fieldName] = fieldValues[key]
             }
             return acc
-        }, {} as EntityPropertyKeyValues)        
+        }, {} as MutationEntityPropertyKeyValues)        
     }
 }
 
@@ -1776,32 +1795,32 @@ export class Entity {
         return Database.selector(this, null)
     }
 
-    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: EntityPropertyKeyValues): I{
+    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: MutationEntityPropertyKeyValues): I{
         let r = Database.parseRaw(this, null, row)
         return r as I
     }
 
-    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: EntityPropertyKeyValues[]): DatabaseQueryRunner<I[]>{
+    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner<I[]>{
         return Database.createEach(this, null, arrayOfData)
     }
 
-    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues): DatabaseQueryRunner<I>{
+    static createOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues): DatabaseQueryRunner<I>{
         return Database.createOne(this, null, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
         return Database.updateOne(this, null, data, applyFilter)
     }
 
-    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
         return Database.update(this, null, data, applyFilter)
     }
 
-    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
+    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
         return Database.deleteOne(this, null, data, applyFilter)
     }
 
-    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: EntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
+    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
         return Database.delete(this, null, data, applyFilter)
     }
 

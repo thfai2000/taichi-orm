@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { metaFieldAlias, Entity, getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere, ScalarOrRow } from "."
+import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere, ScalarOrRow, ExpressionResolver, makeExpressionResolver } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
@@ -33,11 +33,15 @@ type SelectItem = {
 
 export interface Row {
     __type: 'Row'
-    __mainSelector?: Selector | null
+    // __mainSelector?: Selector | null
+    __expressionResolver: ExpressionResolver
     __selectItems: SelectItem[]
+    __fromSource: Source
     __realSelect: Function
     __realClearSelect: Function
     __realClone: Function //TODO: override the clone function
+    __realFrom: Function
+    getInvolvedSelectors(): Selector[]
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
     // toRaw(): Knex.Raw
@@ -74,6 +78,8 @@ export interface Source extends Knex.Raw {
     __type: 'Source'
     __selector: Selector
     __raw: string
+    __parentSource: Source | null
+    __realClone: Function
     innerJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
     leftJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
     rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
@@ -133,6 +139,8 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                 value: isScalar(item)? (item as unknown as Scalar).clone() : (isRow(item)? (item as unknown as Row).toQueryBuilder().clone(): item.toString() )
             }
         })
+        sealBuilder.__fromSource = cloneFrom.__fromSource
+
     } else {
         sealBuilder = getKnexInstance().clearSelect() as unknown as Row
         sealBuilder.__selectItems = []
@@ -142,7 +150,25 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
     sealBuilder.__type = 'Row'
     sealBuilder.__realSelect = sealBuilder.select
-    sealBuilder.__mainSelector = mainSelector
+    // sealBuilder.__mainSelector = mainSelector
+    sealBuilder.__expressionResolver = makeExpressionResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
+
+
+    sealBuilder.getInvolvedSelectors = () => {
+        //TODO: get the involved from Source
+        let s: Source | null = sealBuilder.__fromSource
+        let selectors = []
+        while(s){
+            if(s.__selector === undefined){
+                console.log('xxxxxxxxxx')
+            }
+
+            selectors.unshift(s.__selector)
+            s = s.__parentSource
+        }
+        return selectors
+    }
+
     // override the select methods
     sealBuilder.select = function(...args: any[]){
 
@@ -224,7 +250,6 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     }
 
     sealBuilder.extractColumns = (): string[] => {
-    
         // let ourBuilder = castAsRow(builderOrRaw)
         return sealBuilder.__selectItems.map(item => {
             return item.actualAlias
@@ -235,16 +260,22 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return sealBuilder as unknown as Knex.QueryBuilder
     }
 
-    // sealBuilder.toRaw = (): Knex.Raw => {
-    //     return makeRaw(sealBuilder.toQueryBuilder().toString())
-    // }
-
     sealBuilder.toRow = (): Row => {
         return sealBuilder 
     }
 
+    sealBuilder.__realFrom = sealBuilder.from
+    sealBuilder.from = (source: Source) => {
+        sealBuilder.__fromSource = source
+        sealBuilder.__realFrom(source)
+        return sealBuilder
+    }
+
     sealBuilder.filter = (queryWhere: QueryWhere): Row => {
-        //TODO: handler queryWhere
+        if(!sealBuilder.__fromSource){
+            throw new Error('There is no source declared before you carry out filter.')
+        }
+        sealBuilder.toQueryBuilder().where( sealBuilder.__expressionResolver(queryWhere))
         return sealBuilder
     }
 
@@ -330,7 +361,7 @@ export const makeColumn = <T = any>(alias: string, col: Scalar<T>) : Column<T> =
     return column
 }
 
-export const makeSource = (joinText: string | null, selector: Selector, ...items: Array<Column | string>): Source => {
+export const makeSource = (parentSource: Source | null, joinText: string | null, selector: Selector, ...items: Array<Column | string>): Source => {
     let t = `${quote(selector.executionContext.tablePrefix + selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
 
     joinText  = (joinText ?? '').trim()
@@ -341,21 +372,33 @@ export const makeSource = (joinText: string | null, selector: Selector, ...items
     target.__type = 'Source'
     target.__selector = selector
     target.__raw = raw
+    target.__parentSource = parentSource
     
     target.innerJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(`${target.__raw} INNER JOIN`, source.__selector, ...items)
+        let s = makeSource(target, `${target.__raw} INNER JOIN`, source.__selector, ...items)
         return s
     }
 
     target.leftJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(`${target.__raw} LEFT JOIN`, source.__selector, ...items)
+        let s = makeSource(target, `${target.__raw} LEFT JOIN`, source.__selector, ...items)
         return s
     }
 
     target.rightJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(`${target.__raw} RIGHT JOIN`, source.__selector, ...items)
+        let s = makeSource(target, `${target.__raw} RIGHT JOIN`, source.__selector, ...items)
         return s
     }
+
+    target.__realClone = target.clone
+    target.clone = () => {
+        let newT = makeRaw(raw) as Source
+        newT.__type = 'Source'
+        newT.__selector = target.__selector
+        newT.__raw = target.__raw
+        newT.__parentSource = target.__parentSource
+        return newT
+    }
+
     return target
 }
 
