@@ -160,23 +160,23 @@ const initializeDatabase = async () => {
         }
     })
 
-    await Promise.all(shopData.map( async(d) => {
-      return await models.Shop.createOne(d)
-    }))
+    // await Promise.all(shopData.map( async(d) => {
+    //   return await models.Shop.createOne(d)
+    // }))
 
     
-    await Promise.all(productData.map( async(d) => {
-      return await models.Product.createOne(d)
-    }))
+    // await Promise.all(productData.map( async(d) => {
+    //   return await models.Product.createOne(d)
+    // }))
 
 
-    await Promise.all(colorData.map( async(d) => {
-      return await models.Color.createOne(d)
-    }))
+    // await Promise.all(colorData.map( async(d) => {
+    //   return await models.Color.createOne(d)
+    // }))
 
-    await Promise.all(productColorData.map( async(d) => {
-      return await models.ProductColor.createOne(d)
-    }))
+    // await Promise.all(productColorData.map( async(d) => {
+    //   return await models.ProductColor.createOne(d)
+    // }))
 }
 
 const clearDatabase = () => {
@@ -203,10 +203,14 @@ describe('Select - Simple Query', () => {
   })
 
 
-  test('Query by object filter + select computed fields', async () => {
+  test.only('Query by object filter + select computed fields', async () => {
     let id = 2
+    console.log('xxxxxxxxxxxxx')
     let record = await models.Shop.findOne({
       select: ['products', 'productCount', 'hasProductsAsync'],
+      // select: {
+      //   'products': true, 'productCount': true, 'hasProductsAsync':true
+      // },
       where: {id}
     })
 
@@ -318,34 +322,34 @@ describe('Select - Custom Computed Fields', () => {
 
 describe('Select - Mixed Query', () => {
 
-  test("Standard", async() => {
-    const time = '2020-01-01 12:20:01'
+  // test("Standard", async() => {
+  //   const time = '2020-01-01 12:20:01'
 
-    let records = await models.Shop.find({
-      select: {
-        'productCount': true, 
-        'products': {select: ['colors']} , 
-        'currentTime': Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
-      },
-    })
+  //   let records = await models.Shop.find({
+  //     select: {
+  //       'productCount': true, 
+  //       'products': {select: ['colors']} , 
+  //       'currentTime': Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
+  //     },
+  //   })
 
-    expect(records).toEqual( expect.arrayContaining(
-      shopData.map( shop => expect.objectContaining({
-          ...shop,
-          products: expect.arrayContaining(
-            productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
-              ...p,
-              colors: expect.arrayContaining( productColorData.filter(pc => pc.productId === p.id)
-                .map( pc => expect.objectContaining( colorData.find(c => c.id === pc.colorId))) )
-            }))
-          ),
-          productCount: productData.filter(p => p.shopId === shop.id).length,
-          currentTime: new Date(time)
-        })
-      )
-    ))
+  //   expect(records).toEqual( expect.arrayContaining(
+  //     shopData.map( shop => expect.objectContaining({
+  //         ...shop,
+  //         products: expect.arrayContaining(
+  //           productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
+  //             ...p,
+  //             colors: expect.arrayContaining( productColorData.filter(pc => pc.productId === p.id)
+  //               .map( pc => expect.objectContaining( colorData.find(c => c.id === pc.colorId))) )
+  //           }))
+  //         ),
+  //         productCount: productData.filter(p => p.shopId === shop.id).length,
+  //         currentTime: new Date(time)
+  //       })
+  //     )
+  //   ))
 
-  })
+  // })
 
   test('Query computed field', async () => {
 

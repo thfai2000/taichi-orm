@@ -1,12 +1,12 @@
 import {Scalar, isScalar, makeScalar, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { Expression, ExpressionResolver, Selector, SimpleObject, thenResult, thenResultArray } from '.'
+import { Expression, QueryFilterResolver, Selector, SimpleObject, thenResult, thenResultArray } from '.'
 import { BooleanType } from './PropertyType'
 
 
 export abstract class ConditionOperator {
-    abstract toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>
+    abstract toRaw(resolver: QueryFilterResolver): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(resolver: QueryFilterResolver): Scalar | Promise<Scalar>
 }
 
 export abstract class ValueOperator {
@@ -20,12 +20,12 @@ class AndOperator extends ConditionOperator{
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+    toRaw(resolver: QueryFilterResolver): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<Expression>) => raw( 
             args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
     }
-    toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
+    toScalar(resolver: QueryFilterResolver): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
@@ -37,12 +37,12 @@ class OrOperator extends ConditionOperator{
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver): Knex.Raw | Promise<Knex.Raw>{
+    toRaw(resolver: QueryFilterResolver): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<Expression>) => raw(
             `(${args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
     }
-    toScalar(resolver: ExpressionResolver): Scalar | Promise<Scalar>{
+    toScalar(resolver: QueryFilterResolver): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
     }
@@ -55,11 +55,11 @@ class NotOperator extends ConditionOperator{
         this.arg = arg
     }
 
-    toRaw(resolver: ExpressionResolver){
+    toRaw(resolver: QueryFilterResolver){
         return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
     }
     
-    toScalar(resolver: ExpressionResolver){
+    toScalar(resolver: QueryFilterResolver){
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
     }

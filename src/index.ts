@@ -2,7 +2,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
-import {makeBuilder as builder, isRow, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Row, makeRaw} from './Builder'
+import {makeBuilder as builder, isRow, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Row, makeRaw, isColumn} from './Builder'
 export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
@@ -337,105 +337,26 @@ const simpleQuery = (row: Row, selector: Selector, queryOptions: QueryObject) =>
         isOnlyWhere = false
     }
 
-    let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder>
-
-    let select: {[key:string]: boolean | QueryOptions | PropertyDefinition}
-    if(queryOptions.select instanceof Array){
-        select = queryOptions.select.reduce( (acc, key)=> {
-            acc[key] = true
-            return acc
-        },{} as {[key:string]: boolean | QueryOptions | PropertyDefinition} )
-    }else {
-        select = queryOptions.select ?? {}
+    let stmtOrPromise: Row | Promise<Row> = stmt
+    if (queryOptions.select){
+        stmtOrPromise = makeQuerySelectResolver(() => [selector.impl])(queryOptions.select, row)
     }
-
-    if (select && Object.keys(select).length > 0) {
-
-        let removeNormalPropNames = Object.keys(select).map( (key: string) => {
-            const item = select[key]
-            if (item === false) {
-                let prop = selector.schema.namedProperties.find(p => p.name === key)
-                if(!prop){
-                    throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
-                } else {
-                    if(!prop.definition.computeFunc){
-                        return prop.name
-                    }
-                }
-            }
-            return null
-        }).filter(notEmpty)
-
-        if(removeNormalPropNames.length > 0){
-            const shouldIncludes = selector.schema.namedProperties.filter(p => !removeNormalPropNames.includes( p.name) )
-            stmt = stmt.clearSelect().select(...shouldIncludes)
-        }
-
-        //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
-        let executedProps = Object.keys(select).map( (key: string) => {
-            const item = select[key]
-            if (item === true){
-                let prop = selector.schema.namedProperties.find(p => p.name === key)
-                if(!prop){
-                    throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
-                }
-                if(prop.definition.computeFunc){
-                    return selector.$$[prop.name]()
-                }
-            } else if (item instanceof SimpleObjectClass) {
-                let options = item as QueryOptions
-
-                let prop = selector.schema.namedProperties.find(p => p.name === key && p.definition.computeFunc)
-
-                if(!prop){
-                    if( options instanceof PropertyDefinition){
-                        selector.registerProp( new NamedProperty(key, options) )
-                        return selector.$$[key]()
-                    } else {
-                        throw new Error('Temp Property must be propertyDefinition')
-                    }
-                } else {
-                    if(!prop.definition.computeFunc){
-                        throw new Error('Only COmputeProperty allows QueryOptions')
-                    }
-                    return selector.$$[key](options)
-                }
-            }
-            return null
-        }).filter(notEmpty) 
-        
-        stmtOrPromise = stmt
-        // let props = selector.getProperties().map(p => p.computedFunc)
-        stmtOrPromise = executedProps.reduce((stmt, executed) => {
-            let result = executed
-            if(result instanceof Promise || stmt instanceof Promise){
-                return new Promise( async (resolve, reject) => {
-                    try{
-                        let c = (await result) as Column
-                        let builder = await stmt
-                        builder.select(c)
-                        resolve(builder)
-                    }catch(error){
-                        reject(error)
-                    }
-                })
-            } else {
-                return stmt.select(result)
-            }
-        }, stmtOrPromise)
-    } else {
-        stmtOrPromise = stmt
-    }
-
+    let whereOption: QueryFilter | null = null
     if(queryOptions.where){
-        const where = queryOptions.where
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(where)) )
+        whereOption = queryOptions.where
         isOnlyWhere = false
     }
     if(isOnlyWhere){
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => stmt.where(selector(queryOptions as QueryWhere)) )
+        whereOption = queryOptions as QueryFilter
     }
-    return thenResult(stmtOrPromise, stmt => stmt.toRow())
+    if(whereOption){
+        const resolved = makeQueryFilterResolver(() => [selector.impl])(whereOption)
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
+            stmt.toQueryBuilder().where(r).toRow()
+            return stmt
+        }))
+    }
+    return stmtOrPromise
 }
 
 export const configure = async function(newConfig: Partial<ORMConfig>){
@@ -550,8 +471,8 @@ export const breakdownMetaFieldAlias = function(metaAlias: string){
     }
 }
 
-export interface Selector extends ExpressionResolver {
-    (value: QueryWhere): Promise<Scalar> | Scalar
+export interface Selector extends QueryFilterResolver {
+    (value: QueryFilter): Promise<Scalar> | Scalar
     impl: SelectorImpl
     readonly entityClass: typeof Entity
     readonly executionContext: ExecutionContext
@@ -775,8 +696,12 @@ export class SelectorImpl{
                 }
                 throw new Error('Unexpected')
             }
-
-            return thenResult(subquery, query => process(query))
+            const result =  thenResult(subquery, query => {
+                let p = process(query)
+                console.log('aaaaaaa 6', prop.name)
+                return p
+            })
+            return result
         }
     }
 
@@ -852,8 +777,7 @@ export class SelectorImpl{
         }
 
         let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext)
-
-        return thenResult(subquery, subquery => {
+        let result = thenResult(subquery, subquery => {
             subquery = validate(subquery) 
             if(isRow(subquery)){
                 const row = subquery as Row
@@ -861,23 +785,24 @@ export class SelectorImpl{
             }
             return subquery
         })
+        return result
     }
 }
 
-export type ExpressionResolver = (value: Expression) => Promise<ScalarOrRow> | ScalarOrRow
-export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
+export type QueryFilterResolver = (value: QueryFilter) => Promise<Scalar> | Scalar
+// export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
 export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]}
-export type Expression = ConditionOperator | ScalarOrRow | Promise<ScalarOrRow> | QueryEntityPropertyKeyValues | ExpressionSelectorFunction | Array<Expression> | boolean
+export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues | Array<Expression> | boolean
 
 
 export type MutationEntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
 
-export type QuerySelect = {[key:string]: boolean | QueryOptions | PropertyDefinition} | string[]
+export type QuerySelect = { [key: string]: boolean | QueryOptions | Scalar } | Array<string | Column> 
 
-export type QueryWhere = Expression
+export type QueryFilter = Expression
 
 export type QueryOrderBy = (string | {column: string, order: 'asc' | 'desc'} )[]
 
@@ -891,7 +816,7 @@ export class FutureArgument<Input = any, Output = any>{
 
 export type QueryObject = {
     select?: QuerySelect,
-    where?: QueryWhere,
+    where?: QueryFilter,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
@@ -909,7 +834,7 @@ export type CompiledComputeFunctionPromise = (queryObject?: QueryOptions) => Pro
 
 export type QueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
 
-export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryWhere, Function> | null
+export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryFilter, Function> | null
 
 export type ApplyNextQueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
 
@@ -1096,7 +1021,6 @@ class DatabaseActionRunnerBase<I> implements PromiseLike<I>{
 
 export class DatabaseQueryRunner<I> extends DatabaseActionRunnerBase<I> {
 
-
     async failIfNone<T>(){
         this.options = {
             ...this.options,
@@ -1121,22 +1045,125 @@ export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
     }
 }
 
-export function makeExpressionResolver( getSelectorFunc: () => SelectorImpl[] ){
+export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
+
+    return function querySelectResolver(querySelect: QuerySelect, row: Row) {
+        let selector = getSelectorFunc()[0]
+        let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
+        let allColumns: Array<Column | Promise<Column>> = []
+        if(querySelect && !Array.isArray(querySelect)){
+            let select = querySelect
+            if (select && Object.keys(select).length > 0) {
+
+                let removeNormalPropNames = Object.keys(select).map((key: string) => {
+                    const item = select[key]
+                    if (item === false) {
+                        let prop = selector.schema.namedProperties.find(p => p.name === key)
+                        if (!prop) {
+                            throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
+                        } else {
+                            if (!prop.definition.computeFunc) {
+                                return prop.name
+                            }
+                        }
+                    }
+                    return null
+                }).filter(notEmpty)
+
+                if (removeNormalPropNames.length > 0) {
+                    const shouldIncludes = selector.schema.namedProperties.filter(p => !removeNormalPropNames.includes(p.name))
+                    stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
+                }
+
+                //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
+                let executedProps = Object.keys(select).map((key: string) => {
+                    const item = select[key]
+                    if (item === true) {
+                        let prop = selector.schema.namedProperties.find(p => p.name === key)
+                        if (!prop) {
+                            throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
+                        }
+                        if (prop.definition.computeFunc) {
+                            return selector.$$[prop.name]()
+                        }
+                    } else if (item instanceof SimpleObjectClass) {
+                        let options = item as QueryOptions
+
+                        let prop = selector.schema.namedProperties.find(p => p.name === key && p.definition.computeFunc)
+
+                        if (!prop) {
+                            // if (options instanceof PropertyDefinition) {
+                            //     selector.registerProp(new NamedProperty(key, options))
+                            //     return selector.$$[key]()
+                            // } else {
+                            //     throw new Error('Temp Property must be propertyDefinition')
+                            // }
+                            throw new Error(`Cannot find Property ${key}`)
+                        } else {
+                            if (!prop.definition.computeFunc) {
+                                throw new Error('Only COmputeProperty allows QueryOptions')
+                            }
+                            return selector.$$[key](options)
+                        }
+                    } else if (isScalar(item)){
+                        let scalar = item as Scalar
+                        return scalar.asColumn(key)
+                    }
+                    return null
+                }).filter(notEmpty)
+                allColumns.push(...executedProps)
+            }
+        } else if (querySelect && querySelect instanceof Array) {
+            let select = querySelect
+
+            let props = select.map(s => {
+                if( isColumn(s)){
+                    return s  as Column
+                } else if( typeof s === 'string'){
+                    let prop = selector.schema.namedProperties.find(p => p.name === s)
+                    if (!prop) {
+                        throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
+                    }
+                    if (prop.definition.computeFunc) {
+                        return selector.$$[prop.name]()
+                    } else {
+                        return selector._[prop.name]
+                    }
+                }
+                throw new Error('Unexpected type')
+            })
+
+            allColumns.push(...props)
+        }
+        
+        stmtOrPromise = thenResultArray(allColumns, columns => {
+            return columns.reduce((stmt, column) => {
+                return thenResult(stmt, stmt => stmt.select(column))
+            }, stmtOrPromise)
+        })        
+        return thenResult(stmtOrPromise, stmt => stmt.toRow())
+    }
+}
+
+
+export function makeQueryFilterResolver( getSelectorFunc: () => SelectorImpl[] ){
 
     // console.log('aaaaaa', getSelectorFunc())
     
-    const resolveExpression: ExpressionResolver = function(value: Expression) {
+    const resolveExpression: QueryFilterResolver = function(value: Expression) {
         if (value === true || value === false) {
             return makeScalar(makeRaw('?', [value]), Types.Boolean())
         } else if(value instanceof ConditionOperator){
             return value.toScalar(resolveExpression)
         } else if(Array.isArray(value)){
             return resolveExpression(Or(...value))
-        } else if(value instanceof Function) {
-            const casted = value as ExpressionSelectorFunction
-            return casted(...(getSelectorFunc() ).map(s => s.interface!))
-        } else if(isScalar(value) || isRow(value)){
-            return value as Knex.QueryBuilder
+        // } else if(value instanceof Function) {
+        //     const casted = value as ExpressionSelectorFunction
+        //     return casted(...(getSelectorFunc() ).map(s => s.interface!))
+        } else if(isScalar(value)){
+            return value as Scalar
+        } else if (isRow(value)) {
+            throw new Error('Unsupport')
         } else if(value instanceof SimpleObjectClass){
             const firstSelector = getSelectorFunc()[0]
             let dict = value as SimpleObject
@@ -1181,7 +1208,6 @@ export function makeExpressionResolver( getSelectorFunc: () => SelectorImpl[] ){
     return resolveExpression
 }
 
-
 export class Database{
     
     /**
@@ -1193,7 +1219,7 @@ export class Database{
         let selectorImpl = new SelectorImpl(entityClass, schemas[entityClass.name], existingContext?? globalContext)
         // let entityClass = this
 
-        let resolveExpression: ExpressionResolver = makeExpressionResolver( () => [selectorImpl])
+        let resolveExpression: QueryFilterResolver = makeQueryFilterResolver( () => [selectorImpl])
         
         let selector = resolveExpression as Selector
 
@@ -1495,12 +1521,15 @@ export class Database{
             ))
             
         )
+        console.log('aeeeeeeee 1')
         dualSelector.registerProp(prop)
-        let sqlString =  builder().select(await dualSelector.$$.data(applyFilter))
- 
-
+        console.log('aeeeeeeee 1.5')
+        let x = await dualSelector.$$.data(applyFilter)
+        console.log('aeeeeeeee 2', x)
+        let sqlString =  builder().select(await dualSelector.$$.data(applyFilter)) 
+        console.log('aeeeeeeee 3')
         // console.debug("========== FIND ================")
-        // console.debug(stmt.toString())
+        // console.debug(sqlString.toString())
         // console.debug("================================")
         let resultData: any = await Database.executeStatement(sqlString, existingContext)
 
@@ -1520,7 +1549,7 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+    static updateOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner< InstanceType<T> >{
         return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1530,7 +1559,7 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
+    static update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner< InstanceType<T>[] >{
         return new DatabaseMutationRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1541,7 +1570,7 @@ export class Database{
     }
 
     private static async _update<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, data: MutationEntityPropertyKeyValues,  
-        applyFilter: QueryWhere | null, 
+        applyFilter: QueryFilter | null, 
         isOneOnly: boolean,
         isDelete: boolean,
         actionOptions: Partial<DatabaseActionOptions> 
@@ -1666,7 +1695,7 @@ export class Database{
         return fns.filter(notEmpty)
     }
 
-    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T> >{
+    static deleteOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner< InstanceType<T> >{
         return new DatabaseQueryRunner< InstanceType<T> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1676,7 +1705,7 @@ export class Database{
         )
     }
 
-    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner< InstanceType<T>[] >{
+    static delete<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner< InstanceType<T>[] >{
         return new DatabaseQueryRunner< InstanceType<T>[] >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions> ) => {
@@ -1808,19 +1837,19 @@ export class Entity {
         return Database.createOne(this, null, data)
     }
 
-    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
+    static updateOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner<I>{
         return Database.updateOne(this, null, data, applyFilter)
     }
 
-    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
+    static update<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner<I[]>{
         return Database.update(this, null, data, applyFilter)
     }
 
-    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I>{
+    static deleteOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner<I>{
         return Database.deleteOne(this, null, data, applyFilter)
     }
 
-    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryWhere): DatabaseQueryRunner<I[]>{
+    static delete<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), data: MutationEntityPropertyKeyValues, applyFilter?: QueryFilter): DatabaseQueryRunner<I[]>{
         return Database.delete(this, null, data, applyFilter)
     }
 

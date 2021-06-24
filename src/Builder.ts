@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryWhere, ScalarOrRow, ExpressionResolver, makeExpressionResolver } from "."
+import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrRow, QueryFilterResolver, makeQueryFilterResolver } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
@@ -34,7 +34,7 @@ type SelectItem = {
 export interface Row {
     __type: 'Row'
     // __mainSelector?: Selector | null
-    __expressionResolver: ExpressionResolver
+    __expressionResolver: QueryFilterResolver
     __selectItems: SelectItem[]
     __fromSource: Source
     __realSelect: Function
@@ -49,7 +49,7 @@ export interface Row {
     clone(): Row
     clearSelect(): Row
     select(...cols: Column[]): Row
-    filter(queryWhere: QueryWhere): Row
+    filter(queryWhere: QueryFilter): Row
     from(source: Source): Row
 }
 
@@ -151,7 +151,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     sealBuilder.__type = 'Row'
     sealBuilder.__realSelect = sealBuilder.select
     // sealBuilder.__mainSelector = mainSelector
-    sealBuilder.__expressionResolver = makeExpressionResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
+    sealBuilder.__expressionResolver = makeQueryFilterResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
 
 
     sealBuilder.getInvolvedSelectors = () => {
@@ -271,7 +271,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return sealBuilder
     }
 
-    sealBuilder.filter = (queryWhere: QueryWhere): Row => {
+    sealBuilder.filter = (queryWhere: QueryFilter): Row => {
         if(!sealBuilder.__fromSource){
             throw new Error('There is no source declared before you carry out filter.')
         }
