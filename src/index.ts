@@ -15,14 +15,21 @@ function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
 
-export function thenResultArray<T, R>(value: Array<T | Promise<T>>, fn: (value: Array<T>) => (R | Promise<R>) ):  (R | Promise<R>) {
+export function thenResultArray<T, R>(
+    value: Array<T | Promise<T>>, 
+    fn: (value: Array<T>) => (R | Promise<R>),
+    errorFn?: (error: Error) => (R | Promise<R>)
+):  (R | Promise<R>) {
+    if(!Array.isArray(value)){
+        throw new Error('It is not an array')
+    }
     if(value.some(v => v instanceof Promise)){
-        return Promise.all(value).then(fn)
+        return Promise.all(value).then(fn, errorFn)
     }
     return fn(value as Array<T>)
 }
 
-export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>), errorFn?: (error: any) => (R | Promise<R>) ):  (R | Promise<R>) {
+export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>), errorFn?: (error: Error) => (R | Promise<R>) ):  (R | Promise<R>) {
     if(value instanceof Promise){
         return value.then(fn, errorFn)
     }
@@ -697,9 +704,7 @@ export class SelectorImpl{
                 throw new Error('Unexpected')
             }
             const result =  thenResult(subquery, query => {
-                let p = process(query)
-                console.log('aaaaaaa 6', prop.name)
-                return p
+                return process(query)
             })
             return result
         }
@@ -1117,7 +1122,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
             let select = querySelect
 
             let props = select.map(s => {
-                if( isColumn(s)){
+                if( isColumn(s)) {
                     return s  as Column
                 } else if( typeof s === 'string'){
                     let prop = selector.schema.namedProperties.find(p => p.name === s)
@@ -1135,13 +1140,16 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
 
             allColumns.push(...props)
         }
-        
-        stmtOrPromise = thenResultArray(allColumns, columns => {
+
+        // !important: must use a constant to reference the object before it is re-assigned
+        const prevStmt = stmtOrPromise
+        let stmtOrPromiseNext = thenResultArray(allColumns, columns => {
             return columns.reduce((stmt, column) => {
                 return thenResult(stmt, stmt => stmt.select(column))
-            }, stmtOrPromise)
-        })        
-        return thenResult(stmtOrPromise, stmt => stmt.toRow())
+            }, prevStmt)
+        })
+
+        return thenResult(stmtOrPromiseNext, stmt => stmt.toRow())
     }
 }
 
@@ -1521,13 +1529,9 @@ export class Database{
             ))
             
         )
-        console.log('aeeeeeeee 1')
+
         dualSelector.registerProp(prop)
-        console.log('aeeeeeeee 1.5')
-        let x = await dualSelector.$$.data(applyFilter)
-        console.log('aeeeeeeee 2', x)
-        let sqlString =  builder().select(await dualSelector.$$.data(applyFilter)) 
-        console.log('aeeeeeeee 3')
+        let sqlString =  builder().select(await dualSelector.$$.data(applyFilter))
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")

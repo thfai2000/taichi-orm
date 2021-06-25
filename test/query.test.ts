@@ -160,23 +160,23 @@ const initializeDatabase = async () => {
         }
     })
 
-    // await Promise.all(shopData.map( async(d) => {
-    //   return await models.Shop.createOne(d)
-    // }))
+    await Promise.all(shopData.map( async(d) => {
+      return await models.Shop.createOne(d)
+    }))
 
     
-    // await Promise.all(productData.map( async(d) => {
-    //   return await models.Product.createOne(d)
-    // }))
+    await Promise.all(productData.map( async(d) => {
+      return await models.Product.createOne(d)
+    }))
 
 
-    // await Promise.all(colorData.map( async(d) => {
-    //   return await models.Color.createOne(d)
-    // }))
+    await Promise.all(colorData.map( async(d) => {
+      return await models.Color.createOne(d)
+    }))
 
-    // await Promise.all(productColorData.map( async(d) => {
-    //   return await models.ProductColor.createOne(d)
-    // }))
+    await Promise.all(productColorData.map( async(d) => {
+      return await models.ProductColor.createOne(d)
+    }))
 }
 
 const clearDatabase = () => {
@@ -203,14 +203,10 @@ describe('Select - Simple Query', () => {
   })
 
 
-  test.only('Query by object filter + select computed fields', async () => {
+  test('Query by object filter + select computed fields', async () => {
     let id = 2
-    console.log('xxxxxxxxxxxxx')
     let record = await models.Shop.findOne({
       select: ['products', 'productCount', 'hasProductsAsync'],
-      // select: {
-      //   'products': true, 'productCount': true, 'hasProductsAsync':true
-      // },
       where: {id}
     })
 
