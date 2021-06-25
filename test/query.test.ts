@@ -207,7 +207,7 @@ describe('Select - Simple Query', () => {
     let id = 2
     let record = await models.Shop.findOne({
       select: ['products', 'productCount', 'hasProductsAsync'],
-      where: {id}
+      filter: {id}
     })
 
     expect(record).toEqual( expect.objectContaining({
@@ -454,7 +454,7 @@ describe('Where - Operators', () => {
   })
 
   test('Query by object filter - Not', async () => {
-    let records = await models.Shop.find({where: Not({
+    let records = await models.Shop.find({filter: Not({
       location: 'Tsuen Wan',
       name: 'Shop 4'
     })})
@@ -497,7 +497,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - Or Case', async () => {
     let id = 2, name = 'Shop 4'
     let records = await models.Shop.find({
-      where: Or(
+      filter: Or(
         {id},
         {name}
       )
@@ -508,7 +508,7 @@ describe('Where - Operators', () => {
     ))
 
     let records2 = await models.Shop.find({
-      where: [
+      filter: [
         {id},
         {name}
       ]
@@ -524,7 +524,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - And Case', async () => {
     let id = 2, name = 'Shop 4'
     let records = await models.Shop.find({
-      where: And(
+      filter: And(
         {id},
         {name}
       )
@@ -533,7 +533,7 @@ describe('Where - Operators', () => {
     expect(records).toHaveLength(0)
 
     let records2 = await models.Shop.find({
-      where: [
+      filter: [
         And({id: 2}, {name: 'Shop 2'}),
         And({id: 4}, {name: 'Shop 4'})
       ]

@@ -319,50 +319,58 @@ export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: Hook
 
 const simpleQuery = (row: Row, selector: Selector, queryOptions: QueryObject) => {
     let stmt = row.toQueryBuilder()
-    // let select: any[] = []
-    let isOnlyWhere = true
+
+    let isWholeFilter = true
 
     if(queryOptions.limit){
         stmt = stmt.limit(queryOptions.limit)
-        isOnlyWhere = false
+        isWholeFilter = false
     }
     if(queryOptions.offset){
         stmt = stmt.offset(queryOptions.offset)
-        isOnlyWhere = false
+        isWholeFilter = false
     }
     if(queryOptions.orderBy){
         stmt = stmt.orderBy(queryOptions.orderBy)
-        isOnlyWhere = false
+        isWholeFilter = false
     }
     if(queryOptions.select){
-        isOnlyWhere = false
+        isWholeFilter = false
     }
     if(queryOptions.args){
-        isOnlyWhere = false
+        isWholeFilter = false
     }
     if(queryOptions.fn){
-        isOnlyWhere = false
+        isWholeFilter = false
     }
 
     let stmtOrPromise: Row | Promise<Row> = stmt
     if (queryOptions.select){
         stmtOrPromise = makeQuerySelectResolver(() => [selector.impl])(queryOptions.select, row)
     }
-    let whereOption: QueryFilter | null = null
-    if(queryOptions.where){
-        whereOption = queryOptions.where
-        isOnlyWhere = false
+    let filterOption: QueryFilter | null = null
+    if(queryOptions.filter){
+        filterOption = queryOptions.filter
+        isWholeFilter = false
     }
-    if(isOnlyWhere){
-        whereOption = queryOptions as QueryFilter
+    if(isWholeFilter){
+        filterOption = queryOptions as QueryFilter
     }
-    if(whereOption){
-        const resolved = makeQueryFilterResolver(() => [selector.impl])(whereOption)
+    if(filterOption){
+        const resolved = makeQueryFilterResolver(() => [selector.impl])(filterOption)
         stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
             stmt.toQueryBuilder().where(r).toRow()
             return stmt
         }))
     }
+
+    if(!isWholeFilter){
+        const expectedKeys = ['limit', 'offset', 'orderBy', 'select', 'args', 'fn', 'filter']
+        if(! Object.keys(queryOptions).every(key => expectedKeys.includes(key)) ) {
+            throw new Error(`The query option must be with keys of [${expectedKeys.join(',')}]`)
+        }
+    }
+
     return stmtOrPromise
 }
 
@@ -821,7 +829,7 @@ export class FutureArgument<Input = any, Output = any>{
 
 export type QueryObject = {
     select?: QuerySelect,
-    where?: QueryFilter,
+    filter?: QueryFilter,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy

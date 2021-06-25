@@ -221,7 +221,7 @@ describe('relations', () => {
             }
           }
         },
-        where: {id: expectedShop.id}
+        filter: {id: expectedShop.id}
       })
 
       expect(foundShop).toEqual(
@@ -286,7 +286,7 @@ describe('relations', () => {
             select: ['color']
           }
         },
-        where: {
+        filter: {
           shopId: expectedShop.id,
           id: Contain(createdProducts.map(p => p.id))
         }
