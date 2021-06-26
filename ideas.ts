@@ -1,66 +1,78 @@
 type Source = boolean
 
+// type PickSchemaAttribute<T> = Pick<
+//   T,
+//   { [K in keyof T]: (
+//       T[K] extends ComputeFunction ? K: ( T[K] extends Function? never: K ) 
+//     ) 
+//     }[keyof T]
+// >;
 
-type PickSchemaAttribute<T> = Pick<
-  T,
-  { [K in keyof T]: (
-      T[K] extends ComputeFunction ? K: ( T[K] extends Function? never: K ) 
-    ) 
-    }[keyof T]
->;
-
-type PureSchema<T> = Omit<T, 'find'>
 
 // type PureSchema<T> = ExcludeMatchingProperties<ExcludeMatchingProperties<T, ComputeFunction<any> >, PropertyType>
+type PureSchema<T> = Omit<T, 'find'>
 
-type PropertyType = {}
+class PropertyType<T> {
+
+}
+type ComputeFunction<R =any, ArgT = any> = (root: Source, args: ArgT, ctx: any) => R
+
 
 type QueryProps<T> = Partial<{
-        [key in keyof PureSchema<T>]: ( 
-            PureSchema<T>[key] extends ComputeFunction ? Parameters<PureSchema<T>[key]>[1]: PureSchema<T>[key]
-        )
+        [key in keyof PureSchema<T>]: 
+            PureSchema<T>[key] extends ComputeFunction ? Parameters<PureSchema<T>[key]>[1]: 
+            PureSchema<T>[key] extends PropertyType<infer R> ? boolean:
+            PureSchema<T>[key];
     }>
-
+    
 type QueryOption<T> = {
     props?: QueryProps<T>
 }
 
-class Schema {
+type EntityProps<T> = Partial<{
+        [key in keyof PureSchema<T>]:
+            PureSchema<T>[key] extends ComputeFunction<infer R> ? R: 
+            PureSchema<T>[key] extends PropertyType<infer R> ? R: 
+            number;
+        
+    }>
+
+class Schema<E extends Entity>{
     
-    find<T extends Schema>(this: T, args: QueryOption<T>){
-        console.log(args)
+    find<T extends Schema<E>>(this: T, args: QueryOption<T>){
+        let x: Array<E & EntityProps<T>> | null
+        return x
     }
 
 }
 
-type ComputeFunction<R =any, ArgT = any> = (root: Source, args: ArgT, ctx: any) => R
-
-type Argument<T extends Schema> = T
 
 
-class Entity<T extends Schema>{
+class Entity{
 
 }
 
-class ProductSchema extends Schema{
-    name: PropertyType
+class ProductSchema extends Schema<Product>{
+    name: PropertyType<string>
     shop: ComputeFunction<boolean, QueryOption<ShopSchema>> = (s: Source, args) => {
         return false
     }
 }
 
-class ShopSchema extends Schema {
-    name: PropertyType
+class ShopSchema extends Schema<Shop>{
+    name: PropertyType<string>
     products: ComputeFunction<boolean, QueryOption<ProductSchema>> = (s: Source, args) => {
         return false
     }
 }
 
-class Product extends Entity<ProductSchema>{
+class Product extends Entity{
+
+}
+class Shop extends Entity{
 
 }
 
-type a = Exclude<Schema, Function>
 
 let p = (new ProductSchema() ).find({
     props: {
@@ -75,6 +87,8 @@ let p = (new ProductSchema() ).find({
         }
     }
 })
+
+
 
 
 
@@ -113,11 +127,13 @@ let p = (new ProductSchema() ).find({
 //     let shop = ctx.models.Shop.dataset()
 //     let product = ctx.models.Product.dataset()
 
-//     // if the prop name found, it is a arguments
-//     // if the prop name didn't found, it is a new prop
+//     // if it is a sqlFunction or valueOperator or ConditionOperator....
+//     // else if the prop name didn't found, it is a new prop
+//     // else if the prop name found and it is normal prop.... true/false to show/visible
+//     // else it is a arguments....
 //     return {
 //         props: {
-//             prop1: true,
+//             noramlProp1: true,
 //             prop2: args,
 //             prop3ByArgFunc: (ctx, source1, source2) => {
 //                 return {
