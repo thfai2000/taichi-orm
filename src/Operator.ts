@@ -4,6 +4,11 @@ import { Expression, QueryFilterResolver, Selector, SimpleObject, thenResult, th
 import { BooleanType } from './PropertyType'
 
 
+abstract class SQLFunction {
+    abstract toRaw(resolver: QueryFilterResolver): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(resolver: QueryFilterResolver): Scalar | Promise<Scalar>
+}
+
 export abstract class ConditionOperator {
     abstract toRaw(resolver: QueryFilterResolver): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(resolver: QueryFilterResolver): Scalar | Promise<Scalar>

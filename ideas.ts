@@ -1,94 +1,145 @@
-type Source = boolean
+// type Source = boolean
 
-// type PickSchemaAttribute<T> = Pick<
-//   T,
-//   { [K in keyof T]: (
-//       T[K] extends ComputeFunction ? K: ( T[K] extends Function? never: K ) 
-//     ) 
-//     }[keyof T]
-// >;
-
-
-// type PureSchema<T> = ExcludeMatchingProperties<ExcludeMatchingProperties<T, ComputeFunction<any> >, PropertyType>
-type PureSchema<T> = Omit<T, 'find'>
-
-class PropertyType<T> {
-
-}
-type ComputeFunction<R =any, ArgT = any> = (root: Source, args: ArgT, ctx: any) => R
+// // type PickSchemaAttribute<T> = Pick<
+// //   T,
+// //   { [K in keyof T]: (
+// //       T[K] extends ComputeFunction ? K: ( T[K] extends Function? never: K ) 
+// //     ) 
+// //     }[keyof T]
+// // >;
 
 
-type QueryProps<T> = Partial<{
-        [key in keyof PureSchema<T>]: 
-            PureSchema<T>[key] extends ComputeFunction ? Parameters<PureSchema<T>[key]>[1]: 
-            PureSchema<T>[key] extends PropertyType<infer R> ? boolean:
-            PureSchema<T>[key];
-    }>
+// // type PureSchema<T> = ExcludeMatchingProperties<ExcludeMatchingProperties<T, ComputeFunction<any> >, PropertyType>
+
+// type ReplaceCompute<T> = {
+//         [key in keyof T]: 
+//             T[key] extends ComputeFunction? Parameters<T[key]>[1]:
+//             T[key] extends PropertyType<infer R> ? R:
+//             T[key];
+//     }
+
+// type PropsFromQuery<T extends QueryOption<Schema<E>, E>, E extends Entity> = ReplaceCompute<T['props']>
+
+
+// type PureSchema<T extends Schema<any> > = Omit<T, 'find' | 'execute' | 'dataset'>
+
+// class PropertyType<T> {
+
+// }
+// type ComputeFunction<ArgT = any, R =any> = (root: Source, args: ArgT, ctx: any) => R
+
+// type QueryProps<T extends Schema<E>, E extends Entity> = Partial<{
+//         [key in keyof PureSchema<T>]: 
+//             PureSchema<T>[key] extends ComputeFunction? Parameters<PureSchema<T>[key]>[1]: 
+//             PureSchema<T>[key] extends PropertyType<infer R> ? R:
+//             PureSchema<T>[key];
+//     }>
     
-type QueryOption<T> = {
-    props?: QueryProps<T>
-}
+// type QueryOption<T extends Schema<E>, E extends Entity> = {
+//     props?: QueryProps<T, E>
+// }
 
-type EntityProps<T> = Partial<{
-        [key in keyof PureSchema<T>]:
-            PureSchema<T>[key] extends ComputeFunction<infer R> ? R: 
-            PureSchema<T>[key] extends PropertyType<infer R> ? R: 
-            number;
+// type EntityProps<T extends Schema<any>> = Partial<{
+//         [key in keyof PureSchema<T>]:
+//             PureSchema<T>[key] extends ComputeFunction<infer Arg, infer R> ? R: 
+//             PureSchema<T>[key] extends PropertyType<infer R> ? R: 
+//             number;
         
-    }>
+//     }>
 
-class Schema<E extends Entity>{
+// class Schema<E extends Entity>{
     
-    find<T extends Schema<E>>(this: T, args: QueryOption<T>){
-        let x: Array<E & EntityProps<T>> | null
-        return x
-    }
+// }
 
-}
+// // function dataset<E extends Entity, S extends Schema<E>>(schema: S){
+// //     return new Dataset<S, {props: {}}>({props: {}})
+// // }
 
+// // function execute<E extends Entity, S extends Schema<E>, Config extends QueryOption<S>>(schema: S, dataset: Dataset<S, Config>): E & ExtractProps<Config>{
+// //     throw new Error('xxx')
+// // }
 
-
-class Entity{
-
-}
-
-class ProductSchema extends Schema<Product>{
-    name: PropertyType<string>
-    shop: ComputeFunction<boolean, QueryOption<ShopSchema>> = (s: Source, args) => {
-        return false
-    }
-}
-
-class ShopSchema extends Schema<Shop>{
-    name: PropertyType<string>
-    products: ComputeFunction<boolean, QueryOption<ProductSchema>> = (s: Source, args) => {
-        return false
-    }
-}
-
-class Product extends Entity{
-
-}
-class Shop extends Entity{
-
-}
+// function find<E extends Entity, S extends Schema<E>>(schema: S, args: QueryOption<Schema<E>, E>){
+//     // let d = dataset(schema)
+//     // let n = d.apply<NewConfig>(args)
+//     // let x = execute(schema, n)
+//     return 5
+// }
 
 
-let p = (new ProductSchema() ).find({
-    props: {
-        shop: {
-            props: {
-                products: {
-                    props: {
+// class Dataset<S extends Schema<E>, E extends Entity, DynamicConfigObject extends QueryOption<S, E> = {props: {}}>{
+
+//     constructor(private config: DynamicConfigObject){}
+
+//     apply<NewConfig extends QueryOption<S, E>>(this: Dataset<S, DynamicConfigObject>, option: NewConfig){
+//         let props = Object.assign({}, this.config.props, option.props)
+//         //@ts-ignore
+//         let newConfig: NewConfig | DynamicConfigObject = {props}
+//         return new Dataset<S, typeof newConfig>( newConfig)
+//     }
+
+//     toScalar(){
+
+//     }
+// }
+
+
+
+
+
+// class Entity{
+
+// }
+
+// class ProductSchema extends Schema<Product>{
+//     name: PropertyType<string>
+//     shop: ComputeFunction<QueryOption<ShopSchema, Shop>, PropsFromQuery<QueryOption<ShopSchema, Shop>, Shop> > = (s: Source, args: QueryOption<ShopSchema, Shop>) => {
+//         throw new Error('')
+//     }
+// }
+
+// class ShopSchema extends Schema<Shop>{
+//     name: PropertyType<string>
+//     products: ComputeFunction<QueryOption<ProductSchema, Product>, PropsFromQuery<QueryOption<ProductSchema, Product>, Product> > = (s: Source, args: QueryOption<ProductSchema, Product>) => {
+//         throw new Error('')
+//     }
+// }
+
+// class Product extends Entity{
+
+// }
+// class Shop extends Entity{
+
+// }
+
+
+// let schema = new ProductSchema()
+// // let d = new Dataset<ProductSchema, {props: {} }>({props: {} })
+
+// // let c = d.apply({props: {name: 'iiii', shop: null }})
+
+// // let a = dataset(schema)
+
+// let p = find<Product, ProductSchema>(schema, {
+//     props: {
+//         shop: {
+//             props: {
+//                 products: {
+//                     props: {
                         
-                    }
-                }
-            }
-        }
-    }
-})
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// })
 
 
+// let a : QueryOption<Schema<Product>, Product> = {
+//     props: {
+        
+//     }
+// }
 
 
 

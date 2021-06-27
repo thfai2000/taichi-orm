@@ -2,7 +2,7 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import Types, { PropertyDefinition } from './PropertyType'
 export { PropertyDefinition as PropertyType, Types }
-import {makeBuilder as builder, isRow, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Row, makeRaw, isColumn} from './Builder'
+import {makeBuilder as builder, isDataset, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Dataset, makeRaw, isColumn} from './Builder'
 export {builder, raw, column}
 import { ComputeFn } from './Common'
 export const Builtin = { ComputeFn }
@@ -317,7 +317,7 @@ export type HookInfo = {
 
 export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
 
-const simpleQuery = (row: Row, selector: Selector, queryOptions: QueryObject) => {
+const simpleQuery = (row: Dataset, selector: Selector, queryOptions: QueryObject) => {
     let stmt = row.toQueryBuilder()
 
     let isWholeFilter = true
@@ -344,7 +344,7 @@ const simpleQuery = (row: Row, selector: Selector, queryOptions: QueryObject) =>
         isWholeFilter = false
     }
 
-    let stmtOrPromise: Row | Promise<Row> = stmt
+    let stmtOrPromise: Dataset | Promise<Dataset> = stmt
     if (queryOptions.select){
         stmtOrPromise = makeQuerySelectResolver(() => [selector.impl])(queryOptions.select, row)
     }
@@ -676,10 +676,10 @@ export class SelectorImpl{
         return (queryOptions?: QueryOptions) => {
             let subquery = this.executeComputeFunc(queryOptions, prop)
 
-            let process = (subquery: ScalarOrRow): Column => {
+            let process = (subquery: ScalarOrDataset): Column => {
                 let alias = metaFieldAlias(prop)
-                if(isRow(subquery)){
-                    const casted = subquery as Row
+                if(isDataset(subquery)){
+                    const casted = subquery as Dataset
                     return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition) )
                 } else if( isScalar(subquery)){
                     const casted = subquery as Scalar
@@ -700,10 +700,10 @@ export class SelectorImpl{
         return (queryOptions?: QueryOptions) => {
             let subquery = this.executeComputeFunc(queryOptions, prop)
 
-            let process = (subquery: Scalar<any> | Row): Column => {
+            let process = (subquery: Scalar<any> | Dataset): Column => {
                 let alias = metaFieldAlias(prop)
-                if (isRow(subquery)) {
-                    const casted = subquery as Row
+                if (isDataset(subquery)) {
+                    const casted = subquery as Dataset
                     return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition))
                 } else if (isScalar(subquery)) {
                     const casted = subquery as Scalar
@@ -718,7 +718,7 @@ export class SelectorImpl{
         }
     }
 
-    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): ScalarOrRow | Promise<ScalarOrRow> {
+    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): ScalarOrDataset | Promise<ScalarOrDataset> {
         const rootSelector: SelectorImpl = this
         if(!prop.definition.computeFunc){
             throw new Error('Normal Property cannot be compiled as computed field.')
@@ -732,7 +732,7 @@ export class SelectorImpl{
         const applyFilterFunc: ApplyNextQueryFunction = (stmt) => {
             const selectors: Selector[] = stmt.getInvolvedSelectors()
 
-            let process = (stmt: Row) => {
+            let process = (stmt: Dataset) => {
 
                 // If the function object placed into the Knex.QueryBuilder, 
                 // Knex.QueryBuilder will call it and pass itself as the parameter
@@ -748,7 +748,7 @@ export class SelectorImpl{
                 if(!queryOptions){
                     return stmt
                 } else {
-                    if(!isRow(stmt)){
+                    if(!isDataset(stmt)){
                         throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
                     }
                     if(queryOptions instanceof Function){
@@ -772,9 +772,9 @@ export class SelectorImpl{
             return thenResult(stmt, stmt => process(stmt))
         }
 
-        let validate = (subquery: ScalarOrRow): ScalarOrRow => {
+        let validate = (subquery: ScalarOrDataset): ScalarOrDataset => {
   
-            if(prop.definition.transformFromMultipleRows && !isRow(subquery)){
+            if(prop.definition.transformFromMultipleRows && !isDataset(subquery)){
                 console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
                 throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
             }
@@ -782,7 +782,7 @@ export class SelectorImpl{
                 console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
                 throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
             }
-            if(!isRow(subquery) && !isScalar(subquery)){
+            if(!isDataset(subquery) && !isScalar(subquery)){
                 throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
             }
 
@@ -792,8 +792,8 @@ export class SelectorImpl{
         let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext)
         let result = thenResult(subquery, subquery => {
             subquery = validate(subquery) 
-            if(isRow(subquery)){
-                const row = subquery as Row
+            if(isDataset(subquery)){
+                const row = subquery as Dataset
                 return applyFilterFunc(row)
             }
             return subquery
@@ -817,7 +817,7 @@ export type QuerySelect = { [key: string]: boolean | QueryOptions | Scalar } | A
 
 export type QueryFilter = Expression
 
-export type QueryOrderBy = (string | {column: string, order: 'asc' | 'desc'} )[]
+export type QueryOrderBy = ( (string|Column) | {column: (string|Column), order: 'asc' | 'desc'} )[]
 
 export type QueryArguments = {[key:string]: any | FutureArgument}
 
@@ -837,19 +837,19 @@ export type QueryObject = {
     fn?: QueryFunction
 }
 
-export type ScalarOrRow = Scalar | Row
+export type ScalarOrDataset = Scalar | Dataset
 
-export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext) => ScalarOrRow | Promise<ScalarOrRow>
+export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext) => ScalarOrDataset | Promise<ScalarOrDataset>
 
 export type CompiledComputeFunction = (queryObject?: QueryOptions) => Column
 
 export type CompiledComputeFunctionPromise = (queryObject?: QueryOptions) => Promise<Column> | Column
 
-export type QueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
+export type QueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
 
 export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryFilter, Function> | null
 
-export type ApplyNextQueryFunction = (stmt: Row, ...selectors: Selector[]) => Row | Promise<Row>
+export type ApplyNextQueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
 
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions = {
@@ -1060,7 +1060,7 @@ export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
 
 export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
 
-    return function querySelectResolver(querySelect: QuerySelect, row: Row) {
+    return function querySelectResolver(querySelect: QuerySelect, row: Dataset) {
         let selector = getSelectorFunc()[0]
         let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
         let allColumns: Array<Column | Promise<Column>> = []
@@ -1178,7 +1178,7 @@ export function makeQueryFilterResolver( getSelectorFunc: () => SelectorImpl[] )
         //     return casted(...(getSelectorFunc() ).map(s => s.interface!))
         } else if(isScalar(value)){
             return value as Scalar
-        } else if (isRow(value)) {
+        } else if (isDataset(value)) {
             throw new Error('Unsupport')
         } else if(value instanceof SimpleObjectClass){
             const firstSelector = getSelectorFunc()[0]

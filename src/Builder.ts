@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrRow, QueryFilterResolver, makeQueryFilterResolver } from "."
+import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrDataset, QueryFilterResolver, makeQueryFilterResolver } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 
@@ -14,14 +14,14 @@ import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyD
 declare module "knex" {
     export namespace Knex {
         interface QueryBuilder{
-            toRow(): Row
+            toRow(): Dataset
             // toRaw(): Knex.Raw
             toQueryBuilder(): Knex.QueryBuilder
         }
 
         interface Raw {
             clone: Function
-            __type: 'Raw' | 'Scalar' | 'Source' | 'Row'
+            __type: 'Raw' | 'Scalar' | 'Source' | 'Dataset'
         }
     }
 }
@@ -31,8 +31,8 @@ type SelectItem = {
     actualAlias: string
 }
 
-export interface Row {
-    __type: 'Row'
+export interface Dataset {
+    __type: 'Dataset'
     // __mainSelector?: Selector | null
     __expressionResolver: QueryFilterResolver
     __selectItems: SelectItem[]
@@ -45,12 +45,12 @@ export interface Row {
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
     // toRaw(): Knex.Raw
-    toRow(): Row
-    clone(): Row
-    clearSelect(): Row
-    select(...cols: Column[]): Row
-    filter(queryWhere: QueryFilter): Row
-    from(source: Source): Row
+    toDataset(): Dataset
+    clone(): Dataset
+    clearSelect(): Dataset
+    select(...cols: Column[]): Dataset
+    filter(queryWhere: QueryFilter): Dataset
+    from(source: Source): Dataset
 }
 
 export interface Column<T = any> extends Scalar<T> {
@@ -88,7 +88,7 @@ export interface Source extends Knex.Raw {
 
 // const castAsRow = (builder: any) : Row => {
 //     //@ts-ignore
-//     if(builder.__type === 'Row' ){
+//     if(builder.__type === 'Dataset' ){
 //         return builder as Row
 //     }
 //     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
@@ -102,9 +102,9 @@ export const isRaw = (builder: any) : boolean => {
     return false
 }
 
-export const isRow = (builder: any) : boolean => {
+export const isDataset = (builder: any) : boolean => {
     //@ts-ignore
-    if(builder.__type === 'Row' ){
+    if(builder.__type === 'Dataset' ){
         return true
     }
     return false
@@ -126,29 +126,29 @@ export const isScalar = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Row) : Row {
-    let sealBuilder: Row
+export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Dataset) : Dataset {
+    let sealBuilder: Dataset
     if(cloneFrom){
-        if(!isRow(cloneFrom)){
+        if(!isDataset(cloneFrom)){
             throw new Error('Unexpected Flow.')
         }
         sealBuilder = cloneFrom.__realClone()
         sealBuilder.__selectItems = cloneFrom.__selectItems.map(item => {
             return {
                 actualAlias: item.actualAlias,
-                value: isScalar(item)? (item as unknown as Scalar).clone() : (isRow(item)? (item as unknown as Row).toQueryBuilder().clone(): item.toString() )
+                value: isScalar(item)? (item as unknown as Scalar).clone() : (isDataset(item)? (item as unknown as Dataset).toQueryBuilder().clone(): item.toString() )
             }
         })
         sealBuilder.__fromSource = cloneFrom.__fromSource
 
     } else {
-        sealBuilder = getKnexInstance().clearSelect() as unknown as Row
+        sealBuilder = getKnexInstance().clearSelect() as unknown as Dataset
         sealBuilder.__selectItems = []
     }
 
     // @ts-ignore
     sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-    sealBuilder.__type = 'Row'
+    sealBuilder.__type = 'Dataset'
     sealBuilder.__realSelect = sealBuilder.select
     // sealBuilder.__mainSelector = mainSelector
     sealBuilder.__expressionResolver = makeQueryFilterResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
@@ -159,10 +159,6 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         let s: Source | null = sealBuilder.__fromSource
         let selectors = []
         while(s){
-            if(s.__selector === undefined){
-                console.log('xxxxxxxxxx')
-            }
-
             selectors.unshift(s.__selector)
             s = s.__parentSource
         }
@@ -190,8 +186,8 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
                 let finalExpr: string
                 if(definition && definition.queryTransform){
 
-                    if(isRow(expression)){
-                        let castedExpression = expression as unknown as Row
+                    if(isDataset(expression)){
+                        let castedExpression = expression as unknown as Dataset
                         let extractedColumnNames = castedExpression.extractColumns()
                         if(extractedColumnNames.length === 0){
                             throw new Error(`There is no selected column to be transformed as Computed Field '${casted.__actualAlias}'. Please check your sql builder.`)
@@ -260,7 +256,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return sealBuilder as unknown as Knex.QueryBuilder
     }
 
-    sealBuilder.toRow = (): Row => {
+    sealBuilder.toDataset = (): Dataset => {
         return sealBuilder 
     }
 
@@ -271,7 +267,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
         return sealBuilder
     }
 
-    sealBuilder.filter = (queryWhere: QueryFilter): Row => {
+    sealBuilder.filter = (queryWhere: QueryFilter): Dataset => {
         if(!sealBuilder.__fromSource){
             throw new Error('There is no source declared before you carry out filter.')
         }
@@ -366,7 +362,7 @@ export const makeSource = (parentSource: Source | null, joinText: string | null,
 
     joinText  = (joinText ?? '').trim()
 
-    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${items.join(' ')}`}`
+    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${items.map(i => i.toString()).join(' ')}`}`
 
     let target = makeRaw(raw) as Source
     target.__type = 'Source'
