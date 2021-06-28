@@ -8,6 +8,39 @@ type OmitMethod<T> =  Omit<T, 'find' | 'execute' | 'dataset'>
 
 type RemoveQueryProps<T> = T
 
+
+// type ReplaceCompute<T, S> = {
+//     [key in keyof (T & S) ]: 
+//         T[key] extends ComputeFunction? :
+//         T[key] extends PropertyType<infer R> ? R:
+//         T[key];
+// }
+
+type PropsFromQuery<S, T extends QueryOption<S>> = Pick<S, keyof T['props']>
+
+
+// type A = Extract<{hello: number, x: number} | {test: number}, {hello: number, c: number}>
+
+
+
+
+type FilterFlags<Base, Condition> = {
+    [Key in keyof Base]: 
+        Base[Key] extends Condition ? Key : never
+};
+type AllowedNames<Base, Condition> = 
+        FilterFlags<Base, Condition>[keyof Base];
+type SubType<Base, Condition> = 
+        Pick<Base, AllowedNames<Base, Condition>>;
+
+type A = {hello: any, test: any}
+type B = {hello: number, test: number}
+type C = {hello: boolean, test: boolean}
+
+type D = Pick<C, AllowedNames<B, string | number>>;
+
+
+
 type QueryProps<T> = Partial<RemoveQueryProps<OmitMethod<{
     [key in keyof T]: 
         T[key] extends ComputeFunction? Parameters<T[key]>[1]: 
@@ -40,7 +73,10 @@ class Schema {
 
 class ProductSchema extends Schema{
     name: PropertyType<string>
-    shop: ComputeFunction<QueryOption<ShopSchema>, ObjectValue<ShopSchema> > = (s: any, args: QueryOption<ShopSchema>) => {
+    // shop: ComputeFunction<QueryOption<ShopSchema>, ObjectValue<ShopSchema> > = (s: any, args: QueryOption<ShopSchema>) => {
+    //     throw new Error('')
+    // }
+    shop: ComputeFunction<QueryOption<ShopSchema>, ObjectValue<PropsFromQuery<ShopSchema, QueryOption<ShopSchema>>> > = (s: any, args: QueryOption<ShopSchema>) => {
         throw new Error('')
     }
     myABC: ComputeFunction<number, boolean > = (s: any, args) => {
@@ -50,7 +86,10 @@ class ProductSchema extends Schema{
 
 class ShopSchema extends Schema{
     name: PropertyType<string>
-    products: ComputeFunction<QueryOption<ProductSchema>, ObjectValue<ProductSchema>[]> = (s: any, args: QueryOption<ProductSchema>) => {
+    // products: ComputeFunction<QueryOption<ProductSchema>, ObjectValue<ProductSchema>[]> = (s: any, args: QueryOption<ProductSchema>) => {
+    //     throw new Error('')
+    // }
+    products: ComputeFunction<QueryOption<ProductSchema>, ObjectValue<PropsFromQuery<ProductSchema, QueryOption<ProductSchema>>>[]> = (s: any, args: QueryOption<ProductSchema>) => {
         throw new Error('')
     }
 }
@@ -75,6 +114,5 @@ function find<T>(option: QueryOption<T>): ObjectValue<T>{
 let result = ProductSchema.find(b)
 
 
-
-let a :RemoveQueryProps<ProductSchema>
+// let a :RemoveQueryProps<ProductSchema>
 
