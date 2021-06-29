@@ -5,9 +5,12 @@ class Scalar<ResultType> {
 type OmitMethod<T> =  Omit<T, keyof Schema>
 
 type ComputeFunction<ArgT = any, R =any> = (root: any, args: ArgT, ctx: any) => R
-interface QueryX<S extends Schema>{
+
+type QueryXObject<S extends Schema> = {
     props: QueryProps<S>
 }
+
+type QueryX<S extends Schema> = QueryXObject<S> | ((ctx: Context, ...source: Datasource[]) => QueryXObject<S>)
 
 type QueryProps<T extends Schema> = Partial<OmitMethod<{
     [key in keyof T]: 
@@ -32,6 +35,7 @@ class Entity {
 }
 
 class Dataset<T extends Schema> {
+
 
     apply(args: QueryX<T>) {
         // throw new Error("Method not implemented.")
@@ -71,25 +75,32 @@ class Context {
     schemas: {[key:string]: Schema}
 }
 
+class Datasource {
+    join(root: Datasource, arg1: any) {
+        throw new Error("Method not implemented.")
+    }
+    _: any
+}
+
 // function Field(){
 //     return (root: Dataset) => {
 //         return 
 //     }
 // }
 
-function RelationProperty<TypeClass extends typeof Schema>(schema: TypeClass){
+function RelationProperty<TypeClass extends typeof Schema>(schema: TypeClass, rootKey: string, relatedKey: string){
     
-    return (root: any, args: QueryX< InstanceType<TypeClass> >, context: Context): Scalar<ObjectValue< InstanceType<TypeClass> >> => {
+    return (root: Datasource, args: QueryX< InstanceType<TypeClass> >, context: Context): Scalar<ObjectValue< InstanceType<TypeClass> >> => {
         
-        return schema.dataset().apply({
-            
+        return schema.dataset().apply( (source: Datasource) => {
+            source: source.join(root, root._[rootKey].equals(source._[relatedKey]) )
         }).apply(args).toScalar()
     }
 }
 
 class ProductSchema extends Schema{
     name: PropertyType<string>
-    shop = RelationProperty(ShopSchema)
+    shop = RelationProperty(ShopSchema,  '', '')
 
     myABC(root: any, args: number): Scalar<string> {
          throw new Error()
@@ -98,7 +109,7 @@ class ProductSchema extends Schema{
 
 class ShopSchema extends Schema{
     name: PropertyType<string>
-    products = RelationProperty(ProductSchema)
+    products = RelationProperty(ProductSchema, '', '')
 }
 
 let bbb = ProductSchema.find({
@@ -121,11 +132,11 @@ bbb.shop.products
 
 class B extends ShopSchema{
     aaa: PropertyType<string>
-    products = RelationProperty(AA)
+    products = RelationProperty(AA, '','')
 }
 class AA extends ProductSchema{
     kkk: PropertyType<string>
-    shop = RelationProperty(B)
+    shop = RelationProperty(B, '', '')
 }
 
 let a = AA.find({
