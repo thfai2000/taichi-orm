@@ -174,45 +174,45 @@
 // // Dual case        join table?
 // // use arguments    only at builder style?
 
-// Dual.find( (ctx, source1, source2) => {
-//     let shop = ctx.models.Shop.dataset()
-//     let product = ctx.models.Product.dataset()
+Dual.find( (ctx, source1, source2) => {
+    let shop = ctx.models.Shop.dataset()
+    let product = ctx.models.Product.dataset()
 
-//     // if it is a sqlFunction or valueOperator or ConditionOperator....
-//     // else if the prop name didn't found, it is a new prop
-//     // else if the prop name found and it is normal prop.... true/false to show/visible
-//     // else it is a arguments....
-//     return {
-//         props: {
-//             noramlProp1: true,
-//             prop2: args,
-//             prop3ByArgFunc: (ctx, source1, source2) => {
-//                 return {
-//                     filter: And(
-//                         source1.type.equals('main')
-//                     )
-//                 }
-//             },
-//             tempProp1: Dataset().props([
-//                 //prop name is found, it is included without any argument passed
-//                 // string or column
-//             ]).from().filter().toScalar(EntityArray(ctx.models.Color)),
-//             tempProp2: Dataset().toScalar(EntityObject(ctx.models.Color)),
-//             tempProp3BySQLFunc: Count(shop._.id),
-//             tempProp4BySQLFunc: Case(
-//                 shop._.id.equals(5),
-//             ),
+    // if it is a sqlFunction or valueOperator or ConditionOperator....
+    // else if the prop name didn't found, it is a new prop
+    // else if the prop name found and it is normal prop.... true/false to show/visible
+    // else it is a arguments....
+    return {
+        props: {
+            noramlProp1: true,
+            prop2: args,
+            prop3ByArgFunc: (ctx, source1, source2) => {
+                return {
+                    filter: And(
+                        source1.type.equals('main')
+                    )
+                }
+            },
+            tempProp1: Dataset().props([
+                //prop name is found, it is included without any argument passed
+                // string or column
+            ]).from().filter().toScalar(EntityArray(ctx.models.Color)),
+            tempProp2: Dataset().toScalar(EntityObject(ctx.models.Color)),
+            tempProp3BySQLFunc: Count(shop._.id),
+            tempProp4BySQLFunc: Case(
+                shop._.id.equals(5),
+            ),
          
-//         },
-//         from: shop.join(product, shop._.id.equals(product._.code) ).join(x),
-//         filter: And(
-//             t1._.name.equals(t2._.name),
-//             t2._.name.isNotNull()
-//         ),
-//         orderBy: [shop._.code],
-//         groupBy: null
-//     }
-// })
+        },
+        from: shop.join(product, shop._.id.equals(product._.code) ).join(x),
+        filter: And(
+            t1._.name.equals(t2._.name),
+            t2._.name.isNotNull()
+        ),
+        orderBy: [shop._.code],
+        groupBy: null
+    }
+})
 
 // // depreciate: Relation using custom Filter, achieve it in another way
 // // depreciate selector as function

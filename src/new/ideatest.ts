@@ -64,15 +64,7 @@ class Context {
     // schemas: {[key:string]: Entity}
 }
 
-interface Datasource {
-    _: {}
-    $: {}
-    $$: {}
 
-    innerJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource
-    leftJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource
-    rightJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource
-}
 
 
 class Dataset<T extends Schema> {
