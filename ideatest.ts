@@ -71,11 +71,19 @@ class Context {
     schemas: {[key:string]: Schema}
 }
 
+// function Field(){
+//     return (root: Dataset) => {
+//         return 
+//     }
+// }
+
 function RelationProperty<TypeClass extends typeof Schema>(schema: TypeClass){
     
     return (root: any, args: QueryX< InstanceType<TypeClass> >, context: Context): Scalar<ObjectValue< InstanceType<TypeClass> >> => {
         
-        return schema.dataset().apply(args).toScalar()
+        return schema.dataset().apply({
+            
+        }).apply(args).toScalar()
     }
 }
 
