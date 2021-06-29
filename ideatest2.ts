@@ -1,182 +1,192 @@
-// class Scalar<ResultType> {
-//     constructor() {}
-// }
+class Scalar<ResultType> {
+    constructor() {}
+}
 
-// // type OmitMethod<T> =  Omit<T, keyof Entity>
+// type OmitMethod<T> =  Omit<T, keyof Entity>
 
-// type ComputeFunction = (root: any, args: any, ctx: any) => any
-// interface QueryX<E extends typeof Entity>{
-//     props: QueryProps< ReturnType<E["registerSchema"]> >
-// }
+type ComputeFunction = (root: any, args: any, ctx: any) => any
+interface QueryX<E extends typeof Entity>{
+    props: QueryProps< ReturnType<E["registerSchema"]> >
+}
 
-// type QueryProps<T extends Schema> = Partial<{
-//     [key in keyof T]: 
-//         T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends QueryX<infer I>? QueryX<I>: Parameters<T[key]>[1] ): 
-//         T[key] extends PropertyType<infer R> ? R:
-//         never;
-// }>
-
-
-// type ObjectValue<T extends Schema> = {
-//     [key in keyof T]: 
-//         T[key] extends ComputeFunction? (ReturnType<T[key]> extends Scalar<infer S> ? S: never):
-//         T[key] extends PropertyType<infer R> ? R:
-//         never;
-// }
-
-// type ObjectValueOfEntity<E extends typeof Entity> = ObjectValue< ReturnType<E["registerSchema"]> >
+type QueryProps<T extends Schema> = Partial<{
+    [key in keyof T]: 
+        T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends QueryX<infer I>? QueryX<I>: Parameters<T[key]>[1] ): 
+        T[key] extends PropertyType<infer R> ? R:
+        never;
+}>
 
 
-// class PropertyType<T>{
+type ObjectValue<T extends Schema> = {
+    [key in keyof T]: 
+        T[key] extends ComputeFunction? (ReturnType<T[key]> extends Scalar<infer S> ? S: never):
+        T[key] extends PropertyType<infer R> ? R:
+        never;
+}
 
-// }
+type ObjectValueOfEntity<E extends typeof Entity> = ObjectValue< ReturnType<E["registerSchema"]> >
 
-// class Dataset<T extends typeof Entity> {
 
-//     apply(args: QueryX<T>) {
-//         // throw new Error("Method not implemented.")
-//         return this
-//     }
+class PropertyType<T>{
 
-//     toScalar(): ObjectValueOfEntity<T>{
-//         throw new Error()
-//     }
-// }
+}
 
-// class Entity {
+class Dataset<T extends typeof Entity> {
 
-//     static registerSchema<I extends Entity>(this: I & (new (...args: any[]) => I) ): Schema {
-//         throw new Error()
-//     }
+    apply(args: QueryX<T>) {
+        // throw new Error("Method not implemented.")
+        return this
+    }
 
-//     static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), options: QueryX<I> ): ObjectValueOfEntity<I>{
-//         throw new Error()
-//     }
+    toScalar(): ObjectValueOfEntity<T>{
+        throw new Error()
+    }
+}
 
-//     // static entityClass<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
+class Entity {
 
-//     //     const s = this
+    static registerSchema<I extends Entity>(this: I & (new (...args: any[]) => I) ): Schema {
+        throw new Error()
+    }
 
-//     //     let entityClass = class extends Entity{
-//     //         constructor(){
-//     //             super()
-//     //             //TODO copy attributes  
-//     //         }
-//     //     }
-//     //     //TODO
-//     //     return entityClass
-//     // }
+    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), options: QueryX<I> ): ObjectValueOfEntity<I>{
+        throw new Error()
+    }
 
-//     static dataset<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>) ): Dataset<I> {
-//         throw new Error()
-//     }
-// }
+    // static entityClass<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
 
-// class Context {
-//     schemas: {[key:string]: typeof Entity}
-// }
+    //     const s = this
 
-// function Field(){
+    //     let entityClass = class extends Entity{
+    //         constructor(){
+    //             super()
+    //             //TODO copy attributes  
+    //         }
+    //     }
+    //     //TODO
+    //     return entityClass
+    // }
+
+    static dataset<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>) ): Dataset<I> {
+        throw new Error()
+    }
+}
+
+class Context {
+    schemas: {[key:string]: typeof Entity}
+}
+
+function Field(){
     
-// }
+}
 
-// // function RelationProperty<X extends Entity>(entityClass: X){
+function RelationProperty<X extends typeof Entity>(entityClass: X){
     
-// //     return <E extends typeof Entity>(root: any, args: QueryX< E >, context: Context): Scalar< ObjectValueOfEntity< E > > => {
-// //         throw new Error()
-// //         // return entityClass.dataset().apply(args).toScalar()
-// //     }
-// // }
+    return (root: any, args: QueryX< X >, context: Context): Scalar< ObjectValueOfEntity< X > > => {
+        throw new Error()
+        // return entityClass.dataset().apply(args).toScalar()
+    }
+}
 
-// interface Schema {
-//     [key: string]: PropertyType<any> | ComputeFunction
-// }
+interface Schema {
+    [key: string]: PropertyType<any> | ComputeFunction
+}
 
 
-// class Product extends Entity{
-//     static override registerSchema(){
-//         return {
-//             name: new PropertyType<string>(),
-//             shop: <E extends typeof Entity>(root: any, args: QueryX< E >, context: Context): Scalar< ObjectValueOfEntity< E > > => {
-//                     throw new Error()
-//                 },
+class Product extends Entity{
+    static override registerSchema(){
+        return {
+            name: new PropertyType<string>(),
+
+            shop: RelationProperty(Shop),
                 
-//             myABC(root: any, args: number, context: Context): Scalar<string> {
-//                  throw new Error()
-//             }
-//         }
-//     }
-// }
-// class Shop extends Entity{
-//     static override registerSchema(){
-//         return {
-//             name: new PropertyType<string>(),
-//             products: <E extends typeof Entity>(root: any, args: QueryX< E >, context: Context): Scalar< ObjectValueOfEntity< E > > => {
-//                 throw new Error()
-//             },
-//         }
-//     }
-// }
+            myABC(root: any, args: number, context: Context): Scalar<string> {
+                 throw new Error()
+            }
+        }
+    }
+}
+class Shop extends Entity{
+    static override registerSchema(){
+        return {
+            name: new PropertyType<string>(),
+            products: RelationProperty(Product)
+        }
+    }
+}
 
 
-// let x = Product.dataset()
+let x = Product.dataset()
 
 
-// let bbb = Product.find({
-//     props: {
-//         shop: {
-//             props: {
-//                 products: {
-//                     props: {
-//                         name: ''
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// })
+let bbb = Product.find({
+    props: {
+        shop: {
+            props: {
+                products: {
+                    props: {
+                        name: ''
+                    }
+                }
+            }
+        }
+    }
+})
 
 
 
-// let y: QueryX<typeof Shop>
+let y: QueryX<typeof Shop>
 
-// y = {
-//     props: {
-//         products: {
-//             props: {
+y = {
+    props: {
+        products: {
+            props: {
 
-//             }
-//         }
-//     }
-// }
+            }
+        }
+    }
+}
 
 
 
 
 
-// // class B extends Shop{
-// //     aaa: PropertyType<string>
-// //     products = RelationProperty(AA)
-// // }
-// // class AA extends Product{
-// //     kkk: PropertyType<string>
-// //     shop = RelationProperty(B)
-// // }
+class B extends Shop{
+    // aaa: PropertyType<string>
+    // products = RelationProperty(AA)
+    static override registerSchema(){
+        return {
+            ...super.registerSchema(),
+            aaa: new PropertyType<string>(),
+            products: RelationProperty(AA)
+        }
+    }
+}
+class AA extends Product{
+    
+    // shop = RelationProperty(B)
+    static override registerSchema(){
+        return {
+            ...super.registerSchema(),
+            shop: RelationProperty(B),
+            kkk: new PropertyType<string>()
+        }
+    }
+}
 
-// // let a = AA.find({
-// //     props: {
-// //         kkk: 'ee',
-// //         shop: {
-// //             props: {
-// //                 aaa: 'xx',
-// //                 products: {
-// //                     props: {
-// //                         name: ''
-// //                     }
-// //                 }
-// //             }
-// //         }
-// //     }
-// // })
+let a = Product.find({
+    props: {
+        shop: {
+            props: {
+                aaa: 'xx',
+                products: {
+                    props: {
+                        name: ''
+                    }
+                }
+            }
+        }
+    }
+})
 
-// // a.shop.products
+a.shop
