@@ -1,81 +1,146 @@
-import types, {PropertyDefinition} from "./PropertyType"
+import types, {PropertyDefinition, StringType, StringTypeNotNull, ObjectOfType, BooleanType} from "./PropertyType"
+
+
+type UnionToIntersection<T> = 
+  (T extends any ? (x: T) => any : never) extends 
+  (x: infer R) => any ? R : never
+  
 
 class Scalar<ResultType> {
     constructor() {}
 }
 
-type OmitMethod<T> =  Omit<T, keyof Schema | 'hooks'>
+type OmitMethod<T> =  Omit<T, (keyof Entity) | 'hooks'>
 
 type ComputeFunction<ArgT = any, R =any> = (root: any, args: ArgT, ctx: any) => R
 
-type QueryXObject<S extends Schema> = {
+type QueryBase = {
+    props?: QueryProps<any>
+    source?: Datasource<any>
+    filter?: any   
+}
+
+
+type QueryX<S extends Entity> = {
     props?: QueryProps<S>
-    source?: Datasource
     filter?: any
 }
 
-type QueryX<S extends Schema> = QueryXObject<S> | ((ctx: Context, ...source: Datasource[]) => QueryXObject<S>)
+type QueryY<Joins extends Datasource<any, any>[] = Datasource<any, any>[] > = (ctx: Context, ...source: Joins) => {
+    props?: QueryProps<any>
+    filter?: any 
+}
 
-type QueryProps<T extends Schema> = Partial<OmitMethod<{
+type QueryProps<E extends Entity, T = OmitMethod<E> > = Partial<{
     [key in keyof T]: 
         T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends QueryX<infer I>? QueryX<I>: Parameters<T[key]>[1] ): 
         T[key] extends PropertyDefinition? Scalar<PropertyDefinition>:
         never;
-}>>
+}>
 
-type ObjectValue<T extends Schema> = OmitMethod<{
+type ObjectValue<E extends Entity, T = OmitMethod<E> > = {
     [key in keyof T]: 
         T[key] extends ComputeFunction? (ReturnType<T[key]> extends Scalar<infer S> ? S: unknown):
         T[key] extends PropertyDefinition? ReturnType<T[key]["parseRaw"]>:
         never;
-}>
+} & ReturnType<E["newRecord"]>
 
 class PropertyType<T>{
 
 }
 
+abstract class Entity<R = {}>{
 
-abstract class Schema {
+    // static dataset<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Dataset<I> {
+    //     throw new Error()
+    // }
 
-    static find<I extends Schema>(this: typeof Schema & (new (...args: any[]) => I), options: QueryX<I> ): ObjectValue<I>{
+    // static datasource<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Datasource<I> {
+    //     throw new Error()
+    // }
+
+    // static find<I extends Entity>(this: (new (...args: any[]) => I), options: QueryX<I> ): ObjectValue<I>{ 
+    //     throw new Error()
+    // }
+
+
+    dataset<I extends Entity>(this: I): Dataset<I> {
         throw new Error()
     }
 
-    static entityClass<I extends Schema>(this: typeof Schema & (new (...args: any[]) => I) ){
-
-        // const s = this
-
-        // let entityClass = class extends Entity{
-        //     constructor(){
-        //         super()
-        //         //TODO copy attributes  
-        //     }
-        // }
-        //TODO
-        return entityClass
-    }
-
-    static dataset<I extends Schema>(this: typeof Schema & (new (...args: any[]) => I) ): Dataset<I> {
+    datasource<I extends Entity>(this: I ): Datasource<I> {
         throw new Error()
     }
+
+    find<I extends Entity>(this: I, options: QueryX<I> ): ObjectValue<I>{ 
+        throw new Error()
+    }
+
+    abstract newRecord(...args: any[]): R
+
+
+
+
+    // static entityClass<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
+
+    //     // const s = this
+
+    //     // let entityClass = class extends Entity{
+    //     //     constructor(){
+    //     //         super()
+    //     //         //TODO copy attributes  
+    //     //     }
+    //     // }
+    //     //TODO
+    //     // return entityClass
+    //     throw new Error()
+    // }
 }
+
 
 class Context {
     // schemas: {[key:string]: Entity}
 }
 
+interface Datasource<T1 extends Entity, Previous extends Datasource<any, any> = Datasource<any, any> > {
+    // hello: Scalar<any>
+    previous(): Previous
+
+    innerJoin<Left extends Datasource<any>, T2 extends Datasource<any>>(this: Left ,source: T2, condition: Scalar<BooleanType>): Datasource<T2, Left> 
+    // leftJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
+    // rightJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
+}
 
 
+class Dataset<T extends Entity, Joins extends Datasource<any, any>[] = Datasource<any, any>[] > {
 
-class Dataset<T extends Schema> {
+    sources: Joins
+    ctx: any
 
+    constructor(ctx: any, ...joins: Joins){
+        this.ctx = ctx
+        this.sources = joins
+    }
 
-    apply(args: QueryX<T>) {
+    apply(args: QueryBase){
         // throw new Error("Method not implemented.")
+        // if(args instanceof Function){
+        //     const query = args(this.ctx, ...this.sources)
+        //     return this.apply(query)
+
+        // }else {
+        //     if(args.source){
+        //         let source = args.source.previous()
+        //         let sources = [...this.sources, source]
+        //         return new Dataset(this.ctx, ...sources)
+        //     }else {
+        //         return new Dataset(this.ctx, ...this.sources)
+        //     }
+        // }
         return this
     }
 
-    toScalar(): ObjectValue<T>{
+    toScalar(p: PropertyDefinition): ObjectValue<T>{
         throw new Error()
     }
 
@@ -115,47 +180,62 @@ class Dataset<T extends Schema> {
 }
 
 
-function belongsTo<TypeClass extends typeof Schema>(schema: TypeClass, relatedBy: string, relatedRootKey?: string){
+function belongsTo<RootClass extends Entity, TypeClass extends Entity>(schema: string, relatedBy: string, relatedRootKey?: string){
     
-    return (root: Datasource, args: QueryX< InstanceType<TypeClass> >, context: Context): Scalar<ObjectValue< InstanceType<TypeClass> >> => {
-        
-        // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
-        //     return {
-        //         source: source.innerJoin(root, (relatedRootKey? source._[relatedRootKey]: source.pk ).equals(root._[relatedBy]) )
-        //     }
-        // }).apply(args).toScalar(ObjectOf(schema))
+    return (root: Datasource<RootClass>, args: QueryX< TypeClass> | QueryY<[Datasource<RootClass>, Datasource<TypeClass>]> , context: Context): Scalar<ObjectValue< TypeClass >> => {
+
+        let relatedSource = context.models[schema].datasource()
+        let c = {}
+        if(args instanceof Function){
+            c = args(context, root,relatedSource )
+        } else {
+            c = args
+        }
+        let r = { source: relatedSource.innerJoin(root, (relatedRootKey? relatedSource._[relatedRootKey]: relatedSource.pk ).equals(root._[relatedBy]) ) }
+       
+        return schema.dataset().apply( Object.assign({}, c, r) ).toScalar(new ObjectOfType(schema))
+        throw new Error()
     }
 }
 
-function hasMany<TypeClass extends typeof Schema>(schema: TypeClass, relatedBy: string, rootKey?: string){
+function hasMany<RootClass extends Entity, TypeClass extends Entity>(schema: string, relatedBy: string, rootKey?: string){
     
-    return (root: Datasource, args: QueryX< InstanceType<TypeClass> >, context: Context): Scalar<ObjectValue< InstanceType<TypeClass> >> => {
+    return (root: Datasource<TypeClass>, args: QueryX< TypeClass >, context: Context): Scalar<ObjectValue< TypeClass >> => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {
         //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
         //     }
         // }).apply(args).toScalar(ArrayOf(schema))
+        throw new Error()
     }
 }
 
-class Product extends Schema{
-   
+class Product extends Entity<ProductRecord>{
     name = types.String({})
-    shop = belongsTo(Shop, 'shopId')
+    shop = belongsTo<Product, Shop>('Shop', 'shopId')
     myABC(root: any, args: number): Scalar<string> {
             throw new Error()
     }
-
+    newRecord(): ProductRecord {
+        return new ProductRecord()
+    }
 }
 
-class Shop extends Schema{
+class ProductRecord {
+    myName: string = ''
+}
+
+
+class Shop extends Entity {
+    newRecord(): {} {
+        throw new Error("Method not implemented.")
+    }
     name = types.String({})
-    products = hasMany(Product, 'shopId')
-    
+    products = hasMany<Shop, Product>('Product', 'shopId')
 }
 
-let bbb = Product.find({
+let bbb = (new Product).find({
     props: {
         shop: {
             props: {
@@ -167,45 +247,83 @@ let bbb = Product.find({
             }
         }
     }
-})
+}) 
 
-bbb.shop.products
+bbb.shop.products.myName
 
 
 
-class B extends Shop{
-    aaa = types.String({})
-    products = hasMany(AA, '','')
+function find<T extends {
+        [key: string]: Scalar<any>
+    }>(options: {
+    props: T
+    source?: Datasource<any>
+    filter?: any
+}): {
+    [key in keyof T]: T[key] extends Scalar<infer D>? (D extends PropertyDefinition ? ReturnType< D["parseRaw"]>: never):
+            never;
+}{
+    throw new Error()
 }
-class AA extends Product{
-    kkk = types.StringNotNull({})
-    shop = belongsTo(B, '', '')
 
-}
+let p = Product.datasource()
+let s = Shop.datasource()
 
-let a = AA.find({
+let apple = find({
     props: {
-        kkk: 'ee',
-        shop: {
-            props: {
-                aaa: 'xx',
-                products: {
-                    props: {
-                        name: ''
-                    }
-                }
-            }
-        }
+        apple: new Scalar<BooleanType>()
     }
 })
 
-a.shop.products
-a.shop.aaa
+apple.apple
 
 
-// type A = {nullable: true}
+// let add = find<{a: StringTypeNotNull, s: StringTypeNotNull}>({
+//     props: {
+//         a: p._.id,
+//         s: s._.id
+//     },
+//     source: p.join(s),
+//     filter: {}
+// })
 
-// let c = <T>(a: T) : T extends A ? boolean: (string |null) => {
-//     return a.nullable
+// a.shop.products
+// a.shop.aaa
+
+// let ccc = find<
+//     {a: StringTypeNotNull, s: StringTypeNotNull},  
+//     // {x: StringTypeNotNull, y: StringTypeNotNull},
+//     // {c: StringTypeNotNull, d: StringTypeNotNull}
+
+// >( (ctx, d0, d1) => ({
+//     props: {
+//         a: d0.hello,
+//         s: d1._.id
+//     },
+//     source: p,
+//     filter: {}
+// }))
+
+// let aa :QueryXObject<{a: StringType }> = {
+//     props: {
+
+//     }
 // }
-// let x = c({nullable:true})
+
+
+
+type A = UnionToIntersection<{x: number} | {t: boolean} >
+
+
+
+class ABC {
+    static a: boolean
+}
+
+type C<T extends typeof ABC> = {
+    [key in keyof T]: T[key] extends boolean? number: never
+}
+
+let ccc: C<typeof ABC>
+
+console.log(ccc!.a)
