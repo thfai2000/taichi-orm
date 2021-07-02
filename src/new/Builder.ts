@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrDataset, QueryFilterResolver, makeQueryFilterResolver } from "."
+import { getKnexInstance, Selector, SQLString, FieldProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrDataset, QueryFilterResolver, makeQueryFilterResolver } from "."
 import { Equal } from "./Operator"
 import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
 

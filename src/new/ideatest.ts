@@ -1,5 +1,7 @@
 import types, {PropertyDefinition, StringType, StringTypeNotNull, ObjectOfType, BooleanType} from "./PropertyType"
-
+import {Schema, Entity, FieldProperty} from "."
+import { Column } from "./Builder"
+import { Selector } from ".."
 
 type UnionToIntersection<T> = 
   (T extends any ? (x: T) => any : never) extends 
@@ -49,76 +51,40 @@ class PropertyType<T>{
 
 }
 
-class Schema {
-    // [key:string]: ComputeFunction | PropertyDefinition
-}
-
-abstract class Entity{
+// abstract class Entity{
 
 
-    static schema: Schema
+//     static schema: Schema
 
-    static dataset<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Dataset<I> {
-        throw new Error()
-    }
+//     static dataset<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Dataset<I> {
+//         throw new Error()
+//     }
 
-    static datasource<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Datasource<I> {
-        throw new Error()
-    }
+//     static datasource<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ): Datasource<I> {
+//         throw new Error()
+//     }
 
-    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
-        options: QueryX< I["schema"] > ): 
-        ObjectValue< I > { 
-        throw new Error()
-    }
+//     static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
+//         options: QueryX< I["schema"] > ): 
+//         ObjectValue< I > { 
+//         throw new Error()
+//     }
 
-
-    // dataset<I extends Entity>(this: I): Dataset<I> {
-    //     throw new Error()
-    // }
-
-    // datasource<I extends Entity>(this: I ): Datasource<I> {
-    //     throw new Error()
-    // }
-
-    // find<I extends Entity>(this: I, options: QueryX<I> ): ObjectValue<I>{ 
-    //     throw new Error()
-    // }
-
-    // abstract newRecord(...args: any[]): R
-
-
-
-
-    // static entityClass<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
-
-    //     // const s = this
-
-    //     // let entityClass = class extends Entity{
-    //     //     constructor(){
-    //     //         super()
-    //     //         //TODO copy attributes  
-    //     //     }
-    //     // }
-    //     //TODO
-    //     // return entityClass
-    //     throw new Error()
-    // }
-}
+// }
 
 
 class Context {
     // schemas: {[key:string]: Entity}
 }
 
-interface Datasource<T1 extends Schema, Previous extends Datasource<any, any> = Datasource<any, any> > {
-    // hello: Scalar<any>
-    previous(): Previous
+// interface Datasource<T1 extends Schema, Previous extends Datasource<any, any> = Datasource<any, any> > {
+//     // hello: Scalar<any>
+//     previous(): Previous
 
-    innerJoin<Left extends Datasource<any>, T2 extends Datasource<any>>(this: Left ,source: T2, condition: Scalar<BooleanType>): Datasource<T2, Left> 
-    // leftJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
-    // rightJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
-}
+//     innerJoin<Left extends Datasource<any>, T2 extends Datasource<any>>(this: Left ,source: T2, condition: Scalar<BooleanType>): Datasource<T2, Left> 
+//     // leftJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
+//     // rightJoin(source: Datasource, leftColumn: Column, operator: string, rightColumn: Column): Datasource[]
+// }
 
 
 class Dataset<T extends Entity, Joins extends Datasource<any, any>[] = Datasource<any, any>[] > {
@@ -267,8 +233,18 @@ let bbb = Product.find({
 //     props
 // }
 
+// bbb.shop.products
 
-bbb.shop.products
+type SelectorMap<E extends typeof Entity> = { 
+    [key in keyof Omit<E["schema"], keyof Schema> & string as `$${key}`]:
+    E["schema"][key] extends ComputeFunction? 
+        (ReturnType<E["schema"][key]> extends Promise<infer S> ? 
+            (S extends Scalar<infer D>? Column<D>: unknown): 
+            (ReturnType<E["schema"][key]> extends Scalar<infer D>? Column<D>: unknown) ):
+    E["schema"][key] extends PropertyDefinition? Column<E["schema"][key]>:
+    never;
+}
+let a: SelectorMap<typeof Product>
 
 
 
@@ -290,7 +266,8 @@ let s = Shop.datasource()
 
 let apple = find({
     props: {
-        apple: new Scalar<BooleanType>()
+        apple: new Scalar<BooleanType>(),
+        shop: s.
     }
 })
 
@@ -335,14 +312,14 @@ type A = UnionToIntersection<{x: number} | {t: boolean} >
 
 
 
-class ABC {
-    static a: boolean
-}
+// class ABC {
+//     static a: boolean
+// }
 
-type C<T extends typeof ABC> = {
-    [key in keyof T]: T[key] extends boolean? number: never
-}
+// type C<T extends typeof ABC> = {
+//     [key in keyof T]: T[key] extends boolean? number: never
+// }
 
-let ccc: C<typeof ABC>
+// let ccc: C<typeof ABC>
 
-console.log(ccc!.a)
+// console.log(ccc!.a)
