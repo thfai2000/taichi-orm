@@ -235,16 +235,15 @@ let bbb = Product.find({
 
 // bbb.shop.products
 
-type SelectorMap<E extends typeof Entity> = { 
-    [key in keyof Omit<E["schema"], keyof Schema> & string as `$${key}`]:
-    E["schema"][key] extends ComputeFunction? 
-        (ReturnType<E["schema"][key]> extends Promise<infer S> ? 
-            (S extends Scalar<infer D>? Column<D>: unknown): 
-            (ReturnType<E["schema"][key]> extends Scalar<infer D>? Column<D>: unknown) ):
-    E["schema"][key] extends PropertyDefinition? Column<E["schema"][key]>:
-    never;
-}
-let a: SelectorMap<typeof Product>
+// type SelectorMap<E extends typeof Entity> = { 
+//     [key in keyof Omit<E["schema"], keyof Schema> & string as `$${key}`]:
+//     E["schema"][key] extends ComputeFunction? 
+//         (ReturnType<E["schema"][key]> extends Promise<infer S> ? 
+//             (S extends Scalar<infer D>? Column<D>: unknown): 
+//             (ReturnType<E["schema"][key]> extends Scalar<infer D>? Column<D>: unknown) ):
+//     E["schema"][key] extends PropertyDefinition? Column<E["schema"][key]>:
+//     never;
+// }
 
 
 

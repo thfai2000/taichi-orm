@@ -1,52 +1,99 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import Types, { PropertyDefinition } from './PropertyType'
-export { PropertyDefinition as PropertyType, Types }
-import {makeBuilder as builder, isDataset, isRaw, isScalar, makeRaw as raw, makeScalar as column, makeColumn, Source, makeSource, Column, makeScalar, Scalar, Dataset, makeRaw, isColumn} from './Builder'
-export {builder, raw, column}
-import { ComputeFn } from './Common'
+export { PropertyDefinition, FieldPropertyDefinition, ComputePropertyDefinition }
+import types, { FieldPropertyDefinition, PropertyDefinition, ComputePropertyDefinition } from './PropertyType'
+export { PropertyDefinition as PropertyType, types }
+import {makeBuilder as builder, isDataset, isRaw, isScalar, makeRaw as raw, makeColumn, makeFromClause, Column, makeScalar, Scalar, Dataset, makeRaw, isColumn, FromClause, Datasource, TableDatasource, Scalarable} from './Builder'
 export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
+import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, notEmpty, Property, quote, thenResult } from './util'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
-const SimpleObjectClass = ({} as {[key:string]: any}).constructor
-function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
-    return value !== null && value !== undefined;
+
+export type SelectorMap<E extends Schema> = {
+    [key in keyof Omit<E, keyof Schema> & string]: 
+        E[key] extends FieldPropertyDefinition? Column<E[key]>:
+            E[key] extends ComputePropertyDefinition<infer D, infer Root, infer Arg, infer R>? 
+                (
+                    R extends Scalarable? 
+                        CompiledComputeFunction< Arg >:
+                        (R extends Promise<Scalarable>?
+                            CompiledComputeFunctionPromise< Arg >: 
+                            unknown) 
+                        
+                ):
+                never;
+}
+// ComputeFunction<E, infer ARG>
+function compute<D extends PropertyDefinition, Root extends Schema, Arg, R>(definition: D, c: ComputeFunction<Root, Arg, R>){
+    return new ComputePropertyDefinition<D, Root, Arg, R>(definition, c)
 }
 
-export function thenResultArray<T, R>(
-    value: Array<T | Promise<T>>, 
-    fn: (value: Array<T>) => (R | Promise<R>),
-    errorFn?: (error: Error) => (R | Promise<R>)
-):  (R | Promise<R>) {
-    if(!Array.isArray(value)){
-        throw new Error('It is not an array')
-    }
-    if(value.some(v => v instanceof Promise)){
-        return Promise.all(value).then(fn, errorFn)
-    }
-    return fn(value as Array<T>)
+export type QueryFilterResolver = (value: QueryFilter) => Promise<Scalar> | Scalar
+// export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
+export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
+export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]}
+export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues | Array<Expression> | boolean
+
+
+export type MutationEntityPropertyKeyValues = {
+    [key: string]: boolean | number | string | any | Array<any>
 }
 
-export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | Promise<R>), errorFn?: (error: Error) => (R | Promise<R>) ):  (R | Promise<R>) {
-    if(value instanceof Promise){
-        return value.then(fn, errorFn)
-    }
-    return fn(value)
+export type QuerySelect = { [key: string]: boolean | QueryOptions | Scalar } | Array<string | Column> 
+
+export type QueryFilter = Expression
+
+export type QueryOrderBy = ( (string|Column) | {column: (string|Column), order: 'asc' | 'desc'} )[]
+
+export type QueryArguments = {[key:string]: any}
+
+// export type ComputeArguments = {[key:string]: any}
+
+// export class FutureArgument<Input = any, Output = any>{
+//     constructor(private fnc: (futureValue: Input) => Output ){}
+// }
+
+export type QueryObject = {
+    select?: QuerySelect,
+    filter?: QueryFilter,
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
+    args?: QueryArguments
+    // fn?: QueryFunction
 }
 
-export function addBlanketIfNeeds(text: string) {
-    text = text.trim()
-    let need = true
-    if(/^[a-zA-Z0-9\_\$\.`'"]+$/.test(text)){
-        need = false
-    }
-    if (need) {
-        text = `(${text})`
-    }
-    return text
+// type A<T> = T extends undefined? () => void: (a: T) => void
+
+// let d: A<undefined>
+// let e = d!()
+// let c: A<number>
+// let v = c!(5)
+
+
+// export type ScalarOrDataset = Scalar | Dataset
+
+export type ComputeFunction<Root extends Schema, ARG, R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root>, args: ARG) => R
+
+export type CompiledComputeFunction<ARG> = (queryObject: ARG) => Column
+
+export type CompiledComputeFunctionPromise<ARG> = (queryObject: ARG) => Promise<Column> | Column
+
+// export type QueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
+
+// export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryFilter, Function> | null
+
+// export type ApplyNextQueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
+
+type DatabaseActionResult<T> = T
+type DatabaseActionOptions = {
+    failIfNone: boolean
+    querySelect: QuerySelect
 }
+type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
+
 
 export type ORMConfig = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -91,19 +138,6 @@ const ormConfig: ORMConfig = {
 // the new orm config
 export {ormConfig as config}
 
-const META_FIELD_DELIMITER = '___'
-
-export const client = (): string => ormConfig.knexConfig.client.toString()
-
-export const quote = (name: string) => {
-    let c = client()
-    if(c.startsWith('sqlite') || c.startsWith('mysql') ){
-        return `\`${name.replace(/\`/g, '``')}\``
-    } else if (c.startsWith('pg')){
-        return `"${name.replace(/\"/g, '""')}"`
-    }
-    throw new Error('Unsupport client')
-}
 
 let _globalKnexInstance: Knex | null = null
 
@@ -133,6 +167,38 @@ export const getKnexInstance = (): Knex => {
     _globalKnexInstance = knex(newKnexConfig)
     return _globalKnexInstance
 }
+
+export const client = (): string => ormConfig.knexConfig.client.toString()
+
+export class ComputeProperty extends Property {
+
+    readonly definition: ComputePropertyDefinition<any, any, any, any>
+
+    constructor(name: string,
+        definition: ComputePropertyDefinition<any, any, any, any>){
+            super(name)
+            this.definition = definition
+        }
+}
+export class FieldProperty extends Property {
+
+    readonly definition: FieldPropertyDefinition
+
+    constructor(name: string,
+        definition: FieldPropertyDefinition){
+            super(name)
+            this.definition = definition
+        }
+
+    static convertFieldName(propName: string){
+        return ormConfig.propNameTofieldName ? ormConfig.propNameTofieldName(propName) : propName
+    }
+
+    get fieldName(){
+        return FieldProperty.convertFieldName(this.name)
+    }
+}
+
 
 export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
     let knex = getKnexInstance()
@@ -170,75 +236,76 @@ export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promis
     
 }
 
-let schemas: {
-    [key: string]: Schema
-} = {}
-
-
 let registeredModels: {
     [key: string]: typeof Entity
 } = {}
 
-// let registeredPropertyDefinitions: {
-//     [key: string]: (...args: ConstructorParameters<typeof PropertyDefinition>) => PropertyDefinition
-// }
-
 export class Schema {
 
-    tableName: string
-    entityName: string
-    namedProperties: NamedProperty[] = []
+    tableName?: string
+    entityName?: string
+    properties: Property[] = []
+    propertiesMap: {[key:string]: Property} = {}
     hooks: Hook[] = []
-    primaryKey: NamedProperty
-    uuid: NamedProperty | null
+    primaryKey: PropertyDefinition
+    uuid: PropertyDefinition | null
 
-    constructor(entityName: string){
+    constructor(entityName?: string){
         this.entityName = entityName
-        this.tableName = ormConfig.entityNameToTableName?ormConfig.entityNameToTableName(entityName):entityName
-        this.primaryKey = new NamedProperty(
-            ormConfig.primaryKeyName,
-            Types.PrimaryKey()
-        )
+        this.primaryKey = types.PrimaryKey()
         if(ormConfig.enableUuid){
-            this.uuid = new NamedProperty(
-                ormConfig.uuidPropName,
-                Types.String({nullable: false, length: 255})
-            )
-            this.namedProperties = [this.primaryKey, this.uuid]
+            this.uuid = types.StringNotNull({length: 255})
         } else {
             this.uuid = null
-            this.namedProperties = [this.primaryKey]
         }
-        
     }
 
+    register(entityName: string){
+        this.entityName = this.entityName ?? entityName
+        this.tableName = ormConfig.entityNameToTableName?ormConfig.entityNameToTableName(entityName):entityName
+ 
+        let fields : Property[] = []
+        for(let field in this){
+            const actual = this[field]
+            if(actual instanceof FieldPropertyDefinition) {
+                const f  = new FieldProperty(field, actual)
+                this.propertiesMap[field] = f
+                fields.push( f )
+            } else if(actual instanceof ComputePropertyDefinition ){
+                //@ts-ignore
+                const f = new ComputeProperty(field, actual as ComputePropertyDefinition)
+                this.propertiesMap[field] = f
+                fields.push( f )
+            }
+        }
+        this.properties = fields
+    }
+
+
     createTableStmt(tablePrefix?: string){
+        if(!this.tableName){
+            throw new Error('Not register yet')
+        }
         if(this.tableName.length > 0){
+            let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty[]
+
             return `CREATE TABLE IF NOT EXISTS ${quote( (tablePrefix??'') + this.tableName)} (\n${
-                this.namedProperties.filter(f => !f.definition.computeFunc).map(f => {
-                    return `${f.definition.create(f)}`  
+                props.map( prop => {
+                    let f = prop.definition
+                    return `${f.create(prop.name, prop.fieldName )}`  
                 }).flat().join(',\n')}\n)`;
         }
         return ''
     }
 
-    prop(name:string, definition: any, options?: NamedPropertyOptions){
-        this.namedProperties.push(new NamedProperty(
-            name,
-            definition,
-            options
-        ))
-        this.checkProps()
-    }
-
-    private checkProps(){
-        this.namedProperties.reduce( (acc, p) => {
-            acc[p.name] = (acc[p.name] || 0) + 1
-            if(acc[p.name] > 1){
-                throw new Error(`Duplicated Property Name in schema ${this.entityName}`)
-            }
-            return acc
-        }, {} as SimpleObject)
+    /**
+     * Selector is used for locating the table name / field names / computed functions
+     * field pointers
+     * @returns 
+     */
+    datasource<T extends Schema>(this: T, existingContext: ExecutionContext | null): TableDatasource<T>{
+        let selectorImpl = makeTableDatasource<T>(this, existingContext?? globalContext)
+        return selectorImpl
     }
 
     hook(newHook: Hook){
@@ -246,52 +313,6 @@ export class Schema {
     }
 }
 
-export function makeid(length: number) {
-    var result           = [];
-    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
-    var charactersLength = characters.length;
-    for ( var i = 0; i < length; i++ ) {
-      result.push(characters.charAt(Math.floor(Math.random() * charactersLength)));
-   }
-   return result.join('');
-}
-
-export interface SQLString{
-    toString(): string
-}
-
-export type NamedPropertyOptions = {
-    skipFieldNameConvertion?: boolean
-}
-
-export class NamedProperty {
-    
-    constructor(
-        public name: string,
-        public definition: PropertyDefinition,
-        public options?: NamedPropertyOptions){
-            this.name = name
-            this.definition = definition
-            this.options = options
-
-            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
-                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
-            }
-        }
-
-    static convertFieldName(propName: string){
-        return ormConfig.propNameTofieldName ? ormConfig.propNameTofieldName(propName) : propName
-    }
-
-    get fieldName(){
-        if(this.options?.skipFieldNameConvertion){
-            return this.name
-        } else {
-            return NamedProperty.convertFieldName(this.name)
-        }
-    }
-
-}
 
 export type MutationName = 'create'|'update'|'delete'
 export type HookName = 'beforeMutation' | 'afterMutation'
@@ -317,88 +338,16 @@ export type HookInfo = {
 
 export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
 
-const simpleQuery = (row: Dataset, selector: Selector, queryOptions: QueryObject) => {
-    let stmt = row.toQueryBuilder()
-
-    let isWholeFilter = true
-
-    if(queryOptions.limit){
-        stmt = stmt.limit(queryOptions.limit)
-        isWholeFilter = false
-    }
-    if(queryOptions.offset){
-        stmt = stmt.offset(queryOptions.offset)
-        isWholeFilter = false
-    }
-    if(queryOptions.orderBy){
-        stmt = stmt.orderBy(queryOptions.orderBy)
-        isWholeFilter = false
-    }
-    if(queryOptions.select){
-        isWholeFilter = false
-    }
-    if(queryOptions.args){
-        isWholeFilter = false
-    }
-    if(queryOptions.fn){
-        isWholeFilter = false
-    }
-
-    let stmtOrPromise: Dataset | Promise<Dataset> = stmt
-    if (queryOptions.select){
-        stmtOrPromise = makeQuerySelectResolver(() => [selector.impl])(queryOptions.select, row)
-    }
-    let filterOption: QueryFilter | null = null
-    if(queryOptions.filter){
-        filterOption = queryOptions.filter
-        isWholeFilter = false
-    }
-    if(isWholeFilter){
-        filterOption = queryOptions as QueryFilter
-    }
-    if(filterOption){
-        const resolved = makeQueryFilterResolver(() => [selector.impl])(filterOption)
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
-            stmt.toQueryBuilder().where(r).toRow()
-            return stmt
-        }))
-    }
-
-    if(!isWholeFilter){
-        const expectedKeys = ['limit', 'offset', 'orderBy', 'select', 'args', 'fn', 'filter']
-        if(! Object.keys(queryOptions).every(key => expectedKeys.includes(key)) ) {
-            throw new Error(`The query option must be with keys of [${expectedKeys.join(',')}]`)
-        }
-    }
-
-    return stmtOrPromise
-}
 
 export const configure = async function(newConfig: Partial<ORMConfig>){
     Object.assign(ormConfig, newConfig)
     Object.assign(ormConfig.globalContext, newConfig.globalContext)
-    // let arrayOfSchemas: Schema[] = []
 
-
-    // Object.keys(ormConfig.types).forEach( k => {
-    //     ormConfig.types[k] 
-    //     const t = ormConfig.types[k]
-    //     registeredPropertyDefinitions[k] = () => new t()
-    // })
-
-    const registerEntity = (entityName: string, entityClass: any) => {
-        let s = new Schema(entityName);
-        if(entityClass.register){
-            entityClass.register(s)
-            schemas[entityName] = s
-            // arrayOfSchemas.push(s)
-        }
+    const registerEntity = (entityName: string, entityClass: typeof Entity) => {
         registeredModels[entityName] = entityClass
+        entityClass.schema.register(entityName)
     }
     
-    //register special Entity Dual
-    registerEntity(Dual.name, Dual)
-
     //register models 
     if(ormConfig.models){
         let models = ormConfig.models
@@ -406,6 +355,7 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
             registerEntity(key, models[key]);
         })
     }
+
     //register models by path
     if(ormConfig.modelsPath){
         let files = fs.readdirSync(ormConfig.modelsPath)
@@ -429,434 +379,143 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
     if(ormConfig.createModels){
        await globalContext.createModels()
     }
+
+    return await globalContext
 }
 
-export type SimpleObject = { [key:string]: any}
 
-const map1 = new Map<NamedProperty, string>()
-const map2 = new Map<string, NamedProperty>()
-const registerGlobalNamedProperty = function(d: NamedProperty): string{
-    let r = map1.get(d)
-    if(!r){
-        let key = makeid(5)
-        map1.set(d, key)
-        map2.set(key, d)
-        r = key
+const simpleQuery = <T extends Schema>(row: Dataset, selector: Datasource<T>, queryOptions: QueryObject) => {
+    let stmt = row.toQueryBuilder()
+
+    let isWholeFilter = true
+
+    if(queryOptions.limit){
+        stmt = stmt.limit(queryOptions.limit)
+        isWholeFilter = false
     }
-    return r
-}
-
-const findGlobalNamedProperty = function(propAlias: string): NamedProperty{
-    let r = map2.get(propAlias)
-    if(!r){
-        throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
+    if(queryOptions.offset){
+        stmt = stmt.offset(queryOptions.offset)
+        isWholeFilter = false
     }
-    return r
+    if(queryOptions.orderBy){
+        stmt = stmt.orderBy(queryOptions.orderBy)
+        isWholeFilter = false
+    }
+    if(queryOptions.select){
+        isWholeFilter = false
+    }
+    if(queryOptions.args){
+        isWholeFilter = false
+    }
+    // if(queryOptions.fn){
+    //     isWholeFilter = false
+    // }
+
+    let stmtOrPromise: Dataset | Promise<Dataset> = stmt
+    if (queryOptions.select){
+        stmtOrPromise = makeQuerySelectResolver(() => [selector])(queryOptions.select, row)
+    }
+    let filterOption: QueryFilter | null = null
+    if(queryOptions.filter){
+        filterOption = queryOptions.filter
+        isWholeFilter = false
+    }
+    if(isWholeFilter){
+        filterOption = queryOptions as QueryFilter
+    }
+    if(filterOption){
+        const resolved = makeQueryFilterResolver(() => [selector])(filterOption)
+        stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
+            stmt.toQueryBuilder().where(r).toRow()
+            return stmt
+        }))
+    }
+
+    if(!isWholeFilter){
+        const expectedKeys = ['limit', 'offset', 'orderBy', 'select', 'filter']
+        if(! Object.keys(queryOptions).every(key => expectedKeys.includes(key)) ) {
+            throw new Error(`The query option must be with keys of [${expectedKeys.join(',')}]`)
+        }
+    }
+
+    return stmtOrPromise
 }
 
-const metaTableAlias = function(schema: Schema): string{
-    return schema.entityName + META_FIELD_DELIMITER + makeid(5)
-}
 
-const breakdownMetaTableAlias = function(metaAlias: string) {
-    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
+// const breakdownMetaTableAlias = function(metaAlias: string) {
+//     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
     
-    if(metaAlias.includes(META_FIELD_DELIMITER)){
-        let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
-        let found = schemas[entityName]
-        return found
-    } else {
-        return null
-    }
-}
+//     if(metaAlias.includes(META_FIELD_DELIMITER)){
+//         let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
+//         let found = schemas[entityName]
+//         return found
+//     } else {
+//         return null
+//     }
+// }
 
-export const metaFieldAlias = function(p: NamedProperty): string{
-    let propAlias = registerGlobalNamedProperty(p)
-    return `${p.name}${META_FIELD_DELIMITER}${propAlias}`
-}
 
-export const breakdownMetaFieldAlias = function(metaAlias: string){
-    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
-    if(metaAlias.includes(META_FIELD_DELIMITER)){
-        let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
-        let namedProperty = findGlobalNamedProperty(propAlias)
-        return {propName, namedProperty}
-    } else {
-        return null
-    }
-}
 
-export interface Selector extends QueryFilterResolver {
-    (value: QueryFilter): Promise<Scalar> | Scalar
-    impl: SelectorImpl
-    readonly entityClass: typeof Entity
-    readonly executionContext: ExecutionContext
-    readonly schema: Schema
-    readonly derivedProps: Array<NamedProperty>
-    readonly _: {[key: string] : Column}
-    readonly $: {[key: string] : CompiledComputeFunction}
-    readonly $$: {[key: string] : CompiledComputeFunctionPromise}
+
+
+// class ProductSchema extends Schema {
+//     name = types.String({})
+//     shopId = types.Number()
+//     // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
+//     myABC = compute(types.String(), (context: ExecutionContext, root: any, args: number): Scalarable => {
+//         throw new Error()
+//     })
+// }
+
+
+
+// let a: SelectorMap<ProductSchema>
+
+
+
+
+function makeTableDatasource<E extends Schema>(schema: E, executionContext: ExecutionContext){
+
+    let tableAlias = metaTableAlias(schema)
+    let tableName = executionContext.tablePrefix + schema.tableName
     
-    // $$: {[key: string] : CompiledFunction}
-    // prop: (value: any) => any
-    readonly all: Column[]
-    // star: NamedColumn
-    readonly source: Source
-    // sourceRaw: string
-    readonly pk: Column
-    readonly uuid: Column | null
-    // [key: string]: any
-    readonly tableAlias: string
-    readonly tableName: string
-    registerProp(namedProperty: NamedProperty): CompiledComputeFunction
-    getProperties(): NamedProperty[]
-}
+    const selector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as TableDatasource<E>
+    let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E>
+    
+    newSelector.schema = schema
+    newSelector.executionContext = executionContext
+    newSelector.tableName = tableName
+    newSelector.tableAlias = tableAlias
 
+    //@ts-ignore
+    newSelector.$ = new Proxy( this.schema ,{
+        get: (oTarget: Schema, sKey: string) => {
 
-export class SelectorImpl{
-    interface: Selector | null | undefined
-    readonly entityClass: typeof Entity
-    readonly executionContext: ExecutionContext
-    readonly schema: Schema
-    readonly derivedProps: Array<NamedProperty> = []
-    readonly _: {[key: string] : Column}
-    readonly $: {[key: string] : CompiledComputeFunction}
-    readonly $$: {[key: string] : CompiledComputeFunctionPromise}
-    // $$: {[key: string] : CompiledFunction}
-    // prop: (value: any) => any
-    readonly [key: string]: any
-    readonly tableAlias: string
-    readonly tableName: string
-
-    // stored any compiled property
-    // compiledNamedPropertyMap: Map<string, CompiledNamedProperty> = new Map<string, CompiledNamedProperty>()
-   
-    constructor(entityClass: typeof Entity, schema: Schema, executionContext: ExecutionContext){
-        let selector = this
-        this.schema = schema
-        this.tableAlias = metaTableAlias(schema)
-        this.tableName = executionContext.tablePrefix + schema.tableName
-        this.entityClass = entityClass
-        this.executionContext = executionContext
-        
-        this._ = new Proxy( {} ,{
-            get: (oTarget, sKey: string) => {
-                return selector.getNormalCompiled(sKey)
-            }
-        }) as {[key: string] : Column}
-
-        this.$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledComputeFunction => {
-                return selector.getComputedCompiled(sKey)
-            }
-        })
-
-        this.$$ = new Proxy( {} ,{
-            get: (oTarget, sKey: string): CompiledComputeFunctionPromise => {
-                return selector.getComputedCompiledPromise(sKey)
-            }
-        })
-    }
-
-    getComputedCompiledPromise(sKey: string) {
-        let selector = this
-        if(!selector){
-            throw new Error('Unexpected')
-        }
-        let prop = selector.getProperties().find((prop) => prop.name === sKey)
-        selector.checkDollar(prop, sKey)
-        return this.compileAs$$(prop!)
-    }
-
-    getComputedCompiled(sKey: string) {
-        let selector = this
-        if(!selector){
-            throw new Error('Unexpected')
-        }
-        // let withTransform = true
-        // if (sKey.startsWith('_')) {
-        //     withTransform = false
-        //     sKey = sKey.slice(1)
-        // }
-        let prop = selector.getProperties().find((prop) => prop.name === sKey)
-        selector.checkDollar(prop, sKey)
-        return this.compileAs$(prop!)
-    }
-
-    getNormalCompiled(sKey: string) {
-        let selector = this
-        if(!selector){
-            throw new Error('Unexpected')
-        }
-        // let withEscape = false
-        // if (sKey.startsWith('_')) {
-        //     withEscape = true
-        //     sKey = sKey.slice(1)
-        // }
-        let prop = this.getProperties().find((prop) => prop.name === sKey)
-        this.checkDash(prop, sKey)
-        return this.compileAs_(prop!)
-    }
-
-    private checkDollar(prop: NamedProperty | undefined, sKey: string) {
-        if (!prop) {
-            throw new Error(`Cannot find property '${sKey}' in Entity '${this.schema.entityName}'`)
-        } else if (!prop.definition.computeFunc) {
-            throw new Error(`Property '${sKey}' is NormalProperty. Accessing through $ is not allowed.`)
-        }
-    }
-
-    private checkDash(prop: NamedProperty | undefined, sKey: string) {
-        if (!prop) {
-            throw new Error(`Cannot find property '${sKey}' in Entity '${this.schema.entityName}'`)
-        } else if (prop.definition.computeFunc) {
-            throw new Error(`Property '${sKey}' is ComputedProperty. Accessing through _ is not allowed.`)
-        }
-    }
-
-    // "table AS abc"
-    get source(): Source{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [source] for selection.`)
-        }
-        return makeSource(null, null, this.interface!)
-    }
-
-    get all(): Column[] {
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
-        }
-        return this.getProperties().filter(p => !p.definition.computeFunc).map(p => this.getNormalCompiled(p.name))
-    }
-
-    get pk(): Column{
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
-        }
-        return this._[this.schema.primaryKey.name]
-    }
-
-    get uuid(): Column | null {
-        if(this.schema.tableName.length === 0){
-            throw new Error(`Entity ${this.schema.entityName} is a virtual table. It have no [all] for selection.`)
-        }
-        return this._[this.schema.uuid?.name ?? '']
-    }
-
-    getProperties(): NamedProperty[]{
-        // derived Props has higher priority. I can override the schema property
-        return [...this.derivedProps, ...this.schema.namedProperties]
-    }
-
-    registerProp(namedProperty: NamedProperty): CompiledComputeFunctionPromise{
-        this.derivedProps.push(namedProperty)
-        if(!namedProperty.definition.computeFunc){
-            throw new Error('Only the Computed Property can be registered after the schema is created.')
-        } else {
-            return this.getComputedCompiledPromise(namedProperty.name)
-        }
-    }
-
-
-    compileAs_(prop: NamedProperty) {
-        const rootSelector: SelectorImpl = this
-        if(prop.definition.computeFunc){
-            throw new Error('Computed Property cannot be compiled as normal field.')
-        } 
-        let tableAlias = quote(rootSelector.tableAlias)
-        let fieldName: string = quote(prop.fieldName)
-        let alias = metaFieldAlias(prop)
-        let rawTxt = `${tableAlias}.${fieldName}`
-
-        return makeColumn(alias, makeScalar(raw(rawTxt), prop.definition) )
-    }
-
-    compileAs$(prop: NamedProperty): CompiledComputeFunction {
-        const rootSelector: SelectorImpl = this
-        return (queryOptions?: QueryOptions) => {
-            let subquery = this.executeComputeFunc(queryOptions, prop)
-
-            let process = (subquery: ScalarOrDataset): Column => {
-                let alias = metaFieldAlias(prop)
-                if(isDataset(subquery)){
-                    const casted = subquery as Dataset
-                    return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition) )
-                } else if( isScalar(subquery)){
-                    const casted = subquery as Scalar
-                    return makeColumn(alias, makeScalar(casted.toRaw(), prop.definition))
+            if(typeof sKey === 'string'){
+                let prop = oTarget.propertiesMap[sKey]
+                if(prop instanceof FieldProperty){
+                    let tableAlias = quote(selector.tableAlias)
+                    let fieldName: string = quote(prop.fieldName)
+                    let alias = metaFieldAlias(prop)
+                    let rawTxt = `${tableAlias}.${fieldName}`
+                    return makeColumn(alias, makeScalar(raw(rawTxt), prop.definition ) )
                 }
-                throw new Error('Unexpected')
-            }
-            if(subquery instanceof Promise){
-                throw new Error(`Computed Function of Property '${prop.name}' which used Async function/Promise has to use Selector.$$ to access`)
-            } else {
-                return process(subquery)
-            }
-        }
-    }
-
-    compileAs$$(prop: NamedProperty): CompiledComputeFunctionPromise {
-        const rootSelector: SelectorImpl = this
-        return (queryOptions?: QueryOptions) => {
-            let subquery = this.executeComputeFunc(queryOptions, prop)
-
-            let process = (subquery: Scalar<any> | Dataset): Column => {
-                let alias = metaFieldAlias(prop)
-                if (isDataset(subquery)) {
-                    const casted = subquery as Dataset
-                    return makeColumn(alias, makeScalar(casted.toQueryBuilder(), prop.definition))
-                } else if (isScalar(subquery)) {
-                    const casted = subquery as Scalar
-                    return makeColumn(alias, makeScalar(casted.toRaw(), prop.definition))
-                }
-                throw new Error('Unexpected')
-            }
-            const result =  thenResult(subquery, query => {
-                return process(query)
-            })
-            return result
-        }
-    }
-
-    executeComputeFunc(queryOptions: QueryOptions | undefined, prop: NamedProperty): ScalarOrDataset | Promise<ScalarOrDataset> {
-        const rootSelector: SelectorImpl = this
-        if(!prop.definition.computeFunc){
-            throw new Error('Normal Property cannot be compiled as computed field.')
-        }
-        let args: QueryArguments = {}
-        if(queryOptions instanceof SimpleObjectClass){
-            let casted: QueryObject = queryOptions
-            args = casted.args ?? args
-        }
-        const computeFunc = prop.definition.computeFunc
-        const applyFilterFunc: ApplyNextQueryFunction = (stmt) => {
-            const selectors: Selector[] = stmt.getInvolvedSelectors()
-
-            let process = (stmt: Dataset) => {
-
-                // If the function object placed into the Knex.QueryBuilder, 
-                // Knex.QueryBuilder will call it and pass itself as the parameter
-                // That's why we can say likely our compiled function didn't be called.
-                if (queryOptions && !(queryOptions instanceof Function) && !(queryOptions instanceof SimpleObjectClass)) {
-                    console.log('\x1b[33m%s\x1b[0m', 'Likely that your ComputedProperty are not called before placing into Knex.QueryBuilder.')
-                    throw new Error('The QueryFunction is not instanceof Function.')
-                }
-
-                // !! VERY IMPORTANT: must clone a new one for next filtering
-                stmt = stmt.clone()
-                
-                if(!queryOptions){
-                    return stmt
-                } else {
-                    if(!isDataset(stmt)){
-                        throw new Error('Only Computed Property in Object/Array can apply QueryOption.')
-                    }
-                    if(queryOptions instanceof Function){
-                        let queryFunction = queryOptions as QueryFunction
-                        return queryFunction(stmt, ...selectors)
-                    } else if(queryOptions instanceof SimpleObjectClass){
-                        // Mix usage of Object and function
-                        // combine the sql statement
-                        let queryObject = queryOptions as QueryObject
-                        let result = simpleQuery(stmt, selectors[0], queryObject)
-                        if(queryObject.fn){
-                            let queryFunction = queryObject.fn
-                            return thenResult(result, value => queryFunction(value, ...selectors) )
-                        }
-                        return result
+                if(prop instanceof ComputeProperty){
+                    const cProp = prop
+                    return (queryOptions?: any) => {
+                        const subquery = cProp.definition.compute.call(cProp, executionContext, newSelector, queryOptions)
+                        let alias = metaFieldAlias(cProp)
+                        return makeColumn(alias, subquery)
                     }
                 }
-                throw new Error('It is not support. Only Function and Object can be passed as filters.')
             }
 
-            return thenResult(stmt, stmt => process(stmt))
         }
+    }) as SelectorMap<E>
 
-        let validate = (subquery: ScalarOrDataset): ScalarOrDataset => {
-  
-            if(prop.definition.transformFromMultipleRows && !isDataset(subquery)){
-                console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-                throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-            }
-            if(!prop.definition.transformFromMultipleRows && !isScalar(subquery)){
-                console.log(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}'.`)
-                throw new Error(`The property '${prop.name}' 's computed function has to be match the requirement of the PropertyDefinition '${prop.definition.constructor.name}' .`)
-            }
-            if(!isDataset(subquery) && !isScalar(subquery)){
-                throw new Error(`The property '${prop.name}' 's computed function is invalid. The return value (Knex.QueryBuilder or Knex.Raw) must be created by TaiChi builder() or column().`)
-            }
-
-            return subquery
-        }
-
-        let subquery = computeFunc.call(prop.definition, rootSelector.interface!, args, this.executionContext)
-        let result = thenResult(subquery, subquery => {
-            subquery = validate(subquery) 
-            if(isDataset(subquery)){
-                const row = subquery as Dataset
-                return applyFilterFunc(row)
-            }
-            return subquery
-        })
-        return result
-    }
+    return newSelector
 }
 
-export type QueryFilterResolver = (value: QueryFilter) => Promise<Scalar> | Scalar
-// export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
-export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
-export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]}
-export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues | Array<Expression> | boolean
-
-
-export type MutationEntityPropertyKeyValues = {
-    [key: string]: boolean | number | string | any | Array<any>
-}
-
-export type QuerySelect = { [key: string]: boolean | QueryOptions | Scalar } | Array<string | Column> 
-
-export type QueryFilter = Expression
-
-export type QueryOrderBy = ( (string|Column) | {column: (string|Column), order: 'asc' | 'desc'} )[]
-
-export type QueryArguments = {[key:string]: any | FutureArgument}
-
-export type ComputeArguments = {[key:string]: any}
-
-export class FutureArgument<Input = any, Output = any>{
-    constructor(private fnc: (futureValue: Input) => Output ){}
-}
-
-export type QueryObject = {
-    select?: QuerySelect,
-    filter?: QueryFilter,
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-    args?: QueryArguments
-    fn?: QueryFunction
-}
-
-export type ScalarOrDataset = Scalar | Dataset
-
-export type ComputeFunction = (this: PropertyDefinition, selector: Selector, args: ComputeArguments, context: ExecutionContext) => ScalarOrDataset | Promise<ScalarOrDataset>
-
-export type CompiledComputeFunction = (queryObject?: QueryOptions) => Column
-
-export type CompiledComputeFunctionPromise = (queryObject?: QueryOptions) => Promise<Column> | Column
-
-export type QueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
-
-export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryFilter, Function> | null
-
-export type ApplyNextQueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
-
-type DatabaseActionResult<T> = T
-type DatabaseActionOptions = {
-    failIfNone: boolean
-    querySelect: QuerySelect
-}
-type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
 
 export type ExecutionContextConfig = {
     tablePrefix: string
@@ -1058,7 +717,7 @@ export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
     }
 }
 
-export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
+export function makeQuerySelectResolver(getSelectorFunc: () => Datasource[]) {
 
     return function querySelectResolver(querySelect: QuerySelect, row: Dataset) {
         let selector = getSelectorFunc()[0]
@@ -1071,7 +730,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
                 let removeNormalPropNames = Object.keys(select).map((key: string) => {
                     const item = select[key]
                     if (item === false) {
-                        let prop = selector.schema.namedProperties.find(p => p.name === key)
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
                         if (!prop) {
                             throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
                         } else {
@@ -1084,7 +743,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
                 }).filter(notEmpty)
 
                 if (removeNormalPropNames.length > 0) {
-                    const shouldIncludes = selector.schema.namedProperties.filter(p => !removeNormalPropNames.includes(p.name))
+                    const shouldIncludes = selector.schema.fieldProperties.filter(p => !removeNormalPropNames.includes(p.name))
                     stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
                 }
 
@@ -1092,7 +751,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
                 let executedProps = Object.keys(select).map((key: string) => {
                     const item = select[key]
                     if (item === true) {
-                        let prop = selector.schema.namedProperties.find(p => p.name === key)
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
                         if (!prop) {
                             throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
                         }
@@ -1102,7 +761,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
                     } else if (item instanceof SimpleObjectClass) {
                         let options = item as QueryOptions
 
-                        let prop = selector.schema.namedProperties.find(p => p.name === key && p.definition.computeFunc)
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key && p.definition.computeFunc)
 
                         if (!prop) {
                             // if (options instanceof PropertyDefinition) {
@@ -1133,7 +792,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
                 if( isColumn(s)) {
                     return s  as Column
                 } else if( typeof s === 'string'){
-                    let prop = selector.schema.namedProperties.find(p => p.name === s)
+                    let prop = selector.schema.fieldProperties.find(p => p.name === s)
                     if (!prop) {
                         throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
                     }
@@ -1162,7 +821,7 @@ export function makeQuerySelectResolver(getSelectorFunc: () => SelectorImpl[]) {
 }
 
 
-export function makeQueryFilterResolver( getSelectorFunc: () => SelectorImpl[] ){
+export function makeQueryFilterResolver( getSelectorFunc: () => Datasource[] ){
 
     // console.log('aaaaaa', getSelectorFunc())
     
@@ -1226,58 +885,6 @@ export function makeQueryFilterResolver( getSelectorFunc: () => SelectorImpl[] )
 
 export class Database{
     
-    /**
-     * Selector is used for locating the table name / field names / computed functions
-     * field pointers
-     * @returns 
-     */
-    static selector<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null): Selector{
-        let selectorImpl = new SelectorImpl(entityClass, schemas[entityClass.name], existingContext?? globalContext)
-        // let entityClass = this
-
-        let resolveExpression: QueryFilterResolver = makeQueryFilterResolver( () => [selectorImpl])
-        
-        let selector = resolveExpression as Selector
-
-        // selector._ = selectorImpl._
-        // selector.$ = selectorImpl.$
-        // selector.schema = selectorImpl.schema
-        // selector.entityClass = selectorImpl.entityClass
-        // selector.tableAlias = selectorImpl.tableAlias
-        // selector.getProperties = selectorImpl.getProperties
-        
-        selector = new Proxy(selector, {
-            get: (oTarget, sKey): any => {
-                if(typeof sKey === 'string'){
-                    // if (sKey.length > 2) {
-                    //     if( /^\$\$[^$_]/.test(sKey) ){
-                    //         return oTarget.$$[sKey.slice(2)]
-                    //     }    
-                    // }
-                    if (sKey.length > 1){
-                        if( /^\_/.test(sKey) ){
-                            return selectorImpl._[sKey.slice(1)]
-                        } else if(/^\$\$/.test(sKey) && sKey.length > 2){
-                            return selectorImpl.$$[sKey.slice(2)]
-                        } else if(/^\$[^\$]/.test(sKey) ){
-                            return selectorImpl.$[sKey.slice(1)]
-                        }
-                    }
-                }
-                if(sKey in selectorImpl){
-                    return selectorImpl[sKey.toString()]
-                }
-                if(sKey === 'impl'){
-                    return selectorImpl
-                }
-                else throw new Error(`Cannot find property '${sKey.toString()}' of selector`)
-            }
-        })
-
-        selectorImpl.interface = selector
-        // selector.impl = selectorImpl
-        return selector
-    }
 
     static createOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T> >{
         return new DatabaseMutationRunner< InstanceType<T> >(
@@ -1392,7 +999,7 @@ export class Database{
     private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: Schema, actionName: MutationName, context: ExecutionContext) {
         
         let propValues = Object.keys(data).reduce(( propValues, propName) => {
-            let foundProp = schema.namedProperties.find(p => {
+            let foundProp = schema.properties.find(p => {
                 return p.name === propName
             })
             if (!foundProp) {
@@ -1409,7 +1016,7 @@ export class Database{
 
         propValues = await hooks1.reduce( async (recordP, h) => {
             let record = await recordP
-            let foundProp = schema.namedProperties.find(p => {
+            let foundProp = schema.properties.find(p => {
                 return p.name === h.propName
             })
             if(!foundProp){
@@ -1460,7 +1067,7 @@ export class Database{
 
         record = await hooks1.reduce( async (recordP, h) => {
             let record = await recordP
-            let foundProp = schema.namedProperties.find(p => {
+            let foundProp = schema.properties.find(p => {
                 return p.name === h.propName
             })
             if(!foundProp){
@@ -1522,28 +1129,14 @@ export class Database{
     }
 
     private static async _find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, applyFilter: QueryOptions | null) {   
-        let dualSelector = existingContext.models.Dual.selector()
-        let prop = new NamedProperty(
-            'data',
-            Types.ArrayOf(Types.ObjectOf(
-                entityClass.name, {
-                    compute: (root, {}, context) => {
-                        let currentEntitySelector = entityClass.selector()
-                        let stmt = builder(currentEntitySelector)
-                        return stmt
-                        // return applyFilter(stmt, currentEntitySelector)
-                    }
-                }
-            ))
-            
-        )
-
-        dualSelector.registerProp(prop)
-        let sqlString =  builder().select(await dualSelector.$$.data(applyFilter))
+        
+        let dualSelector = entityClass.datasource(existingContext)
+       
+        let sqlString = builder().select(applyFilter.props).from(dualSelector).filter(applyFilter.filter)
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        let resultData: any = await Database.executeStatement(sqlString, existingContext)
+        let resultData = await Database.executeStatement(sqlString, existingContext)
 
         let rowData = null
         if(ormConfig.knexConfig.client.startsWith('mysql')){
@@ -1760,7 +1353,7 @@ export class Database{
                 namedProperty = metaInfo.namedProperty
             } else{
                 
-                let prop = entityClass.schema.namedProperties.find(p => {
+                let prop = entityClass.schema.properties.find(p => {
                     return p.fieldName === fieldName
                 })
 
@@ -1793,7 +1386,7 @@ export class Database{
 
     static extractRealField(schema: Schema, fieldValues: MutationEntityPropertyKeyValues): any {
         return Object.keys(fieldValues).reduce( (acc, key) => {
-            let prop = schema.namedProperties.find(p => p.name === key)
+            let prop = schema.properties.find(p => p.name === key)
             if(!prop){
                 throw new Error('Unexpected')
             }
@@ -1807,6 +1400,7 @@ export class Database{
 
 export class Entity {
     [key: string]: any
+    static schema: Schema
     readonly _ctx: ExecutionContext
     
     constructor(ctx: ExecutionContext){
@@ -1817,24 +1411,28 @@ export class Entity {
         return this._ctx.models[this.constructor.name]
     }
 
-    static get schema(): Schema{
-        return schemas[this.name]
-    }
+    // static get schema(): Schema{
+    //     return schemas[this.name]
+    // }
 
     static get tableName() {
         return this.schema.tableName
     }
 
-    /**
-     * Can be overridden by inheritance Class
-     * @param schema
-     */
-    static register(schema: Schema) : void{
+    static datasource<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), ctx: ExecutionContext ): Datasource<I["schema"]> {
+        return this.schema.datasource(ctx)
     }
 
-    static selector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
-        return Database.selector(this, null)
-    }
+    // /**
+    //  * Can be overridden by inheritance Class
+    //  * @param schema
+    //  */
+    // static register(schema: Schema) : void{
+    // }
+
+    // static selector<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I) ){
+    //     return Database.selector(this, null)
+    // }
 
     static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: MutationEntityPropertyKeyValues): I{
         let r = Database.parseRaw(this, null, row)
@@ -1883,15 +1481,34 @@ export class Entity {
         return Database.find(this, null, applyFilter)
     }
 
+    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
+        options: QueryX< I["schema"] > ): 
+        ObjectValue< I > { 
+        throw new Error()
+    }
 
+}
+
+
+function find<T extends {
+        [key: string]: Scalar<any>
+    }>(options: {
+    props: T
+    source?: Datasource<any>
+    filter?: any
+}): {
+    [key in keyof T]: T[key] extends Scalar<infer D>? (D extends PropertyDefinition ? ReturnType< D["parseRaw"]>: never):
+            never;
+}{
+    throw new Error()
 }
 
 
 // it is a special Entity or table. Just like the Dual in SQL Server
-export class Dual extends Entity {
+// export class Dual extends Entity {
 
-    static register(schema: Schema) : void{
-        //override the tableName into empty
-        schema.tableName = ''
-    }
-}
+//     static register(schema: Schema) : void{
+//         //override the tableName into empty
+//         schema.tableName = ''
+//     }
+// }

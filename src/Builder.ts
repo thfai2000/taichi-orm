@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
-import { getKnexInstance, Selector, SQLString, NamedProperty, quote, Types, PropertyType, makeid, addBlanketIfNeeds, QueryFilter, ScalarOrDataset, QueryFilterResolver, makeQueryFilterResolver } from "."
+import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext } from "."
 import { Equal } from "./Operator"
-import { BooleanType, DateTimeType, DateType, DecimalType, NumberType, PropertyDefinition, StringType } from "./PropertyType"
+import { BooleanType, NumberType, PropertyDefinition } from "./PropertyType"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -21,7 +21,7 @@ declare module "knex" {
 
         interface Raw {
             clone: Function
-            __type: 'Raw' | 'Scalar' | 'Source' | 'Dataset'
+            __type: 'Raw' | 'Scalar' | 'FromClause' | 'Dataset'
         }
     }
 }
@@ -31,26 +31,47 @@ type SelectItem = {
     actualAlias: string
 }
 
-export interface Dataset {
+export interface Scalarable {
+    toScalar<T extends PropertyDefinition>(d: T): Scalar<T>
+}
+
+export interface Datasource<E extends Schema> extends FromClause {
+    // (value: QueryFilter): Promise<Scalar> | Scalar
+    // impl: Datasource
+    schema: E
+    executionContext: ExecutionContext
+    $: SelectorMap<E>
+    tableAlias: string
+    allNormal: Column[]
+}
+
+export interface TableDatasource<E extends Schema> extends Datasource<E> {
+    tableName: string
+}
+
+export interface Dataset extends Knex.Raw, Scalarable {
     __type: 'Dataset'
     // __mainSelector?: Selector | null
-    __expressionResolver: QueryFilterResolver
+    // __expressionResolver: QueryFilterResolver
     __selectItems: SelectItem[]
-    __fromSource: Source
+    __fromSource: FromClause
     __realSelect: Function
     __realClearSelect: Function
     __realClone: Function //TODO: override the clone function
     __realFrom: Function
-    getInvolvedSelectors(): Selector[]
+    // getInvolvedSelectors(): Datasource<any>[]
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
     // toRaw(): Knex.Raw
     toDataset(): Dataset
+    toScalar<T extends PropertyDefinition>(d: T): Scalar<T>
     clone(): Dataset
     clearSelect(): Dataset
     select(...cols: Column[]): Dataset
     filter(queryWhere: QueryFilter): Dataset
-    from(source: Source): Dataset
+    from(source: FromClause): Dataset
+
+    datasource(): Datasource<any>
 }
 
 export interface Column<T = any> extends Scalar<T> {
@@ -74,16 +95,14 @@ export interface Scalar<T = any> extends Knex.Raw {
     asColumn(propName: string): Column<T>         //TODO: implement rename
 }
 
-export interface Source extends Knex.Raw {
-    __type: 'Source'
-    __selector: Selector
-    __raw: string
-    __parentSource: Source | null
+export interface FromClause extends Knex.Raw {
+    __type: 'FromClause'
+    // __raw: string
+    __parentSource: FromClause | null
     __realClone: Function
-    innerJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
-    leftJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
-    rightJoin(source: Source, leftColumn: Column, operator: string, rightColumn: Column): Source
-    clone(): Source
+    innerJoin(source: Datasource<any>, condition: Scalar<BooleanType>): FromClause
+    leftJoin(source: Datasource<any>, condition: Scalar<BooleanType>): FromClause
+    rightJoin(source: Datasource<any>, condition: Scalar<BooleanType>): FromClause
 }
 
 // const castAsRow = (builder: any) : Row => {
@@ -126,7 +145,7 @@ export const isScalar = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: Dataset) : Dataset {
+export const makeBuilder = function(mainSelector?: Datasource<any> | null, cloneFrom?: Dataset) : Dataset {
     let sealBuilder: Dataset
     if(cloneFrom){
         if(!isDataset(cloneFrom)){
@@ -151,19 +170,19 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     sealBuilder.__type = 'Dataset'
     sealBuilder.__realSelect = sealBuilder.select
     // sealBuilder.__mainSelector = mainSelector
-    sealBuilder.__expressionResolver = makeQueryFilterResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
+    // sealBuilder.__expressionResolver = makeQueryFilterResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
 
 
-    sealBuilder.getInvolvedSelectors = () => {
-        //TODO: get the involved from Source
-        let s: Source | null = sealBuilder.__fromSource
-        let selectors = []
-        while(s){
-            selectors.unshift(s.__selector)
-            s = s.__parentSource
-        }
-        return selectors
-    }
+    // sealBuilder.getInvolvedSelectors = () => {
+    //     //TODO: get the involved from Source
+    //     let s: FromClause | null = sealBuilder.__fromSource
+    //     let selectors = []
+    //     while(s){
+    //         selectors.unshift(s.__selector)
+    //         s = s.__parentSource
+    //     }
+    //     return selectors
+    // }
 
     // override the select methods
     sealBuilder.select = function(...args: any[]){
@@ -261,7 +280,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
     }
 
     sealBuilder.__realFrom = sealBuilder.from
-    sealBuilder.from = (source: Source) => {
+    sealBuilder.from = (source: FromClause) => {
         sealBuilder.__fromSource = source
         sealBuilder.__realFrom(source)
         return sealBuilder
@@ -277,7 +296,7 @@ export const makeBuilder = function(mainSelector?: Selector | null, cloneFrom?: 
 
     //after the select is override, add default 'all'
     if(mainSelector){
-        sealBuilder = sealBuilder.select(...mainSelector.all).from(mainSelector.source)
+        sealBuilder = sealBuilder.select(...mainSelector.all).from(mainSelector)
     }
 
     return sealBuilder
@@ -321,12 +340,12 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw | 
             throw new Error('Only Dataset can apply exists')
         }
 
-        return makeScalar<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`EXISTS (${expression.toString()})`), new BooleanType())
     }
 
     scalar.equals = (value: any): Scalar<BooleanType> => {
 
-        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), Types.Boolean())
+        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), new BooleanType())
     }
 
     scalar.is = (operator: string, value: any): Scalar<BooleanType> => {
@@ -334,7 +353,7 @@ export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw | 
             throw new Error('Only Dataset can apply count')
         }
 
-        return makeScalar<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), Types.Boolean())
+        return makeScalar<BooleanType>(makeRaw(`(${expression.toString()}) ${operator} ?`, [value]), new BooleanType())
     }
 
     scalar.clone = () =>{
@@ -357,40 +376,39 @@ export const makeColumn = <T = any>(alias: string, col: Scalar<T>) : Column<T> =
     return column
 }
 
-export const makeSource = (parentSource: Source | null, joinText: string | null, selector: Selector, ...items: Array<Column | string>): Source => {
-    let t = `${quote(selector.executionContext.tablePrefix + selector.schema.tableName)} AS ${quote(selector.tableAlias)}`
+export const makeFromClause = (parentSource: FromClause | null, joinText: string | null, selector: Datasource<any> | null, condition: Scalar<BooleanType> | null ): FromClause => {
+    let t = selector?.toString() ?? ''
 
     joinText  = (joinText ?? '').trim()
 
-    let raw = `${joinText} ${t}${joinText.length === 0?'':` ON ${items.map(i => i.toString()).join(' ')}`}`
+    let raw = `${joinText} ${t}${joinText.length === 0 || !condition?'':` ON ${condition.toString()}`}`
 
-    let target = makeRaw(raw) as Source
-    target.__type = 'Source'
-    target.__selector = selector
-    target.__raw = raw
+    let target = makeRaw(raw) as unknown as FromClause
+    target.__type = 'FromClause'
+    // target.__raw = raw
     target.__parentSource = parentSource
     
-    target.innerJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(target, `${target.__raw} INNER JOIN`, source.__selector, ...items)
+    target.innerJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
+        let s = makeFromClause(target, `${target.toString()} INNER JOIN`, source, condition)
         return s
     }
 
-    target.leftJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(target, `${target.__raw} LEFT JOIN`, source.__selector, ...items)
+    target.leftJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
+        let s = makeFromClause(target, `${target.toString()} LEFT JOIN`, source, condition)
         return s
     }
 
-    target.rightJoin = (source: Source, ...items: Array<Column | string>) => {
-        let s = makeSource(target, `${target.__raw} RIGHT JOIN`, source.__selector, ...items)
+    target.rightJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
+        let s = makeFromClause(target, `${target.toString()} RIGHT JOIN`, source, condition)
         return s
     }
 
     target.__realClone = target.clone
     target.clone = () => {
-        let newT = makeRaw(raw) as Source
-        newT.__type = 'Source'
-        newT.__selector = target.__selector
-        newT.__raw = target.__raw
+        let newT = makeRaw(raw) as unknown as FromClause
+        newT.__type = 'FromClause'
+        // newT.__selector = target.__selector
+        // newT.__raw = target.__raw
         newT.__parentSource = target.__parentSource
         return newT
     }
@@ -651,28 +669,6 @@ const parseName = (item: any) => {
 //     }
 // }
 
-// export class MutationBuilder implements SQLString{
 
-//     stmt: any
-
-//     constructor(){
-//     }
-
-//     update(...args: any[]){
-//         return this
-//     }
-
-//     from(...args: any[]){
-//         return this
-//     }
-
-//     where(...args: any[]){
-//         return this
-//     }
-
-//     toString(): string{
-//         throw new Error('NYI')
-//     }
-// }
 
 
