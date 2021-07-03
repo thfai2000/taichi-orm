@@ -110,13 +110,5 @@ export interface SQLString{
     toString(): string
 }
 
-export class Property {
-    readonly name: string
-    constructor(
-        name: string){
-            this.name = name
-            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
-                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
-            }
-        }
-}
+
+

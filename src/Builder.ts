@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
-import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext } from "."
+import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise } from "."
 import { Equal } from "./Operator"
-import { BooleanType, NumberType, PropertyDefinition } from "./PropertyType"
+import { BooleanType, NumberType, PropertyTypeDefinition } from "./PropertyType"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -32,7 +32,7 @@ type SelectItem = {
 }
 
 export interface Scalarable {
-    toScalar<T extends PropertyDefinition>(d: T): Scalar<T>
+    toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
 }
 
 export interface Datasource<E extends Schema> extends FromClause {
@@ -41,6 +41,10 @@ export interface Datasource<E extends Schema> extends FromClause {
     schema: E
     executionContext: ExecutionContext
     $: SelectorMap<E>
+    //TODO: implement
+    getFieldProperty: <T>(name: string) => Column<T>
+    getComputeProperty: <ARG, R>(name: string) => CompiledComputeFunction<ARG, R>
+    getAysncComputeProperties: <ARG, R>(name: string) => CompiledComputeFunctionPromise<ARG, R>
     tableAlias: string
     allNormal: Column[]
 }
@@ -64,7 +68,9 @@ export interface Dataset extends Knex.Raw, Scalarable {
     toQueryBuilder(): Knex.QueryBuilder
     // toRaw(): Knex.Raw
     toDataset(): Dataset
-    toScalar<T extends PropertyDefinition>(d: T): Scalar<T>
+
+    //TODO: implement
+    toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
     clone(): Dataset
     clearSelect(): Dataset
     select(...cols: Column[]): Dataset
@@ -83,7 +89,7 @@ export interface Scalar<T = any> extends Knex.Raw {
     __type: 'Scalar'
     // __selector: Selector | null
     // __namedProperty: NamedProperty
-    __definition: PropertyDefinition | null
+    __definition: PropertyTypeDefinition | null
     __expression: Knex.QueryBuilder | Knex.Raw
     count(): Scalar<NumberType> 
     exists(): Scalar<BooleanType> 
@@ -313,7 +319,7 @@ export const makeRaw = (first: any, ...args: any[]) => {
     return r
 }
 
-export const makeScalar = <T extends PropertyDefinition>(expression: Knex.Raw | Knex.QueryBuilder, definition: T | null = null): Scalar<T> => {
+export const makeScalar = <T extends PropertyTypeDefinition>(expression: Knex.Raw | Knex.QueryBuilder, definition: T | null = null): Scalar<T> => {
 
     let text = expression.toString().trim()
 

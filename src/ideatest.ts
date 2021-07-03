@@ -1,4 +1,4 @@
-import types, {PropertyDefinition, StringType, StringTypeNotNull, ObjectOfType, BooleanType} from "./PropertyType"
+import types, {PropertyTypeDefinition, StringType, StringTypeNotNull, ObjectOfEntity, BooleanType} from "./PropertyType"
 import {Schema, Entity, FieldProperty} from "."
 import { Column } from "./Builder"
 import { Selector } from ".."
@@ -16,36 +16,36 @@ class Scalar<ResultType> {
 
 type ComputeFunction<ArgT = any, R =any> = (root: any, args: ArgT, ctx: any) => R
 
-type QueryBase = {
-    props?: QueryProps<any>
-    source?: Datasource<any>
-    filter?: any   
-}
+// type QueryBase = {
+//     props?: QueryProps<any>
+//     source?: Datasource<any>
+//     filter?: any   
+// }
 
 
-type QueryX<S extends Schema> = {
-    props?: QueryProps<S>
-    filter?: any
-}
+// type QueryX<S extends Schema> = {
+//     props?: QueryProps<S>
+//     filter?: any
+// }
 
-type QueryY<Joins extends Datasource<any, any>[] = Datasource<any, any>[] > = (ctx: Context, ...source: Joins) => {
-    props?: QueryProps<any>
-    filter?: any 
-}
+// type QueryY<Joins extends Datasource<any, any>[] = Datasource<any, any>[] > = (ctx: Context, ...source: Joins) => {
+//     props?: QueryProps<any>
+//     filter?: any 
+// }
 
-type QueryProps<T extends Schema > = Partial<{
-    [key in keyof T]: 
-        T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends QueryX<infer I>? QueryX<I>: Parameters<T[key]>[1] ): 
-        T[key] extends PropertyDefinition? Scalar<PropertyDefinition>:
-        never;
-}>
+// type QueryProps<T extends Schema > = Partial<{
+//     [key in keyof T]: 
+//         T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends QueryX<infer I>? QueryX<I>: Parameters<T[key]>[1] ): 
+//         T[key] extends PropertyTypeDefinition? Scalar<PropertyTypeDefinition>:
+//         never;
+// }>
 
-type ObjectValue<T extends typeof Entity > = {
-    [key in keyof T["schema"]]: 
-        T["schema"][key] extends ComputeFunction? (ReturnType<T["schema"][key]> extends Scalar<infer S> ? S: unknown):
-        T["schema"][key] extends PropertyDefinition? ReturnType<T["schema"][key]["parseRaw"]>:
-        never;
-} & InstanceType<T>
+// type ObjectValue<T extends typeof Entity > = {
+//     [key in keyof T["schema"]]: 
+//         T["schema"][key] extends ComputeFunction? (ReturnType<T["schema"][key]> extends Scalar<infer S> ? S: unknown):
+//         T["schema"][key] extends PropertyTypeDefinition? ReturnType<T["schema"][key]["parseRaw"]>:
+//         never;
+// } & InstanceType<T>
 
 class PropertyType<T>{
 
@@ -115,7 +115,7 @@ class Dataset<T extends Entity, Joins extends Datasource<any, any>[] = Datasourc
         return this
     }
 
-    toScalar(p: PropertyDefinition): ObjectValue<T>{
+    toScalar(p: PropertyTypeDefinition): ObjectValue<T>{
         throw new Error()
     }
 
@@ -155,39 +155,42 @@ class Dataset<T extends Entity, Joins extends Datasource<any, any>[] = Datasourc
 }
 
 
-function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, relatedRootKey?: string){
+// function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, relatedRootKey?: string){
     
-    return (root: Datasource<RootClass["schema"]>, args: QueryX< TypeClass["schema"]> | QueryY<[Datasource<RootClass>, Datasource<TypeClass["schema"]>]> , context: Context): Scalar<ObjectValue< TypeClass >> => {
+//     return (root: Datasource<RootClass["schema"]>, args: QueryX< TypeClass["schema"]> | QueryY<[Datasource<RootClass>, Datasource<TypeClass["schema"]>]> , context: Context): Scalar<ObjectValue< TypeClass >> => {
 
-        let relatedSource = context.models[schema].datasource()
-        let c = {}
-        if(args instanceof Function){
-            c = args(context, root,relatedSource )
-        } else {
-            c = args
-        }
-        let r = { source: relatedSource.innerJoin(root, (relatedRootKey? relatedSource._[relatedRootKey]: relatedSource.pk ).equals(root._[relatedBy]) ) }
+//         let relatedSource = context.models[schema].datasource()
+//         let c = {}
+//         if(args instanceof Function){
+//             c = args(context, root,relatedSource )
+//         } else {
+//             c = args
+//         }
+//         let r = { source: relatedSource.innerJoin(root, (relatedRootKey? relatedSource._[relatedRootKey]: relatedSource.pk ).equals(root._[relatedBy]) ) }
        
-        return schema.dataset().apply( Object.assign({}, c, r) ).toScalar(new ObjectOfType(schema))
-        throw new Error()
-    }
-}
+//         return schema.dataset().apply( Object.assign({}, c, r) ).toScalar(new ObjectOfType(schema))
+//         throw new Error()
+//     }
+// }
 
-function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, rootKey?: string){
+// function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, rootKey?: string){
     
-    return (root: Datasource<TypeClass["schema"]>, args: QueryX< TypeClass["schema"] >, context: Context): Scalar<ObjectValue< TypeClass >> => {
+//     return (root: Datasource<TypeClass["schema"]>, args: QueryX< TypeClass["schema"] >, context: Context): Scalar<ObjectValue< TypeClass >> => {
         
-        // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
-        //     return {
-        //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
-        //     }
-        // }).apply(args).toScalar(ArrayOf(schema))
-        throw new Error()
-    }
-}
+//         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
+//         //     return {
+//         //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
+//         //     }
+//         // }).apply(args).toScalar(ArrayOf(schema))
+//         throw new Error()
+//     }
+// }
+
+
+
 
 class ProductSchema extends Schema {
-    name = types.String({})
+    name = types.String()
     shopId = types.Number()
     shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
     myABC = (root: any, args: number): Scalar<string> => {
@@ -197,9 +200,7 @@ class ProductSchema extends Schema {
 
 class Product extends Entity{
     static schema = new ProductSchema()
-
     myName: number  = 5
-
 }
 
 class ShopSchema extends Schema {
@@ -254,7 +255,7 @@ function find<T extends {
     source?: Datasource<any>
     filter?: any
 }): {
-    [key in keyof T]: T[key] extends Scalar<infer D>? (D extends PropertyDefinition ? ReturnType< D["parseRaw"]>: never):
+    [key in keyof T]: T[key] extends Scalar<infer D>? (D extends PropertyTypeDefinition ? ReturnType< D["parseRaw"]>: never):
             never;
 }{
     throw new Error()

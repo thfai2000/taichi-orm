@@ -1,39 +1,45 @@
 // import { Knex } from "knex"
-import { Entity, client, quote, SimpleObject, makeid, SQLString, FieldProperty, ExecutionContext, ComputeFunction, Schema } from "."
+import { extend } from "lodash"
+import { Entity, client, FieldProperty, ExecutionContext, ComputeFunction, Schema, Property } from "."
+import { makeid, quote, SimpleObject, SQLString } from "./util"
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
-export interface PropertyDefinition {
-    nullable: boolean
-    transformFromMultipleRows: boolean
-    transformIntoMultipleRows: boolean
-    propertyValueIsArray: boolean
-
-    queryTransform?(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString
-    
-    parseRaw(rawValue: any, prop: string, context: ExecutionContext): any
-    parseProperty(propertyvalue: any, prop: string, context: ExecutionContext):any
-}
-
-
-export class ComputePropertyDefinition<D extends PropertyDefinition, Root extends Schema, Arg, R> {
-    definition: D
-    compute: ComputeFunction<Root, Arg, R>
-
-    constructor(definition: D, compute: ComputeFunction<Root, Arg, R>){
-        this.definition = definition
-        this.compute = compute
+export class PropertyTypeDefinition<I = any> {
+    protected options = {}
+    get nullable() {
+        return true
+    }
+    get transformFromMultipleRows(): boolean {
+        return false
+    }
+    get transformIntoMultipleRows(): boolean{
+        return false
+    }
+    get propertyValueIsArray(): boolean{
+        return false
+    }
+    constructor(options?: any){
+        this.options = this.options ??options
+    }
+    parseRaw(rawValue: any, prop: string, context: ExecutionContext): I {
+        return rawValue
+    }
+    parseProperty(propertyvalue: I, prop: string, context: ExecutionContext): any {
+        return propertyvalue
     }
 }
 
+export class FieldPropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
+    create(propName: string, fieldName: string) : string[] {
+        throw new Error('It is not allowed')
+    }
+}
 
-export abstract class FieldPropertyDefinition implements PropertyDefinition {
-    abstract nullable: boolean
-    abstract transformFromMultipleRows: boolean
-    abstract transformIntoMultipleRows: boolean
-    abstract propertyValueIsArray: boolean
-    abstract parseRaw(rawValue: any, prop: string, context: ExecutionContext): any
-    abstract parseProperty(propertyvalue: any, prop: string, context: ExecutionContext): any
-    abstract create(propName: string, fieldName: string) : string[]
+export class ComputePropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString {
+        throw new Error('It is not allowed')
+    }
+    
 }
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
@@ -70,10 +76,7 @@ const emptyJsonArray = () => {
         throw new Error('NYI')
 }
 
-export class PrimaryKeyType extends FieldPropertyDefinition {
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
+export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
 
     get nullable() {
         return false
@@ -119,15 +122,12 @@ export class PrimaryKeyType extends FieldPropertyDefinition {
 }
 
 type NumberTypeOptions = {default?: number }
-export class NumberType extends FieldPropertyDefinition {
+export class NumberType extends FieldPropertyTypeDefinition<number | null> {
     protected options: NumberTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
     
     constructor(options: Partial<NumberTypeOptions> ={}){
-        super()
-        this.options = { ...options }
+        super(options)
+        this.options = options
     }
 
     get nullable() {
@@ -142,7 +142,7 @@ export class NumberType extends FieldPropertyDefinition {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: any, propName: string) {
+    parseProperty(propertyvalue: number | null, propName: string) {
         if(propertyvalue === null && !this.options){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -181,12 +181,9 @@ export class NumberTypeNotNull extends NumberType {
 
 
 type DecimalTypeOptions = { default?: number, precision?: number, scale?: number }
-export class DecimalType extends FieldPropertyDefinition  {
+export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
 
     protected options: DecimalTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
     
     constructor(options: Partial<DecimalTypeOptions> = {}){
         super()
@@ -201,7 +198,7 @@ export class DecimalType extends FieldPropertyDefinition  {
             return rawValue === null? null: parseFloat(rawValue)
     }
 
-    parseProperty(propertyvalue: any, propName: string): any {
+    parseProperty(propertyvalue: number | null, propName: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -224,11 +221,8 @@ export class DecimalType extends FieldPropertyDefinition  {
 }
 
 type BooleanTypeOptions = {default?: boolean }
-export class BooleanType extends FieldPropertyDefinition  {
+export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
     protected options: BooleanTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
 
     constructor(options: Partial<BooleanTypeOptions> = {}){
         super()
@@ -252,7 +246,7 @@ export class BooleanType extends FieldPropertyDefinition  {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: any, propName: string, ctx?: ExecutionContext): any {
+    parseProperty(propertyvalue: boolean | null, propName: string, ctx?: ExecutionContext): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -272,11 +266,8 @@ export class BooleanType extends FieldPropertyDefinition  {
 }
 
 type StringTypeOptions = {default?: string, length?: number }
-export class StringType extends FieldPropertyDefinition {
+export class StringType extends FieldPropertyTypeDefinition<string | null> {
     protected options: StringTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
 
     constructor(options: Partial<StringTypeOptions> = {}){
         super()
@@ -292,7 +283,7 @@ export class StringType extends FieldPropertyDefinition {
         return rawValue === null? null: `${rawValue}`
     }
 
-    parseProperty(propertyvalue: any, propName: string): any{
+    parseProperty(propertyvalue: string | null, propName: string): any{
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -330,11 +321,8 @@ export class StringTypeNotNull extends StringType {
 
 
 type DateTypeOptions = { default?: Date }
-export class DateType extends FieldPropertyDefinition {
+export class DateType extends FieldPropertyTypeDefinition<Date | null> {
     protected options: DateTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTypeOptions> = {}){
         super()
@@ -350,7 +338,7 @@ export class DateType extends FieldPropertyDefinition {
         return rawValue === null? null: new Date(rawValue)
     }
 
-    parseProperty(propertyvalue: any, propName: string): any {
+    parseProperty(propertyvalue: Date | null, propName: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -370,11 +358,8 @@ export class DateType extends FieldPropertyDefinition {
 }
 
 type DateTimeTypeOptions = {default?: Date, precision?: number }
-export class DateTimeType extends FieldPropertyDefinition {
+export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     protected options: DateTimeTypeOptions
-    transformFromMultipleRows: boolean = false
-    transformIntoMultipleRows: boolean = false
-    propertyValueIsArray: boolean = false
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
         super()
@@ -390,7 +375,7 @@ export class DateTimeType extends FieldPropertyDefinition {
         return rawValue === null? null: new Date(rawValue)
     }
 
-    parseProperty(propertyvalue: any, propName: string): any {
+    parseProperty(propertyvalue: Date | null, propName: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -410,17 +395,15 @@ export class DateTimeType extends FieldPropertyDefinition {
     }
 }
 
-type ObjectOfTypeOptions = { }
-export class ObjectOfType implements PropertyDefinition{
-    protected options: ObjectOfTypeOptions
-    transformFromMultipleRows: boolean = true
-    transformIntoMultipleRows: boolean = true
-    propertyValueIsArray: boolean = false
+// type ObjectOfTypeOptions = { }
+export class ObjectOfEntity<E extends Entity> extends ComputePropertyTypeDefinition<E | null>{
+    // protected options: ObjectOfTypeOptions
 
-    constructor(private entityClassName: string,
-    options: Partial<ObjectOfTypeOptions> = {}
+    constructor(private entityClassName: string
+    // options: Partial<ObjectOfTypeOptions> = {}
     ) {
-        this.options = { ...options}
+        super(entityClassName)
+        // this.options = { ...options}
     }
 
     get nullable() {
@@ -437,7 +420,7 @@ export class ObjectOfType implements PropertyDefinition{
         return jsonify
     }
     
-    parseRaw(rawValue: any, propName: string, context: ExecutionContext): Entity | null {
+    parseRaw(rawValue: any, propName: string, context: ExecutionContext): E | null {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -449,11 +432,11 @@ export class ObjectOfType implements PropertyDefinition{
         } else {
             throw new Error('It is not supported.')
         }
-        const entityClass = context.models[this.entityClassName]
+        const entityClass = context.models[this.entityClassName] as unknown as E
         return entityClass.parseRaw(parsed)
     }
     
-    parseProperty(propertyvalue: Entity, propName: string): any {
+    parseProperty(propertyvalue: Entity | null, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -465,13 +448,16 @@ export class ObjectOfType implements PropertyDefinition{
 }
 
 // type ArrayOfTypeOptions = {}
-export class ArrayOfType<I = any> implements PropertyDefinition{
+export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends ComputePropertyTypeDefinition<any>{
     
     // options: ArrayOfTypeOptions
-    readonly type: PropertyDefinition
-    readonly propertyValueIsArray: boolean = true
+    readonly type: T
+    get propertyValueIsArray(): boolean{
+        return true
+    }
     
-    constructor(type: PropertyDefinition) {
+    constructor(type: T) {
+        super()
         this.type = type
     }
 
@@ -494,7 +480,13 @@ export class ArrayOfType<I = any> implements PropertyDefinition{
         }
         
         let innerLevelColumnName = 'column1'
-        let objectify = this.type.queryTransform? `(${this.type.queryTransform(query, columns, innerLevelColumnName)})`: `(${query})`
+        let objectify
+
+        if(this.type instanceof ComputePropertyTypeDefinition && this.type.queryTransform){
+            objectify =  `(${this.type.queryTransform(query, columns, innerLevelColumnName)})`
+        } else {
+            objectify =  `(${query})`
+        }
 
         if( !this.type.transformIntoMultipleRows ){
             let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${query}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)}`
@@ -505,7 +497,7 @@ export class ArrayOfType<I = any> implements PropertyDefinition{
         }
     }
 
-    parseRaw(rawValue: any, propName: string, context: ExecutionContext): I[]{
+    parseRaw(rawValue: any, propName: string, context: ExecutionContext): ReturnType<T["parseRaw"]>[] {
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -520,7 +512,7 @@ export class ArrayOfType<I = any> implements PropertyDefinition{
             return this.type.parseRaw(raw, propName, context)
         })
     }
-    parseProperty(propertyvalue: Array<I>, propName: string): any {
+    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -530,20 +522,26 @@ export class ArrayOfType<I = any> implements PropertyDefinition{
 }
 
 
-const types = {
-    PrimaryKey: (...args: ConstructorParameters<typeof PrimaryKeyType>) => new PrimaryKeyType(...args),
-    Number: (...args: ConstructorParameters<typeof NumberType>) => new NumberType(...args),
-    Decimal: (...args: ConstructorParameters<typeof DecimalType>) => new DecimalType(...args),
-    Boolean: (...args: ConstructorParameters<typeof BooleanType>) => new BooleanType(...args),
-    String: (...args: ConstructorParameters<typeof StringType>) => new StringType(...args),
-    StringNotNull: (...args: ConstructorParameters<typeof StringTypeNotNull>) => new StringTypeNotNull(...args),
-    Date: (...args: ConstructorParameters<typeof DateType>) => new DateType(...args),
-    DateTime: (...args: ConstructorParameters<typeof DateTimeType>) => new DateTimeType(...args),
-    ObjectOf: (...args: ConstructorParameters<typeof ObjectOfType>) => new ObjectOfType(...args),
-    ArrayOf: (...args: ConstructorParameters<typeof ArrayOfType>) => new ArrayOfType(...args)
-}
+// const types = {
+//     PrimaryKey: (...args: ConstructorParameters<typeof PrimaryKeyType>) => new FieldProperty( new PrimaryKeyType(...args) ),
+//     Number: (...args: ConstructorParameters<typeof NumberType>) => new FieldProperty( new NumberType(...args) ),
+//     Decimal: (...args: ConstructorParameters<typeof DecimalType>) => new FieldProperty( new DecimalType(...args) ),
+//     Boolean: (...args: ConstructorParameters<typeof BooleanType>) => new FieldProperty( new BooleanType(...args) ),
+//     String: (...args: ConstructorParameters<typeof StringType>) => new FieldProperty( new StringType(...args) ),
+//     StringNotNull: (...args: ConstructorParameters<typeof StringTypeNotNull>) => new FieldProperty( new StringTypeNotNull(...args) ),
+//     Date: (...args: ConstructorParameters<typeof DateType>) => new FieldProperty( new DateType(...args) ),
+//     DateTime: (...args: ConstructorParameters<typeof DateTimeType>) => new FieldProperty( new DateTimeType(...args) ),
+//     ObjectOf: (...args: ConstructorParameters<typeof ObjectOfType>) => new FieldProperty( new ObjectOfType(...args) ),
+//     ArrayOf: (...args: ConstructorParameters<typeof ArrayOfType>) => new FieldProperty( new ArrayOfType(...args) )
+// }
 
-export default types
+
+
+
+// export default types
+
+
+
 
 // NativeJSON(nullable: boolean = true): PropertyType {
     //     return {
