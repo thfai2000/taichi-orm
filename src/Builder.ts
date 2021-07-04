@@ -96,13 +96,6 @@ export interface Dataset<T extends {
 
     //TODO: implement
     execute(): Promise<
-        // T extends  Column<infer N, infer A> ? (
-        //     {
-        //         [key in N & string]: A extends PropertyTypeDefinition?  ReturnType< A["parseRaw"]>: boolean
-        //     }
-        // ): number
-        // // )
-        // // :
         {
             [key in keyof T & string]: 
                 T[key] extends Scalar<infer D>?
@@ -120,7 +113,7 @@ export interface Dataset<T extends {
 //     clone(): Column<T>
 // }
 
-export type Column<N extends string, T> =  { [key in keyof key & string as `${N}`]: Scalar<T> }
+export type Column<Name extends string, T> =  { [key in keyof Name & string as Name]: Scalar<T> }
 
 
 export interface Scalar<T = any> extends Knex.Raw {

@@ -194,24 +194,46 @@ class Shop extends Entity {
 }
 
 
-let x: SelectorMap<ProductSchema>
-let cx = x!.shopId
-let temp: Scalar<BooleanType>
-let ccc = {
-    // shopId: ,
-    ...x!.myABC(5)
-    // temp: temp!
-}
-// let cccc = x!.shopId.shopId
 
-let aaa = makeBuilder().props(
-    ccc
-)
 
-aaa.execute().then(r => {
-    let result = r.shopId
-    result
-})
+// type Simple<Name extends string, T> = {[key in keyof Name & string as Name]: T }
+// let xb: Simple<'a', Scalar<any> > // = { 'a': 5}
+// let xc: Simple<'b', Scalar<any>> //= { 'b': 3}
+
+// let xa = {
+//     ...xb!,
+//     ...xc!
+// }
+
+// export type C<N extends string, T> =  { [key in keyof N & string as N]: Scalar<T> }
+
+// let zb: C<'a', any> // = { 'a': 5}
+// let zc: C<'b', any> //= { 'b': 3}
+
+// let xz = {
+//     ...zb!,
+//     ...zc!
+// }
+
+
+// let x: SelectorMap<ProductSchema>
+// let cx = x!.shopId
+// let temp: Scalar<BooleanType>
+// let ccc = {
+//     ...x!.name,
+//     ...x!.myABC(5)
+//     // temp: temp!
+// }
+// // let cccc = x!.shopId.shopId
+
+// let aaa = makeBuilder().props(
+//     ccc
+// )
+
+// aaa.execute().then(r => {
+//     let result = r.myABC
+//     result
+// })
 
 
 
