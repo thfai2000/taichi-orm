@@ -1,38 +1,109 @@
-import { compute, ComputeFunction, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, FieldPropertyDefinition, ormConfig, Schema, SelectorMap } from "."
+import { compute, ComputeFunction, ComputeProperty, configure, Entity, ExecutionContext, field, FieldProperty, FieldPropertyDefinition, ormConfig, Schema, SelectorMap } from "."
 import { Column, Dataset, Datasource, makeBuilder, Scalar, Scalarable } from "./Builder"
-import { ConditionOperator } from "./Operator"
-import { NumberType, ObjectOfEntity, PropertyTypeDefinition, StringType } from "./PropertyType"
+import { ConditionOperator, ValueOperator } from "./Operator"
+import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PropertyTypeDefinition, StringType } from "./PropertyType"
 
 
 
-type SimpleSelectAndFilter<S extends Schema> = {
+export type SimpleSelectAndFilter<S extends Schema> = {
     props?: QueryProps<S>
     filter?: QueryFilter
 }
 
-type RelationFilterFunction<Root extends Schema, Related extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>, related: Datasource<Related>) => {
+export type FilterFunction<Root extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>) => {
     props?: QueryProps<Root>
     filter?: QueryFilter
 }
 
-
-type QueryProps<T extends Schema > = Partial<{
-    [key in keyof T]: 
-        T[key] extends ComputeFunction? (Parameters<T[key]>[1] extends SimpleSelectAndFilter<infer I>? SimpleSelectAndFilter<I>: Parameters<T[key]>[1] ): 
-        T[key] extends PropertyTypeDefinition? Scalar<PropertyTypeDefinition>:
-        never;
-}>
-
-const getModelBySchema = <T extends Schema>(ctx: ExecutionContext, schema: string): T => {
-    return ctx.models[schema].schema as T
+export type RelationFilterFunction<Root extends Schema, Related extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>, related: Datasource<Related>) => {
+    props?: QueryProps<Root>
+    filter?: QueryFilter
 }
 
-function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, relatedRootKey?: string) {
+export type QueryProps<E extends Schema > = Partial<{
+    [key in keyof Omit<E, keyof Schema> & string]:
+            (
+                E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
+                (
+                    Arg[0]       
+                ): 
+                    E[key] extends FieldProperty<infer D>? 
+                    Scalar<D> | boolean:
+                    never
+            )
+}>
+
+// const getModelBySchema = <T extends Schema>(ctx: ExecutionContext, schema: string): T => {
+//     return ctx.models[schema].schema as T
+// }
+
+// function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, relatedRootKey?: string) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+//     let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+//         let dataset = makeBuilder()
+
+//         let relatedSource = getModelBySchema<TypeClass["schema"]>(context, schema).datasource(context)
+        
+//         if(args instanceof Function){
+//             let c = args(context, root, relatedSource)
+//             dataset.select( c.props )
+//         } else {
+//             dataset.select( args )
+//         }
+
+//         let relatedRootColumn = relatedSource.getFieldProperty(relatedRootKey?? ormConfig.primaryKeyName)
+
+//         let fromClause = relatedSource.innerJoin(root, relatedRootColumn.equals(root.getFieldProperty(relatedBy) ) )
+       
+//         return dataset.from(fromClause)
+//     }
+
+//     return compute( new ObjectOfEntity<InstanceType<TypeClass>>(schema), computeFn )
+// }
+
+// function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, rootKey?: string){
+    
+//     let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args: SimpleSelectAndFilter< TypeClass["schema"] >): Scalarable => {
+        
+//         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
+//         //     return {
+//         //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
+//         //     }
+//         // }).apply(args).toScalar(ArrayOf(schema))
+//         throw new Error()
+//     }
+
+//     return compute( new ArrayOfType< ObjectOfEntity<InstanceType<TypeClass>> >( new ObjectOfEntity(schema) ), computeFn )
+// }
+
+function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass) {
+    
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
         let dataset = makeBuilder()
 
-        let relatedSource = getModelBySchema<TypeClass["schema"]>(context, schema).datasource(context)
+        let rootSource = rootEntity.schema.datasource(context)
+        
+        if(args instanceof Function){
+            let c = args(context, rootSource)
+            dataset.select( c.props )
+        } else {
+            dataset.select( args )
+        }
+
+        let fromClause = rootSource
+       
+        return dataset.from(fromClause)
+    }
+
+    return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
+}
+
+function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
+    
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+        let dataset = makeBuilder()
+
+        let relatedSource = relatedEntity.schema.datasource(context)
         
         if(args instanceof Function){
             let c = args(context, root, relatedSource)
@@ -41,19 +112,19 @@ function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Ent
             dataset.select( args )
         }
 
-        let relatedRootColumn = relatedSource.getFieldProperty(relatedRootKey?? ormConfig.primaryKeyName)
+        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty(ormConfig.primaryKeyName)
 
-        let fromClause = relatedSource.innerJoin(root, relatedRootColumn.equals(root.getFieldProperty(relatedBy) ) )
+        let fromClause = relatedSource.innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
        
         return dataset.from(fromClause)
     }
 
-    return compute( new ObjectOfEntity<InstanceType<TypeClass>>(schema), computeFn )
+    return compute( new ObjectOfType(relatedEntity), computeFn )
 }
 
-function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(schema: string, relatedBy: string, rootKey?: string){
+function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args: SimpleSelectAndFilter< TypeClass["schema"] >): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"] >): Scalarable => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {
@@ -63,8 +134,9 @@ function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entit
         throw new Error()
     }
 
-    return compute( new ArrayOfType< ObjectOfEntity<InstanceType<TypeClass>> >( new ObjectOfEntity(schema) ), computeFn )
+    return compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
 }
+
 
 
 export type QueryFilterResolver = (value: QueryFilter) => Promise<Scalar> | Scalar
@@ -74,25 +146,19 @@ export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyVal
 export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues | Array<Expression> | boolean
 
 
-
-export type QuerySelect = { [key: string]: boolean | QueryOptions | Scalar } | Array<string | Column> 
-
 export type QueryFilter = Expression
 
 export type QueryOrderBy = ( (string|Column) | {column: (string|Column), order: 'asc' | 'desc'} )[]
 
 export type QueryArguments = {[key:string]: any}
 
-export type QueryObject = {
-    select?: QuerySelect,
+export type QueryObject<S extends Schema> = {
+    props?: QueryProps<S>,
     filter?: QueryFilter,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
-    args?: QueryArguments
-    // fn?: QueryFunction
 }
-
 
 export type ObjectValue<T extends typeof Entity > = {
     [key in keyof T["schema"]]: 
@@ -102,12 +168,12 @@ export type ObjectValue<T extends typeof Entity > = {
 } & InstanceType<T>
 
 
-
 class ProductSchema extends Schema {
     name = field(StringType)
     shopId = field(NumberType)
-    shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
-    myABC = compute(StringType, (ctx: ExecutionContext, root: any, args: number) => {
+    // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
+    shop = belongsTo(Product, Shop, Product.schema.shopId)
+    myABC = compute(StringType, (ctx: ExecutionContext, root: any, args: number): Scalarable => {
         throw new Error()
     })
 }
@@ -119,7 +185,8 @@ class Product extends Entity{
 
 class ShopSchema extends Schema {
     name = field(StringType)
-    products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
+    // products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
+    products = hasMany(Shop, Product, Product.schema.shopId)
 }
 
 class Shop extends Entity {
@@ -127,8 +194,40 @@ class Shop extends Entity {
 }
 
 
-
 let x: SelectorMap<ProductSchema>
+let cx = x!.shopId
+let temp: Scalar<BooleanType>
+let ccc = {
+    // shopId: ,
+    ...x!.myABC(5)
+    // temp: temp!
+}
+// let cccc = x!.shopId.shopId
+
+let aaa = makeBuilder().props(
+    ccc
+)
+
+aaa.execute().then(r => {
+    let result = r.shopId
+    result
+})
+
+
+
+
+// let models = {
+//     Product,
+//     Shop
+// }
+
+// let f = function(x: {[key:string]: typeof Entity}){
+    
+// }
+
+
+// models.Shop.createEach()
+
 // let cc = x!.shop()
 
 // type A = number
@@ -141,7 +240,7 @@ let x: SelectorMap<ProductSchema>
 // let c = my(x!)
 
 
-const simpleQuery = <T extends Schema>(row: Dataset, selector: Datasource<T>, queryOptions: QueryObject) => {
+const simpleQuery = <T extends Schema>(row: Dataset, selector: Datasource<T>, queryOptions: QueryObject<T>) => {
     let stmt = row.toQueryBuilder()
 
     let isWholeFilter = true

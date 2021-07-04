@@ -59,7 +59,7 @@
     "pg": "^8.6.0",
     "reflect-metadata": "^0.1.13",
     "sqlite3": "^5.0.2",
-    "typescript": "^4.2.4"
+    "typescript": "^4.3.5"
   },
   "dependencies": {
     "knex": "^0.95.5",

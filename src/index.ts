@@ -1,13 +1,14 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayOfType, FieldPropertyTypeDefinition, NumberType, ObjectOfEntity, PropertyTypeDefinition, StringType } from './PropertyType'
+import { BooleanType, FieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
-import {makeBuilder as builder, isDataset, isRaw, isScalar, makeRaw as raw, makeColumn, makeFromClause, Column, makeScalar, Scalar, Dataset, makeRaw, isColumn, FromClause, Datasource, TableDatasource, Scalarable} from './Builder'
+import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
-import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
+// import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult } from './util'
+import { QueryProps } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -19,7 +20,7 @@ export function field<D extends FieldPropertyTypeDefinition<any> >(definition: (
     return new FieldProperty<D>( new definition() )
 }
 
-export function compute<D extends PropertyTypeDefinition, Root extends Schema, Arg, R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, Arg, R>) : ComputeProperty<D, Root, Arg, R> {
+export function compute<D extends PropertyTypeDefinition, Root extends Schema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, Arg, R>) : ComputeProperty<D, Root, Arg, R> {
 
     if(definition instanceof PropertyTypeDefinition){
         return new ComputeProperty<D, Root, Arg, R>(definition, compute)
@@ -28,31 +29,38 @@ export function compute<D extends PropertyTypeDefinition, Root extends Schema, A
 }
 
 
+// type Col<D> = { key: Scalar<D> }
 
-export type SelectorMap<E extends Schema> = {
+// let xxxx: Col<boolean>
+// xxxx!.
+
+// type Col<N extends string, T> =  { [key in keyof key as `${N}`]: Scalar<T> }
+
+// let aaa: Col<'sss', BooleanType>
+
+export type SelectorMap<E> = {
     [key in keyof Omit<E, keyof Schema> & string]:
             (
                 E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
                 (
                     R extends Scalarable? 
-                        CompiledComputeFunction< Arg, D>:
+                        CompiledComputeFunction<key, Arg, D>:
                         (R extends Promise<Scalarable>?
-                            CompiledComputeFunctionPromise< Arg, D>: 
+                            CompiledComputeFunctionPromise<key, Arg, D>: 
                             unknown)
                         
                 ): 
                     E[key] extends FieldProperty<infer D>? 
-                    Column<D>:
+                    Column<key, D>:
                     never
             )
-    
 }
 
-export type ComputeFunction<Root extends Schema, ARG, R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root>, args: ARG) => R
+export type ComputeFunction<Root extends Schema, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root>, ...args: ARG) => R
 
-export type CompiledComputeFunction<ARG, R> = (queryObject: ARG) => Column<R>
+export type CompiledComputeFunction<key extends string, ARG extends any[], R> = (...args: ARG) => Column<key, R>
 
-export type CompiledComputeFunctionPromise<ARG, R> = (queryObject: ARG) => Promise<Column<R> > | Column<R>
+export type CompiledComputeFunctionPromise<key extends string, ARG extends any[], R> = (...args: ARG) => Promise<Column<key, R> > | Column<key, R>
 
 export type MutationEntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
@@ -65,9 +73,9 @@ export type MutationEntityPropertyKeyValues = {
 // export type ApplyNextQueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
 
 type DatabaseActionResult<T> = T
-type DatabaseActionOptions = {
+type DatabaseActionOptions<T extends Schema> = {
     failIfNone: boolean
-    querySelect: QuerySelect
+    queryProps: QueryProps<T>
 }
 type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
 
@@ -171,6 +179,9 @@ export class Property {
     }
 
     get fieldName(){
+        if(!this._fieldName){
+            throw new Error('Property not yet registered')
+        }
         return this._fieldName
     }
 
@@ -180,7 +191,7 @@ export class Property {
     }
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends Schema = Schema, Arg = any, R = any> extends Property {
+export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends Schema = Schema, Arg extends any[] = any[], R = any> extends Property {
 
     definition: D
     compute: ComputeFunction<Root, Arg, R>
@@ -636,10 +647,10 @@ export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
         super(ctx, action)
     }
 
-    async fetch<T>(querySelect: QuerySelect){
+    async fetch<T>(queryProps: QueryProps){
         this.options = {
             ...this.options,
-            querySelect: querySelect
+            queryProps: queryProps
         }
         return this
     }
@@ -1184,9 +1195,9 @@ export class Entity {
     //     return schemas[this.name]
     // }
 
-    static get tableName() {
-        return this.schema.tableName
-    }
+    // static get tableName() {
+    //     return this.schema.tableName
+    // }
 
     static datasource<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), ctx: ExecutionContext ): Datasource<I["schema"]> {
         return this.schema.datasource(ctx)
@@ -1203,12 +1214,17 @@ export class Entity {
     //     return Database.selector(this, null)
     // }
 
-    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: MutationEntityPropertyKeyValues): I{
+    static parseRaw<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: MutationEntityPropertyKeyValues, propName: string, ctx: ExecutionContext): I{
         let r = Database.parseRaw(this, null, row)
         return r as I
     }
 
-    static createEach<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner<I[]>{
+    static parseProperty<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), row: MutationEntityPropertyKeyValues, propName: string, ctx: ExecutionContext): I{
+        let r = Database.parseProperty(this, null, row)
+        return r as I
+    }
+
+    static createEach<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner< InstanceType<I>[]>{
         return Database.createEach(this, null, arrayOfData)
     }
 
@@ -1259,18 +1275,8 @@ export class Entity {
 }
 
 
-function find<T extends {
-        [key: string]: Scalar<any>
-    }>(options: {
-    props: T
-    source?: Datasource<any>
-    filter?: any
-}): {
-    [key in keyof T]: T[key] extends Scalar<infer D>? (D extends PropertyTypeDefinition ? ReturnType< D["parseRaw"]>: never):
-            never;
-}{
-    throw new Error()
-}
+
+
 
 
 // it is a special Entity or table. Just like the Dual in SQL Server

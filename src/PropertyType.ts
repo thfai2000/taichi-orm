@@ -3,6 +3,12 @@ import { extend } from "lodash"
 import { Entity, client, FieldProperty, ExecutionContext, ComputeFunction, Schema, Property } from "."
 import { makeid, quote, SimpleObject, SQLString } from "./util"
 
+export interface Parsable<D>{
+    new (...args: any[]): D
+    parseProperty(propertyvalue: D, propName: string, ctx: ExecutionContext): any
+    parseRaw(rawValue: any, prop: string, context: ExecutionContext): D
+}
+
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
 export class PropertyTypeDefinition<I = any> {
     protected options = {}
@@ -396,13 +402,13 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
 }
 
 // type ObjectOfTypeOptions = { }
-export class ObjectOfEntity<E extends Entity> extends ComputePropertyTypeDefinition<E | null>{
+export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeDefinition<E | null>{
     // protected options: ObjectOfTypeOptions
 
-    constructor(private entityClassName: string
+    constructor(private parsable: E
     // options: Partial<ObjectOfTypeOptions> = {}
     ) {
-        super(entityClassName)
+        super(parsable)
         // this.options = { ...options}
     }
 
@@ -420,7 +426,7 @@ export class ObjectOfEntity<E extends Entity> extends ComputePropertyTypeDefinit
         return jsonify
     }
     
-    parseRaw(rawValue: any, propName: string, context: ExecutionContext): E | null {
+    parseRaw(rawValue: any, propName: string, context: ExecutionContext): E extends Parsable<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -432,18 +438,18 @@ export class ObjectOfEntity<E extends Entity> extends ComputePropertyTypeDefinit
         } else {
             throw new Error('It is not supported.')
         }
-        const entityClass = context.models[this.entityClassName] as unknown as E
-        return entityClass.parseRaw(parsed)
+        // const entityClass = context.models[this.entityClassName] as unknown as E
+        return this.parsable.parseRaw(parsed, propName, context)
     }
     
-    parseProperty(propertyvalue: Entity | null, propName: string): any {
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, ctx: ExecutionContext): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
         // return propertyvalue
         // throw new Error('NYI')
-        return propertyvalue
+        return this.parsable.parseProperty(propertyvalue, propName, ctx)
     }
 }
 
@@ -512,12 +518,12 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
             return this.type.parseRaw(raw, propName, context)
         })
     }
-    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string): any {
+    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, ctx: ExecutionContext): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
-        return propertyvalue
+        return this.type.parseProperty(propertyvalue, propName, ctx)
     }
 }
 

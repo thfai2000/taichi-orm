@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
-import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise } from "."
+import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty } from "."
 import { Equal } from "./Operator"
-import { BooleanType, NumberType, PropertyTypeDefinition } from "./PropertyType"
+import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -35,7 +35,7 @@ export interface Scalarable {
     toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
 }
 
-export interface Datasource<E extends Schema> extends FromClause {
+export interface Datasource<E> extends FromClause {
     // (value: QueryFilter): Promise<Scalar> | Scalar
     // impl: Datasource
     schema: E
@@ -43,8 +43,8 @@ export interface Datasource<E extends Schema> extends FromClause {
     $: SelectorMap<E>
     //TODO: implement
     getFieldProperty: <T>(name: string) => Column<T>
-    getComputeProperty: <ARG, R>(name: string) => CompiledComputeFunction<ARG, R>
-    getAysncComputeProperties: <ARG, R>(name: string) => CompiledComputeFunctionPromise<ARG, R>
+    getComputeProperty: <ARG extends any[], R>(name: string) => CompiledComputeFunction<ARG, R>
+    getAysncComputeProperties: <ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<ARG, R>
     tableAlias: string
     allNormal: Column[]
 }
@@ -53,38 +53,76 @@ export interface TableDatasource<E extends Schema> extends Datasource<E> {
     tableName: string
 }
 
-export interface Dataset extends Knex.Raw, Scalarable {
+export interface Dataset<T extends {
+        [key: string]: Scalar<any>
+    }> extends Knex.Raw, Scalarable {
     __type: 'Dataset'
     // __mainSelector?: Selector | null
     // __expressionResolver: QueryFilterResolver
     __selectItems: SelectItem[]
     __fromSource: FromClause
-    __realSelect: Function
-    __realClearSelect: Function
+    // __realSelect: Function
+    // __realClearSelect: Function
+
     __realClone: Function //TODO: override the clone function
     __realFrom: Function
     // getInvolvedSelectors(): Datasource<any>[]
     extractColumns(): string[]
     toQueryBuilder(): Knex.QueryBuilder
     // toRaw(): Knex.Raw
-    toDataset(): Dataset
+    toDataset(): Dataset<T>
 
     //TODO: implement
     toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
-    clone(): Dataset
-    clearSelect(): Dataset
-    select(...cols: Column[]): Dataset
-    filter(queryWhere: QueryFilter): Dataset
-    from(source: FromClause): Dataset
+    clone(): Dataset<T>
+    clearSelect(): Dataset<T>
+    
+    // select(...cols: Column[]): Dataset
+    props<T extends {
+        [key: string]: Scalar<any>
+    }>(properties: T): Dataset<T>
+    
+    filter(queryWhere: QueryFilter): Dataset<T>
+    from(source: FromClause): Dataset<T>
 
-    datasource(): Datasource<any>
+    //TODO: implement
+    datasource(): Datasource<{
+        [key in keyof T & string]: 
+            T[key] extends Scalar<infer D>? 
+                (
+                    D extends PropertyTypeDefinition? FieldProperty<D>: never 
+                ): never 
+    }>
+
+    //TODO: implement
+    execute(): Promise<
+        // T extends  Column<infer N, infer A> ? (
+        //     {
+        //         [key in N & string]: A extends PropertyTypeDefinition?  ReturnType< A["parseRaw"]>: boolean
+        //     }
+        // ): number
+        // // )
+        // // :
+        {
+            [key in keyof T & string]: 
+                T[key] extends Scalar<infer D>?
+                    (
+                        D extends PropertyTypeDefinition?  ReturnType< D["parseRaw"]>: never
+                    )
+                    // boolean
+                : never
+        }
+    >
 }
 
-export interface Column<T = any> extends Scalar<T> {
-    // __fieldName: string
-    __actualAlias: string
-    clone(): Column<T>
-}
+// export interface Column<T = any> {
+//     __actualAlias: string
+//     clone(): Column<T>
+// }
+
+export type Column<N extends string, T> =  { [key in keyof key & string as `${N}`]: Scalar<T> }
+
+
 export interface Scalar<T = any> extends Knex.Raw {
     __type: 'Scalar'
     // __selector: Selector | null
@@ -151,8 +189,8 @@ export const isScalar = (builder: any) : boolean => {
     return false
 }
 
-export const makeBuilder = function(mainSelector?: Datasource<any> | null, cloneFrom?: Dataset) : Dataset {
-    let sealBuilder: Dataset
+export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any> | null, cloneFrom?: Dataset<T>) : Dataset<T> {
+    let sealBuilder: Dataset<T>
     if(cloneFrom){
         if(!isDataset(cloneFrom)){
             throw new Error('Unexpected Flow.')
