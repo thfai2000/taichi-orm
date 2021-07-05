@@ -1,14 +1,16 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { BooleanType, FieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
+import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult } from './util'
-import { QueryFilter, QueryProps, RelationFilterFunction, SimpleSelectAndFilter } from './Relation'
+import { Expression, QueryEntityPropertyKeyValues, QueryFilter, QueryProps, RelationFilterFunction, SingleSourceSelectAndFilter, SingleSourceSelectAndFilterAdvanced } from './Relation'
+import { And } from './Operator'
+import { QueryOptions } from '../dist'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -39,7 +41,7 @@ export function compute<D extends PropertyTypeDefinition, Root extends Schema, A
 // let aaa: Col<'sss', BooleanType>
 
 export type SelectorMap<E> = {
-    [key in keyof Omit<E, keyof Schema> & string]:
+    [key in keyof Omit<E, keyof SchemaBase> & string ]:
             (
                 E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
                 (
@@ -67,7 +69,7 @@ export type MutationEntityPropertyKeyValues = {
 }
 
 
-export type EntityQueryOptions<S extends Schema> = SimpleSelectAndFilter<S>
+export type EntityQueryOptions<S extends Schema> = SingleSourceSelectAndFilter<S> | SingleSourceSelectAndFilterAdvanced<S>
 
 
 
@@ -90,14 +92,14 @@ export type ORMConfig = {
     suppressErrorOnPropertyNotFound?: string,
     useNullAsDefault?: boolean
     // useSoftDeleteAsDefault: boolean
-    primaryKeyName: string
+    // primaryKeyName: string
     enableUuid: boolean
     uuidPropName: string,
     globalContext: Partial<ExecutionContextConfig>
 }
 
 const ormConfig: ORMConfig = {
-    primaryKeyName: 'id',
+    // primaryKeyName: 'id',
     enableUuid: false,
     // useSoftDeleteAsDefault: true,
     uuidPropName: 'uuid',
@@ -157,7 +159,7 @@ export class Property {
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
             }
             this._name = name
-            this._fieldName = FieldProperty.convertFieldName(this.name)
+            this._fieldName = this._fieldName ?? FieldProperty.convertFieldName(this.name)
         }
     get name(){
         if(!this._name){
@@ -248,7 +250,7 @@ let registeredModels: {
     [key: string]: typeof Entity
 } = {}
 
-export class Schema {
+export class SchemaBase {
 
     tableName?: string
     entityName?: string
@@ -258,8 +260,8 @@ export class Schema {
     // id: PropertyDefinition
     // uuid: PropertyDefinition | null
 
-    constructor(entityName?: string){
-        this.entityName = entityName
+    constructor(){
+        // this.entityName = entityName
         // this.id = types.PrimaryKey()
         // if(ormConfig.enableUuid){
         //     this.uuid = types.StringNotNull({length: 255})
@@ -269,8 +271,8 @@ export class Schema {
     }
 
     register(entityName: string){
-        this.entityName = this.entityName ?? entityName
-        this.tableName = ormConfig.entityNameToTableName?ormConfig.entityNameToTableName(entityName):entityName
+        this.entityName = entityName
+        this.tableName = this.tableName ??  SchemaBase.convertTableName(entityName)
  
         let fields : (ComputeProperty | FieldProperty)[] = []
         for(let field in this){
@@ -284,6 +286,15 @@ export class Schema {
             }
         }
         this.properties = fields
+    }
+
+    static convertTableName(entityName : string) {
+        return (ormConfig.entityNameToTableName? ormConfig.entityNameToTableName(entityName):entityName )
+    }
+
+    setTableName(name: string) {
+        this.tableName = name
+        return this
     }
 
     createTableStmt(tablePrefix?: string){
@@ -320,6 +331,10 @@ export class Schema {
     }
 }
 
+export abstract class Schema extends SchemaBase {
+    abstract id: FieldProperty
+    uuid?: FieldProperty = undefined
+}
 
 export type MutationName = 'create'|'update'|'delete'
 export type HookName = 'beforeMutation' | 'afterMutation'
@@ -695,9 +710,9 @@ export class Database{
             }
         }
         
-        const schemaPrimaryKeyFieldName = schema.propertiesMap[ormConfig.primaryKeyName].fieldName
-        const schemaPrimaryKeyPropName = ormConfig.primaryKeyName
-        const schemaUUIDPropName = ormConfig.uuidPropName
+        const schemaPrimaryKeyFieldName = schema.id.fieldName
+        const schemaPrimaryKeyPropName = schema.id.name
+        const schemaUUIDPropName = schema.uuid?.name
         
         let fns = await existingContext.withTransaction(async (existingContext) => {
             let allResults = await Promise.all(values.map(async (value) => {
@@ -706,6 +721,9 @@ export class Database{
                 
                 let newUuid = null
                 if(useUuid){
+                    if(!schemaUUIDPropName){
+                        throw new Error('Not UUID field is setup')
+                    }
                     newUuid = uuidv4()
                     propValues[schemaUUIDPropName] = newUuid
                 }
@@ -730,7 +748,13 @@ export class Database{
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
                     const r = await this.executeStatement(insertStmt, existingContext)
                     insertedId = r[0][0].insertId
-                    let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId]))
+                    // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
+
+                    let record = await this.findOne(entityClass, existingContext, {
+                        filter: {
+                            id: insertedId
+                        }
+                    } as EntityQueryOptions<Schema>)
                     
                     let b = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                     return b
@@ -743,7 +767,13 @@ export class Database{
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.uuid, uuid]))
+                            // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.uuid, uuid]))
+                            let record = await this.findOne(entityClass, existingContext, {
+                                filter: {
+                                    uuid: uuid
+                                }
+                            } as EntityQueryOptions<Schema> )
+
                             return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         }
                     } else {
@@ -974,8 +1004,8 @@ export class Database{
             entityData: data
         }
 
-        const schemaPrimaryKeyFieldName = schema.propertiesMap[ormConfig.primaryKeyName].fieldName
-        const schemaPrimaryKeyPropName = ormConfig.primaryKeyName
+        const schemaPrimaryKeyFieldName = schema.id.fieldName
+        const schemaPrimaryKeyPropName = schema.id.name
 
         let fns = await existingContext.withTransaction(async (existingContext) => {
             if(!input.selectSqlString || !input.entityData){
@@ -1251,7 +1281,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: EntityQueryOptions): DatabaseQueryRunner<I>{
+    static findOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: EntityQueryOptions<I["schema"]>): DatabaseQueryRunner<InstanceType<I>>{
         return Database.findOne(this, null, applyFilter)
     }
 
@@ -1260,7 +1290,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: EntityQueryOptions): DatabaseQueryRunner<Array<I>>{
+    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: EntityQueryOptions<I["schema"]>): DatabaseQueryRunner<InstanceType<I>[]>{
         return Database.find(this, null, applyFilter)
     }
 

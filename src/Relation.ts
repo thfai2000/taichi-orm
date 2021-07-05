@@ -1,18 +1,18 @@
-import { compute, ComputeFunction, ComputeProperty, configure, Entity, ExecutionContext, field, FieldProperty, FieldPropertyDefinition, ormConfig, Schema, SelectorMap } from "."
+import { compute, ComputeFunction, ComputeProperty, configure, Entity, ExecutionContext, field, FieldProperty, FieldPropertyDefinition, ormConfig, Schema, SchemaBase, SelectorMap } from "."
 import { Column, Dataset, Datasource, makeBuilder, Scalar, Scalarable } from "./Builder"
 import { ConditionOperator, ValueOperator } from "./Operator"
-import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PropertyTypeDefinition, StringType } from "./PropertyType"
+import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
 
 
 
-export type SimpleSelectAndFilter<S extends Schema> = {
+export type SingleSourceSelectAndFilter<S extends Schema> = {
     props?: QueryProps<S>
-    filter?: QueryFilter
+    filter?: QueryFilter<S>
 }
 
-export type FilterFunction<Root extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>) => {
-    props?: QueryProps<Root>
-    filter?: QueryFilter
+export type SingleSourceSelectAndFilterAdvanced<S extends Schema> = (ctx: ExecutionContext, root: Datasource<S>) => {
+    props?: QueryProps<S>
+    filter?: QueryFilter<S>
 }
 
 export type RelationFilterFunction<Root extends Schema, Related extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>, related: Datasource<Related>) => {
@@ -78,7 +78,7 @@ export type QueryProps<E extends Schema > = Partial<{
 
 function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SingleSourceSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
         let dataset = makeBuilder()
 
         let rootSource = rootEntity.schema.datasource(context)
@@ -100,7 +100,7 @@ function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(r
 
 function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SingleSourceSelectAndFilter< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
         let dataset = makeBuilder()
 
         let relatedSource = relatedEntity.schema.datasource(context)
@@ -124,7 +124,7 @@ function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Ent
 
 function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args?: SimpleSelectAndFilter< TypeClass["schema"] >): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args?: SingleSourceSelectAndFilter< TypeClass["schema"] >): Scalarable => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {
@@ -138,23 +138,25 @@ function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entit
 }
 
 
-
 export type QueryFilterResolver = (value: QueryFilter) => Promise<Scalar> | Scalar
+export type Expression<S extends Schema = any> = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues<S> | Array<Expression<S> > | boolean
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
-export type QueryEntityPropertyKeyValues = {[key:string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]}
-export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues | Array<Expression> | boolean
+export type QueryEntityPropertyKeyValues<S extends Schema = any> = S extends Schema? 
+    Partial<{
+        [key in keyof Omit<S, keyof SchemaBase> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
+    }>
+    : 
+    { [key: string]: QueryEntityPropertyValue | QueryEntityPropertyValue[] }
 
 
-export type QueryFilter = Expression
+export type QueryFilter<S extends Schema = any> = Expression<S>
 
 export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
 
-export type QueryArguments = {[key:string]: any}
-
 export type QueryObject<S extends Schema> = {
     props?: QueryProps<S>,
-    filter?: QueryFilter,
+    filter?: QueryFilter<S>,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
@@ -169,6 +171,8 @@ export type ObjectValue<T extends typeof Entity > = {
 
 
 class ProductSchema extends Schema {
+
+    id = field(PrimaryKeyType)
     name = field(StringType)
     shopId = field(NumberType)
     // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
@@ -184,6 +188,7 @@ class Product extends Entity{
 }
 
 class ShopSchema extends Schema {
+    id= field(PrimaryKeyType)
     name = field(StringType)
     // products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
     products = hasMany(Shop, Product, Product.schema.shopId)
@@ -193,6 +198,12 @@ class Shop extends Entity {
     static schema = new ShopSchema()
 }
 
+
+Product.findOne({
+    filter: {
+        name: 333
+    }
+})
 
 
 
