@@ -2,6 +2,7 @@ import { Knex}  from "knex"
 import { getKnexInstance,  QueryFilter, Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty } from "."
 import { Equal } from "./Operator"
 import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
+import { RawFilter, RawProps } from "./Relation"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -14,7 +15,7 @@ import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefin
 declare module "knex" {
     export namespace Knex {
         interface QueryBuilder{
-            toRow(): Dataset
+            toRow(): Dataset<any>
             // toRaw(): Knex.Raw
             toQueryBuilder(): Knex.QueryBuilder
         }
@@ -78,11 +79,8 @@ export interface Dataset<T extends {
     clearSelect(): Dataset<T>
     
     // select(...cols: Column[]): Dataset
-    props<T extends {
-        [key: string]: Scalar<any>
-    }>(properties: T): Dataset<T>
-    
-    filter(queryWhere: QueryFilter): Dataset<T>
+    props<T extends RawProps>(properties: T): Dataset<T>
+    filter(filter: RawFilter): Dataset<T>
     from(source: FromClause): Dataset<T>
 
     //TODO: implement
