@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { client, FieldProperty, Schema } from "."
+import { client, FieldProperty, Property, Schema } from "."
 
 
 export type SimpleObject = { [key:string]: any}
@@ -53,10 +53,10 @@ export const quote = (name: string) => {
 
 
 export const META_FIELD_DELIMITER = '___'
-const map1 = new Map<FieldProperty, string>()
-const map2 = new Map<string, FieldProperty>()
+const map1 = new Map<Property, string>()
+const map2 = new Map<string, Property>()
 
-export const registerGlobalNamedProperty = function(d: FieldProperty): string{
+export const registerGlobalNamedProperty = function(d: Property): string{
     let r = map1.get(d)
     if(!r){
         let key = makeid(5)
@@ -67,7 +67,7 @@ export const registerGlobalNamedProperty = function(d: FieldProperty): string{
     return r
 }
 
-export const findGlobalNamedProperty = function(propAlias: string): FieldProperty{
+export const findGlobalNamedProperty = function(propAlias: string): Property{
     let r = map2.get(propAlias)
     if(!r){
         throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)

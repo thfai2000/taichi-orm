@@ -1,7 +1,9 @@
 import {Scalar, isScalar, makeScalar, makeRaw as raw} from './Builder'
 import {Knex} from 'knex'
-import { Expression, QueryFilterResolver, Selector, SimpleObject, thenResult, thenResultArray } from '.'
+import {  } from '.'
 import { BooleanType } from './PropertyType'
+import { Expression, QueryFilterResolver } from './Relation'
+import { thenResult, thenResultArray } from './util'
 
 
 abstract class SQLFunction {

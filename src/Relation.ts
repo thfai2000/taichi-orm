@@ -148,7 +148,7 @@ export type Expression = ConditionOperator | Scalar | Promise<Scalar> | QueryEnt
 
 export type QueryFilter = Expression
 
-export type QueryOrderBy = ( (string|Column) | {column: (string|Column), order: 'asc' | 'desc'} )[]
+export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
 
 export type QueryArguments = {[key:string]: any}
 

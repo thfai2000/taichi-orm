@@ -8,7 +8,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult } from './util'
-import { QueryProps } from './Relation'
+import { QueryFilter, QueryProps, RelationFilterFunction, SimpleSelectAndFilter } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -66,18 +66,10 @@ export type MutationEntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
 }
 
-// export type QueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
 
-// export type QueryOptions = QueryFunction | QueryObject | Exclude<QueryFilter, Function> | null
+export type EntityQueryOptions<S extends Schema> = SimpleSelectAndFilter<S>
 
-// export type ApplyNextQueryFunction = (stmt: Dataset, ...selectors: Selector[]) => Dataset | Promise<Dataset>
 
-type DatabaseActionResult<T> = T
-type DatabaseActionOptions<T extends Schema> = {
-    failIfNone: boolean
-    queryProps: QueryProps<T>
-}
-type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
 
 
 export type ORMConfig = {
@@ -570,6 +562,12 @@ export class ExecutionContext{
 export const globalContext = new ExecutionContext('global')
 export const models = globalContext.models
 
+type DatabaseActionResult<T> = T
+type DatabaseActionOptions<T extends Schema> = {
+    failIfNone: boolean
+    queryProps: QueryProps<T>
+}
+type DatabaseAction<I> = (context: ExecutionContext, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
 
 class DatabaseActionRunnerBase<I> implements PromiseLike<I>{
     protected ctx: ExecutionContext
@@ -882,7 +880,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseQueryRunner<  InstanceType<T> >{
+    static findOne<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: EntityQueryOptions<T["schema"]>): DatabaseQueryRunner<  InstanceType<T> >{
         return new DatabaseQueryRunner< InstanceType<T> >(
         existingContext?? globalContext,
         async (existingContext: ExecutionContext) => {
@@ -896,7 +894,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: QueryOptions): DatabaseQueryRunner<  Array<InstanceType<T>> >{
+    static find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: EntityQueryOptions<T["schema"]>): DatabaseQueryRunner<  Array<InstanceType<T>> >{
         return new DatabaseQueryRunner< Array<InstanceType<T>> >(
             existingContext?? globalContext,
             async (existingContext: ExecutionContext) => {
@@ -905,7 +903,7 @@ export class Database{
         })
     }
 
-    private static async _find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, applyFilter: QueryOptions | null) {   
+    private static async _find<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, applyFilter: EntityQueryOptions<T["schema"]> | null) {   
         
         let dualSelector = entityClass.schema.datasource(existingContext)
        
@@ -1253,7 +1251,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseQueryRunner<I>{
+    static findOne<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: EntityQueryOptions): DatabaseQueryRunner<I>{
         return Database.findOne(this, null, applyFilter)
     }
 
@@ -1262,15 +1260,15 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: QueryOptions): DatabaseQueryRunner<Array<I>>{
+    static find<I extends Entity>(this: typeof Entity & (new (...args: any[]) => I), applyFilter?: EntityQueryOptions): DatabaseQueryRunner<Array<I>>{
         return Database.find(this, null, applyFilter)
     }
 
-    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
-        options: QueryX< I["schema"] > ): 
-        ObjectValue< I > { 
-        throw new Error()
-    }
+    // static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
+    //     options: QueryX< I["schema"] > ): 
+    //     ObjectValue< I > { 
+    //     throw new Error()
+    // }
 
 }
 
