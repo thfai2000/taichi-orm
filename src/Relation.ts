@@ -28,6 +28,8 @@ export type RelationFilterFunction<Root extends Schema, Related extends Schema> 
 
 export type SingleSourceProps<E extends Schema > = Partial<{
     [key in keyof Omit<E, keyof SchemaBase> & string]:
+        E[key] extends undefined ?
+            never:
             (
                 E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
                 (
@@ -342,14 +344,14 @@ const simpleQuery = <T extends Schema>(row: Dataset, selector: Datasource<T>, qu
 
 
 
+export type EntityFilterResolver = (source: Datasource<Schema>, filter?: SingleSourceFilter | null) => RawFilter
 
-
-export function resolveEntityFilter(source: TableDatasource<Schema>, filter: SingleSourceFilter): RawFilter {
+export function resolveEntityFilter(source: Datasource<Schema>, filter?: SingleSourceFilter | null): RawFilter {
     throw new Error('Function not implemented.')
 }
 
 
-export function resolveEntityProps(source: TableDatasource<Schema>, props: SingleSourceProps): any {
+export function resolveEntityProps<S extends Schema>(source: Datasource<S>, props?: SingleSourceProps<S> | null ): RawProps {
 
     return function querySelectResolver(selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
         // let selector = getSelectorFunc()[0]

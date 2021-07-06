@@ -1,16 +1,14 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from './PropertyType'
+import { FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult } from './util'
-import { Expression, QueryEntityPropertyKeyValues, SingleSourceFilter, SingleSourceProps, RelationFilterFunction, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps } from './Relation'
-import { And } from './Operator'
-import { QueryOptions } from '../dist'
+import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
+import { SingleSourceFilter, SingleSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps, resolveEntityFilter } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -42,6 +40,8 @@ export function compute<D extends PropertyTypeDefinition, Root extends Schema, A
 
 export type SelectorMap<E> = {
     [key in keyof Omit<E, keyof SchemaBase> & string ]:
+            E[key] extends undefined?
+            never:
             (
                 E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
                 (
@@ -950,8 +950,7 @@ export class Database{
         }else {
             options = applyFilter
         }
-        
-        let sqlString = builder().props( resolveEntityProps(source, options?.props) ).from(source).filter( resolveEntityFilter(source, options?.filter) )
+        let sqlString = builder().props( resolveEntityProps(source, options?.props ) ).from(source).filter( resolveEntityFilter(source, options?.filter) )
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
@@ -1013,8 +1012,8 @@ export class Database{
 
         const realFieldValues = this.extractRealField(schema, propValues)
         const input = {
-            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder(s).toQueryBuilder().where(s(applyFilter)): builder(s) ).toQueryBuilder().update(realFieldValues) : null,
-            selectSqlString: (applyFilter? builder(s).filter( resolveEntityFilter(applyFilter)): builder(s) ),
+            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder().from(s).filter( resolveEntityFilter(s, applyFilter)).toQueryBuilder(): builder().from(s ).toQueryBuilder().update(realFieldValues) ): null,
+            selectSqlString: (applyFilter? builder().from(s).filter( resolveEntityFilter(s, applyFilter)): builder().from(s) ),
             entityData: data
         }
 
