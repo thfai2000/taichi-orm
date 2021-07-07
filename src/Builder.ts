@@ -1,8 +1,9 @@
 import { Knex}  from "knex"
-import { getKnexInstance,  Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty } from "."
-import { Equal } from "./Operator"
-import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
-import { AddPrefix, Expression, FilterEntityPropertyKeyValues, RawFilter, RawProps, UnionToIntersection } from "./Relation"
+import { getKnexInstance,  TableSchema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema } from "."
+import { And, ConditionOperator, Contain, Equal, IsNull, Or, ValueOperator } from "./Operator"
+import { BooleanType, NumberType, PropertyTypeDefinition } from "./PropertyType"
+import { AddPrefix, Expression, FilterEntityPropertyKeyValues, RawProps, UnionToIntersection } from "./Relation"
+import { SimpleObject, SimpleObjectClass } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -36,7 +37,7 @@ export interface Scalarable {
     toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
 }
 
-export interface Datasource<E, alias extends string> {
+export interface Datasource<E extends Schema, alias extends string> {
     // (value: QueryFilter): Promise<Scalar> | Scalar
     // impl: Datasource
     schema: E
@@ -45,7 +46,7 @@ export interface Datasource<E, alias extends string> {
     //TODO: implement
     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
-    getAysncComputeProperties: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
+    getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     tableAlias: {
         [key in keyof [alias] as alias]: string 
     }
@@ -53,7 +54,7 @@ export interface Datasource<E, alias extends string> {
     asFromClause: () => FromClause< AddPrefix< FilterEntityPropertyKeyValues<E>, alias> > 
 }
 
-export interface TableDatasource<E extends Schema, Name extends string> extends Datasource<E, Name> {
+export interface TableDatasource<E extends TableSchema, Name extends string> extends Datasource<E, Name> {
     tableName: string
 }
 
@@ -83,7 +84,7 @@ export interface Dataset<Fields extends {
     
     // select(...cols: Column[]): Dataset
     props<NewProps extends RawProps>(properties: NewProps): Dataset<NewProps, SourceFields>
-    filter(filter: Expression<SourceFields> ): Dataset<Fields, SourceFields>
+    filter(filter?: Expression<SourceFields> ): Dataset<Fields, SourceFields>
     from<NewSourceFields>(source: FromClause<NewSourceFields>): Dataset<Fields, NewSourceFields>
 
     //TODO: implement
@@ -93,7 +94,7 @@ export interface Dataset<Fields extends {
                 (
                     D extends PropertyTypeDefinition? FieldProperty<D>: never 
                 ): never 
-    }, Name>
+    } & Schema, Name>
 
     //TODO: implement
     execute(): Promise<
@@ -140,14 +141,13 @@ export interface FromClause<Fields> extends Knex.Raw {
     __parentSource: FromClause<any> | null
     __realClone: Function
 
-
-    innerJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
+    innerJoin<RightFields extends Schema, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
         FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
      
-    leftJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
+    leftJoin<RightFields extends Schema, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
     FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
 
-    rightJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
+    rightJoin<RightFields extends Schema, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
     FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
 }
 
@@ -219,16 +219,16 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
     // sealBuilder.__expressionResolver = makeQueryFilterResolver( () => sealBuilder.getInvolvedSelectors().map(s => s.impl) )
 
 
-    // sealBuilder.getInvolvedSelectors = () => {
-    //     //TODO: get the involved from Source
-    //     let s: FromClause | null = sealBuilder.__fromSource
-    //     let selectors = []
-    //     while(s){
-    //         selectors.unshift(s.__selector)
-    //         s = s.__parentSource
-    //     }
-    //     return selectors
-    // }
+    sealBuilder.getInvolvedSelectors = () => {
+        //TODO: get the involved from Source
+        let s: FromClause | null = sealBuilder.__fromSource
+        let selectors = []
+        while(s){
+            selectors.unshift(s.__selector)
+            s = s.__parentSource
+        }
+        return selectors
+    }
 
     // override the select methods
     sealBuilder.select = function(...args: any[]){
@@ -332,10 +332,16 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
         return sealBuilder
     }
 
-    sealBuilder.filter = (queryWhere: QueryFilter): Dataset => {
+    sealBuilder.filter = (expression: Expression<any>): Dataset => {
         if(!sealBuilder.__fromSource){
             throw new Error('There is no source declared before you carry out filter.')
         }
+
+        let resolver = makeExpressionResolver(sources)
+
+        let boolScalar = await resolver(expression)
+
+
         sealBuilder.toQueryBuilder().where( sealBuilder.__expressionResolver(queryWhere))
         return sealBuilder
     }
@@ -491,6 +497,189 @@ const parseName = (item: any) => {
         }
     }
 }
+
+export type ExpressionResolver<Props> = (value: Expression<Props>) => Scalar
+
+export const makeExpressionResolver = function<Props>(fromClause: FromClause<Props>) {
+
+    const sources: Datasource<Schema, any>[]
+    
+    const resolver: ExpressionResolver<Props> = <Props>(value: Expression<Props>) => {
+        if (value === true || value === false) {
+            return makeScalar(makeRaw('?', [value]), new BooleanType() )
+        } else if(value instanceof ConditionOperator){
+            return value.toScalar(resolver)
+        } else if(Array.isArray(value)){
+            return resolver(Or<Props>(...value))
+        } else if(isScalar(value)){
+            return value as Scalar
+        } else if (isDataset(value)) {
+            throw new Error('Unsupport')
+        } else if(value instanceof SimpleObjectClass){
+            let dict = value as SimpleObject
+            let sqls = Object.keys(dict).reduce( (accSqls, key) => {
+                
+                let [sourceName, propName] = key.split('.')
+                if(!propName){
+                    propName = sourceName
+                    sourceName = Object.keys(sources[0]?.tableAlias)[0]
+                }
+                let source = sources.find(s => s.tableAlias[sourceName] = sourceName)
+                if(!source){
+                    throw new Error(`cannot found source (${source})`)
+                }
+
+                let prop = source.schema.propertiesMap[propName]
+                if(!prop){
+                    throw new Error(`cannot found source (${source})`)
+                }
+                
+                let operator: ValueOperator
+                if(dict[key] instanceof ValueOperator){
+                    operator = dict[key]
+                }else if( Array.isArray(dict[key]) ){
+                    operator = Contain(...dict[key])
+                } else if(dict[key] === null){
+                    operator = IsNull()
+                } else {
+                    operator = Equal(dict[key])
+                }
+    
+                if(prop instanceof FieldProperty){
+                    let converted = source.getFieldProperty(propName)
+                    accSqls.push( operator.toScalar(converted) )
+                } else {
+                    let compiled = (source.getComputeProperty(propName))()
+                    if(compiled instanceof Promise){
+                        throw new Error('Unsupported Async Computed Property in Expression Resolver')
+                    }
+                    accSqls.push(  operator.toScalar(compiled) )
+                }
+    
+                return accSqls
+    
+            }, [] as Array<Scalar> )
+
+            let arr = And(...sqls)
+            return resolver(arr)
+        } else {
+            throw new Error('Unsupport Where clause')
+        }
+    }
+
+    return resolver
+
+}
+
+
+
+export type EntityPropsResolver = <S extends Schema>() => RawFilter
+
+
+export function makePropsResolver<AcceptableSourceProps>(): EntityPropsResolver {
+
+
+    const resolver = (selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
+        // let selector = getSelectorFunc()[0]
+        let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
+        let allColumns: Array<Column | Promise<Column>> = []
+        if(querySelect && !Array.isArray(querySelect)){
+            let select = querySelect
+            if (select && Object.keys(select).length > 0) {
+
+                let removeNormalPropNames = Object.keys(select).map((key: string) => {
+                    const item = select[key]
+                    if (item === false) {
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
+                        if (!prop) {
+                            throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
+                        } else {
+                            if (!prop.definition.computeFunc) {
+                                return prop.name
+                            }
+                        }
+                    }
+                    return null
+                }).filter(notEmpty)
+
+                if (removeNormalPropNames.length > 0) {
+                    const shouldIncludes = selector.schema.fieldProperties.filter(p => !removeNormalPropNames.includes(p.name))
+                    stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
+                }
+
+                //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
+                let executedProps = Object.keys(select).map((key: string) => {
+                    const item = select[key]
+                    if (item === true) {
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
+                        if (!prop) {
+                            throw new Error(`The property ${key} cannot be found in datasource '${selector}'`)
+                        }
+                        if (prop.definition.computeFunc) {
+                            return selector.$[prop.name]()
+                        }
+                    } else if (item instanceof SimpleObjectClass) {
+                        let options = item as QueryOptions
+
+                        let prop = selector.schema.fieldProperties.find(p => p.name === key && p.definition.computeFunc)
+
+                        if (!prop) {
+                            // if (options instanceof PropertyDefinition) {
+                            //     selector.registerProp(new NamedProperty(key, options))
+                            //     return selector.$$[key]()
+                            // } else {
+                            //     throw new Error('Temp Property must be propertyDefinition')
+                            // }
+                            throw new Error(`Cannot find Property ${key}`)
+                        } else {
+                            if (!prop.definition.computeFunc) {
+                                throw new Error('Only COmputeProperty allows QueryOptions')
+                            }
+                            return selector.$$[key](options)
+                        }
+                    } else if (isScalar(item)){
+                        let scalar = item as Scalar
+                        return scalar.asColumn(key)
+                    }
+                    return null
+                }).filter(notEmpty)
+                allColumns.push(...executedProps)
+            }
+        } else if (querySelect && querySelect instanceof Array) {
+            let select = querySelect
+
+            let props = select.map(s => {
+                if( isColumn(s)) {
+                    return s  as Column
+                } else if( typeof s === 'string'){
+                    let prop = selector.schema.fieldProperties.find(p => p.name === s)
+                    if (!prop) {
+                        throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
+                    }
+                    if (prop.definition.computeFunc) {
+                        return selector.$$[prop.name]()
+                    } else {
+                        return selector._[prop.name]
+                    }
+                }
+                throw new Error('Unexpected type')
+            })
+
+            allColumns.push(...props)
+        }
+
+        // !important: must use a constant to reference the object before it is re-assigned
+        const prevStmt = stmtOrPromise
+        let stmtOrPromiseNext = thenResultArray(allColumns, columns => {
+            return columns.reduce((stmt, column) => {
+                return thenResult(stmt, stmt => stmt.select(column))
+            }, prevStmt)
+        })
+
+        return thenResult(stmtOrPromiseNext, stmt => stmt.toRow())
+    }
+}
+
 
 // function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
 //     let tableAlias = quote(selector.tableAlias)

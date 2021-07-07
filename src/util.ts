@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { client, FieldProperty, Property, Schema } from "."
+import { client, FieldProperty, Property, TableSchema } from "."
 
 
 export type SimpleObject = { [key:string]: any}
@@ -75,7 +75,7 @@ export const findGlobalNamedProperty = function(propAlias: string): Property{
     return r
 }
 
-export const metaTableAlias = function(schema: Schema, name: string): string{
+export const metaTableAlias = function(schema: TableSchema, name: string): string{
     return schema.entityName + META_FIELD_DELIMITER + name
 }
 

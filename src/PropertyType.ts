@@ -1,6 +1,6 @@
 // import { Knex } from "knex"
 import { extend } from "lodash"
-import { Entity, client, FieldProperty, ExecutionContext, ComputeFunction, Schema, Property } from "."
+import { Entity, client, FieldProperty, ExecutionContext, ComputeFunction, TableSchema, Property } from "."
 import { makeid, quote, SimpleObject, SQLString } from "./util"
 
 export interface Parsable<D>{

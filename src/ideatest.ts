@@ -1,5 +1,5 @@
 import types, {PropertyTypeDefinition, StringType, StringTypeNotNull, ObjectOfEntity, BooleanType} from "./PropertyType"
-import {Schema, Entity, FieldProperty} from "."
+import {TableSchema, Entity, FieldProperty} from "."
 import { Column } from "./Builder"
 import { Selector } from ".."
 
@@ -189,7 +189,7 @@ class Dataset<T extends Entity, Joins extends Datasource<any, any>[] = Datasourc
 
 
 
-class ProductSchema extends Schema {
+class ProductSchema extends TableSchema {
     name = types.String()
     shopId = types.Number()
     shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
@@ -203,7 +203,7 @@ class Product extends Entity{
     myName: number  = 5
 }
 
-class ShopSchema extends Schema {
+class ShopSchema extends TableSchema {
     name = types.String({})
     products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
 }

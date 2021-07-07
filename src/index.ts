@@ -8,7 +8,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
-import { SingleSourceFilter, AcceptableSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps, resolveEntityFilter } from './Relation'
+import { SingleSourceFilter, AcceptableSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -20,7 +20,7 @@ export function field<D extends FieldPropertyTypeDefinition<any> >(definition: (
     return new FieldProperty<D>( new definition() )
 }
 
-export function compute<D extends PropertyTypeDefinition, Root extends Schema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, R>) : ComputeProperty<D, Root, 'root', Arg, R> {
+export function compute<D extends PropertyTypeDefinition, Root extends TableSchema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, R>) : ComputeProperty<D, Root, 'root', Arg, R> {
 
     if(definition instanceof PropertyTypeDefinition){
         return new ComputeProperty<D, Root, 'root', Arg, R>(definition, compute)
@@ -39,7 +39,7 @@ export function compute<D extends PropertyTypeDefinition, Root extends Schema, A
 // let aaa: Col<'sss', BooleanType>
 
 export type SelectorMap<E> = {
-    [key in keyof Omit<E, keyof SchemaBase> & string ]:
+    [key in keyof Omit<E, keyof Schema> & string ]:
             E[key] extends undefined?
             never:
             (
@@ -58,7 +58,7 @@ export type SelectorMap<E> = {
             )
 }
 
-export type ComputeFunction<Root extends Schema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root, Name>, ...args: ARG) => R
+export type ComputeFunction<Root extends TableSchema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root, Name>, ...args: ARG) => R
 
 export type CompiledComputeFunction<Name extends string, ARG extends any[], R> = (...args: ARG) => Column<Name, R>
 
@@ -69,7 +69,7 @@ export type MutationEntityPropertyKeyValues = {
 }
 
 
-export type EntityQueryOptions<S extends Schema> = SingleSourceQueryOptions<S> | SingleSourceQueryFunction<S>
+export type EntityQueryOptions<S extends TableSchema> = SingleSourceQueryOptions<S> | SingleSourceQueryFunction<S>
 
 
 
@@ -185,7 +185,7 @@ export class Property {
     }
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends Schema = Schema, Name extends string = 'root', Arg extends any[] = any[], R = any> extends Property {
+export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends TableSchema = TableSchema, Name extends string = 'root', Arg extends any[] = any[], R = any> extends Property {
 
     definition: D
     compute: ComputeFunction<Root, Name, Arg, R>
@@ -250,7 +250,7 @@ let registeredModels: {
     [key: string]: typeof Entity
 } = {}
 
-export class SchemaBase {
+export class Schema {
 
     tableName?: string
     entityName?: string
@@ -272,7 +272,7 @@ export class SchemaBase {
 
     register(entityName: string){
         this.entityName = entityName
-        this.tableName = this.tableName ??  SchemaBase.convertTableName(entityName)
+        this.tableName = this.tableName ??  Schema.convertTableName(entityName)
  
         let fields : (ComputeProperty | FieldProperty)[] = []
         for(let field in this){
@@ -316,24 +316,24 @@ export class SchemaBase {
         return ''
     }
 
-    /**
-     * Selector is used for locating the table name / field names / computed functions
-     * field pointers
-     * @returns 
-     */
-    datasource<T extends Schema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : TableDatasource<T, Name>{
-        let selectorImpl = makeTableDatasource(this, name, existingContext?? globalContext)
-        return selectorImpl
-    }
-
     hook(newHook: Hook){
         this.hooks.push(newHook)
     }
 }
 
-export abstract class Schema extends SchemaBase {
+export abstract class TableSchema extends Schema {
     abstract id: FieldProperty
     uuid?: FieldProperty = undefined
+
+    /**
+     * Selector is used for locating the table name / field names / computed functions
+     * field pointers
+     * @returns 
+     */
+    datasource<T extends TableSchema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : TableDatasource<T, Name>{
+        let selectorImpl = makeTableDatasource(this, name, existingContext?? globalContext)
+        return selectorImpl
+    }
 }
 
 export type MutationName = 'create'|'update'|'delete'
@@ -420,7 +420,7 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
 // }
 
 
-function makeTableDatasource<E extends Schema, Name extends string>(schema: E, name: Name, executionContext: ExecutionContext){
+function makeTableDatasource<E extends TableSchema, Name extends string>(schema: E, name: Name, executionContext: ExecutionContext){
 
     let tableAlias = name
     let tableName = executionContext.tablePrefix + schema.tableName
@@ -432,12 +432,12 @@ function makeTableDatasource<E extends Schema, Name extends string>(schema: E, n
     newSelector.executionContext = executionContext
     newSelector.tableName = tableName
     newSelector.tableAlias = {
-        [name]: tableAlias
+        [tableAlias]: tableAlias
     }
 
     //@ts-ignore
     newSelector.$ = new Proxy( this.schema ,{
-        get: (oTarget: Schema, sKey: string) => {
+        get: (oTarget: TableSchema, sKey: string) => {
 
             if(typeof sKey === 'string'){
                 let prop = oTarget.propertiesMap[sKey]
@@ -580,13 +580,13 @@ export const globalContext = new ExecutionContext('global')
 export const models = globalContext.models
 
 type DatabaseActionResult<T> = T
-type DatabaseActionOptions<T extends Schema> = {
+type DatabaseActionOptions<T extends TableSchema> = {
     failIfNone: boolean
     queryProps: AcceptableSourceProps<T>
 }
-type DatabaseAction<I, S extends Schema> = (context: ExecutionContext, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
+type DatabaseAction<I, S extends TableSchema> = (context: ExecutionContext, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
 
-class DatabaseActionRunnerBase<I, S extends Schema> implements PromiseLike<I>{
+class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<I>{
     protected ctx: ExecutionContext
     protected action: DatabaseAction<I, S>
     protected options: Partial<DatabaseActionOptions<S> > = {}
@@ -645,7 +645,7 @@ class DatabaseActionRunnerBase<I, S extends Schema> implements PromiseLike<I>{
     }
 } 
 
-export class DatabaseQueryRunner<I, S extends Schema> extends DatabaseActionRunnerBase<I, S> {
+export class DatabaseQueryRunner<I, S extends TableSchema> extends DatabaseActionRunnerBase<I, S> {
 
     async failIfNone<T>(){
         this.options = {
@@ -656,7 +656,7 @@ export class DatabaseQueryRunner<I, S extends Schema> extends DatabaseActionRunn
     }
 }
 
-export class DatabaseMutationRunner<I, S extends Schema> extends DatabaseQueryRunner<I, S>{
+export class DatabaseMutationRunner<I, S extends TableSchema> extends DatabaseQueryRunner<I, S>{
 
     constructor(ctx: ExecutionContext, action: DatabaseAction<I, S>){
         super(ctx, action)
@@ -755,7 +755,7 @@ export class Database{
                     insertedId = r[0][0].insertId
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
 
-                    let record = await this.findOne<T, Schema>(entityClass, existingContext, {
+                    let record = await this.findOne<T, TableSchema>(entityClass, existingContext, {
                         filter: {
                             id: insertedId
                         }
@@ -772,7 +772,7 @@ export class Database{
                         } else {
                             let uuid = input.uuid
                             // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.uuid, uuid]))
-                            let record = await Database.findOne<T, Schema>(entityClass, existingContext, {
+                            let record = await Database.findOne<T, TableSchema>(entityClass, existingContext, {
                                 filter: {
                                     uuid: uuid
                                 }
@@ -790,7 +790,7 @@ export class Database{
                     const r = await this.executeStatement(insertStmt, existingContext)
                     
                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
-                    let record = await this.findOne<T, Schema>(entityClass, existingContext, {
+                    let record = await this.findOne<T, TableSchema>(entityClass, existingContext, {
                         filter: {
                             id: insertedId
                         }
@@ -809,7 +809,7 @@ export class Database{
         return fns
     }
 
-    private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: Schema, actionName: MutationName, context: ExecutionContext) {
+    private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: TableSchema, actionName: MutationName, context: ExecutionContext) {
         
         let propValues = Object.keys(data).reduce(( propValues, propName) => {
             let foundProp = schema.properties.find(p => {
@@ -864,7 +864,7 @@ export class Database{
 
     private static async afterMutation<T extends typeof Entity>(
         record: InstanceType<T>, 
-        schema: Schema,
+        schema: TableSchema,
         actionName: MutationName,
         inputProps: MutationEntityPropertyKeyValues, 
         context: ExecutionContext): Promise<InstanceType<T>> {
@@ -952,7 +952,10 @@ export class Database{
         }else {
             options = applyFilter
         }
-        let sqlString = builder().props( resolveEntityProps(source, options?.props ) ).from(source).filter( resolveEntityFilter(source, options?.filter) )
+        let sqlString = builder()
+            .props( resolveEntityProps(source, options?.props ) )
+            .from(source.asFromClause() )
+            .filter( options?.filter )
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
@@ -1004,7 +1007,7 @@ export class Database{
         const schema = entityClass.schema
         const actionName = isDelete?'delete':'update'
 
-        const s = entityClass.schema.datasource('root', existingContext)
+        const rootSource = entityClass.schema.datasource('root', existingContext)
         let propValues = await Database._prepareNewData(data, schema, actionName, existingContext)
 
         // let deleteMode: 'soft' | 'real' | null = null
@@ -1014,8 +1017,8 @@ export class Database{
 
         const realFieldValues = this.extractRealField(schema, propValues)
         const input = {
-            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder().from(s).filter( resolveEntityFilter(s, applyFilter)).toQueryBuilder(): builder().from(s ).toQueryBuilder().update(realFieldValues) ): null,
-            selectSqlString: (applyFilter? builder().from(s).filter( resolveEntityFilter(s, applyFilter)): builder().from(s) ),
+            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder().from( rootSource.asFromClause() ).filter( resolveEntityFilter(s, applyFilter)).toQueryBuilder(): builder().from(rootSource.asFromClause() ).toQueryBuilder().update(realFieldValues) ): null,
+            selectSqlString: (applyFilter? builder().from(rootSource.asFromClause()).filter( resolveEntityFilter(rootSource, applyFilter)): builder().from(rootSource.asFromClause()) ),
             entityData: data
         }
 
@@ -1212,7 +1215,7 @@ export class Database{
         return entityInstance
     }
 
-    static extractRealField(schema: Schema, fieldValues: MutationEntityPropertyKeyValues): any {
+    static extractRealField(schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
         return Object.keys(fieldValues).reduce( (acc, key) => {
             let prop = schema.properties.find(p => p.name === key)
             if(!prop){
@@ -1228,7 +1231,7 @@ export class Database{
 
 export class Entity {
     [key: string]: any
-    static schema: Schema
+    static schema: TableSchema
     readonly _ctx: ExecutionContext
     
     constructor(ctx: ExecutionContext){
