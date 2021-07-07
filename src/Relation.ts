@@ -22,7 +22,7 @@ export type SingleSourceQueryOptions<S extends Schema> = {
 
 export type SingleSourceQueryFunction<S extends Schema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
     props?: AcceptableSourceProps<S>,
-    filter?: RawFilter,
+    filter?: Expression<never>,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
@@ -32,7 +32,7 @@ export type TwoSourcesFilterFunction<Root extends Schema, RootName extends strin
     (ctx: ExecutionContext, root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
 
     props?: AcceptableSourceProps<Root>
-    filter?: RawFilter
+    filter?: Expression<never>
 }
 
 export type AcceptableSourceProps<E extends Schema > = Partial<{
@@ -50,19 +50,17 @@ export type AcceptableSourceProps<E extends Schema > = Partial<{
             )
 }>
 
-export type RawFilter = ConditionOperator | Scalar | Promise<Scalar> | RawFilter[] | boolean
+// export type RawFilter = ConditionOperator | Scalar | Promise<Scalar> | RawFilter[] | boolean
 export type RawProps = { [key: string]: Scalar }
 
-export type Expression<O> =  O  | ConditionOperator | Scalar | Promise<Scalar> | Array<Expression<O> > | boolean
+export type Expression<O> =  Partial<O>  | ConditionOperator | Scalar | Promise<Scalar> | Array<Expression<O> > | boolean
 
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
-export type FilterEntityPropertyKeyValues<S extends Schema = any> = S extends Schema? 
-Partial<{
+export type FilterEntityPropertyKeyValues<S> = 
+{
     [key in keyof Omit<S, keyof SchemaBase> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
-}>
-: 
-{ [key: string]: QueryEntityPropertyValue | QueryEntityPropertyValue[] }
+}
 
 export type SingleSourceFilter<S extends Schema = any> = Expression< FilterEntityPropertyKeyValues<S> >
 
@@ -235,10 +233,22 @@ async() => {
     })
 }
 
-let b: SingleSourceFilter<ShopSchema> = {
+let s = Shop.datasource('shop', null)
+let p = Product.datasource('product', null)
 
+let dd = makeBuilder().from( s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) ) )
+
+
+let x : Expression< AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, 'product' > > = {
+    "product.name": false
 }
 
+console.log(x)
+
+dd.filter({
+    "shop.name": "333",
+    "product.name": 3
+})
 
 
 

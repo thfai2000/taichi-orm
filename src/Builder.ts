@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { getKnexInstance,  Schema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty } from "."
 import { Equal } from "./Operator"
 import { BooleanType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
-import { AddPrefix, RawFilter, RawProps, UnionToIntersection } from "./Relation"
+import { AddPrefix, Expression, FilterEntityPropertyKeyValues, RawFilter, RawProps, UnionToIntersection } from "./Relation"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -36,7 +36,7 @@ export interface Scalarable {
     toScalar<T extends PropertyTypeDefinition>(d: T): Scalar<T>
 }
 
-export interface Datasource<E, alias extends string> extends FromClause<E> {
+export interface Datasource<E, alias extends string> {
     // (value: QueryFilter): Promise<Scalar> | Scalar
     // impl: Datasource
     schema: E
@@ -50,6 +50,7 @@ export interface Datasource<E, alias extends string> extends FromClause<E> {
         [key in keyof [alias] as alias]: string 
     }
     allNormal: () => Column<any, any>[]
+    asFromClause: () => FromClause< AddPrefix< FilterEntityPropertyKeyValues<E>, alias> > 
 }
 
 export interface TableDatasource<E extends Schema, Name extends string> extends Datasource<E, Name> {
@@ -82,7 +83,7 @@ export interface Dataset<Fields extends {
     
     // select(...cols: Column[]): Dataset
     props<NewProps extends RawProps>(properties: NewProps): Dataset<NewProps, SourceFields>
-    filter(filter: RawFilter): Dataset<Fields, SourceFields>
+    filter(filter: Expression<SourceFields> ): Dataset<Fields, SourceFields>
     from<NewSourceFields>(source: FromClause<NewSourceFields>): Dataset<Fields, NewSourceFields>
 
     //TODO: implement
@@ -113,8 +114,9 @@ export interface Dataset<Fields extends {
 //     clone(): Column<T>
 // }
 
-export type Column<Name extends string, T> =  { [key in keyof Name & string as Name]: Scalar<T> }
-
+export type Column<Name extends string, T> = {
+    [key in keyof Name & string as Name]: Scalar<T>
+} & Scalar<T>
 
 export interface Scalar<T = any> extends Knex.Raw {
     __type: 'Scalar'
@@ -137,14 +139,16 @@ export interface FromClause<Fields> extends Knex.Raw {
     // __raw: string
     __parentSource: FromClause<any> | null
     __realClone: Function
+
+
     innerJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
-        FromClause<  UnionToIntersection<Fields | AddPrefix<RightFields, rightName>>  >
+        FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
      
     leftJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
-        FromClause<  UnionToIntersection<Fields | AddPrefix<RightFields, rightName>>  >
+    FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
 
     rightJoin<RightFields, rightName extends string>(source: Datasource<RightFields, rightName>, condition: Scalar<BooleanType>): 
-        FromClause<  UnionToIntersection<Fields | AddPrefix<RightFields, rightName>>  >
+    FromClause<  UnionToIntersection<Fields | AddPrefix< FilterEntityPropertyKeyValues< RightFields>, rightName>>  >
 }
 
 // const castAsRow = (builder: any) : Row => {
