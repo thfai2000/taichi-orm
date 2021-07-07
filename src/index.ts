@@ -8,7 +8,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
-import { SingleSourceFilter, SingleSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps, resolveEntityFilter } from './Relation'
+import { SingleSourceFilter, AcceptableSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps, resolveEntityFilter } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -20,12 +20,12 @@ export function field<D extends FieldPropertyTypeDefinition<any> >(definition: (
     return new FieldProperty<D>( new definition() )
 }
 
-export function compute<D extends PropertyTypeDefinition, Root extends Schema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, Arg, R>) : ComputeProperty<D, Root, Arg, R> {
+export function compute<D extends PropertyTypeDefinition, Root extends Schema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, R>) : ComputeProperty<D, Root, 'root', Arg, R> {
 
     if(definition instanceof PropertyTypeDefinition){
-        return new ComputeProperty<D, Root, Arg, R>(definition, compute)
+        return new ComputeProperty<D, Root, 'root', Arg, R>(definition, compute)
     }
-    return new ComputeProperty<D, Root, Arg, R>(new definition(), compute)
+    return new ComputeProperty<D, Root, 'root', Arg, R>(new definition(), compute)
 }
 
 
@@ -43,7 +43,7 @@ export type SelectorMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
+                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg, infer R>? 
                 (
                     R extends Scalarable? 
                         CompiledComputeFunction<key, Arg, D>:
@@ -58,11 +58,11 @@ export type SelectorMap<E> = {
             )
 }
 
-export type ComputeFunction<Root extends Schema, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root>, ...args: ARG) => R
+export type ComputeFunction<Root extends Schema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root, Name>, ...args: ARG) => R
 
-export type CompiledComputeFunction<key extends string, ARG extends any[], R> = (...args: ARG) => Column<key, R>
+export type CompiledComputeFunction<Name extends string, ARG extends any[], R> = (...args: ARG) => Column<Name, R>
 
-export type CompiledComputeFunctionPromise<key extends string, ARG extends any[], R> = (...args: ARG) => Promise<Column<key, R> > | Column<key, R>
+export type CompiledComputeFunctionPromise<Name extends string, ARG extends any[], R> = (...args: ARG) => Promise<Column<Name, R> > | Column<Name, R>
 
 export type MutationEntityPropertyKeyValues = {
     [key: string]: boolean | number | string | any | Array<any>
@@ -185,14 +185,14 @@ export class Property {
     }
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends Schema = Schema, Arg extends any[] = any[], R = any> extends Property {
+export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends Schema = Schema, Name extends string = 'root', Arg extends any[] = any[], R = any> extends Property {
 
     definition: D
-    compute: ComputeFunction<Root, Arg, R>
+    compute: ComputeFunction<Root, Name, Arg, R>
 
     constructor(
         definition: D,
-        compute:  ComputeFunction<Root, Arg, R>){
+        compute:  ComputeFunction<Root, Name, Arg, R>){
             super()
             this.definition = definition
             this.compute = compute
@@ -321,8 +321,8 @@ export class SchemaBase {
      * field pointers
      * @returns 
      */
-    datasource<T extends Schema>(this: T, existingContext: ExecutionContext | null): TableDatasource<T>{
-        let selectorImpl = makeTableDatasource<T>(this, existingContext?? globalContext)
+    datasource<T extends Schema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : TableDatasource<T, Name>{
+        let selectorImpl = makeTableDatasource(this, name, existingContext?? globalContext)
         return selectorImpl
     }
 
@@ -420,18 +420,20 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
 // }
 
 
-function makeTableDatasource<E extends Schema>(schema: E, executionContext: ExecutionContext){
+function makeTableDatasource<E extends Schema, Name extends string>(schema: E, name: Name, executionContext: ExecutionContext){
 
-    let tableAlias = metaTableAlias(schema)
+    let tableAlias = name
     let tableName = executionContext.tablePrefix + schema.tableName
     
-    const selector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as TableDatasource<E>
-    let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E>
+    const selector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as TableDatasource<E, Name>
+    let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E, Name>
     
     newSelector.schema = schema
     newSelector.executionContext = executionContext
     newSelector.tableName = tableName
-    newSelector.tableAlias = tableAlias
+    newSelector.tableAlias = {
+        [name]: tableAlias
+    }
 
     //@ts-ignore
     newSelector.$ = new Proxy( this.schema ,{
@@ -440,7 +442,7 @@ function makeTableDatasource<E extends Schema>(schema: E, executionContext: Exec
             if(typeof sKey === 'string'){
                 let prop = oTarget.propertiesMap[sKey]
                 if(prop instanceof FieldProperty){
-                    let tableAlias = quote(selector.tableAlias)
+                    let tableAlias = quote(selector.tableAlias[tableAlias] )
                     let fieldName: string = quote(prop.fieldName)
                     let alias = metaFieldAlias(prop)
                     let rawTxt = `${tableAlias}.${fieldName}`
@@ -580,7 +582,7 @@ export const models = globalContext.models
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions<T extends Schema> = {
     failIfNone: boolean
-    queryProps: SingleSourceProps<T>
+    queryProps: AcceptableSourceProps<T>
 }
 type DatabaseAction<I, S extends Schema> = (context: ExecutionContext, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
 
@@ -660,7 +662,7 @@ export class DatabaseMutationRunner<I, S extends Schema> extends DatabaseQueryRu
         super(ctx, action)
     }
 
-    async fetch<T>(queryProps: SingleSourceProps<S>){
+    async fetch<T>(queryProps: AcceptableSourceProps<S>){
         this.options = {
             ...this.options,
             queryProps: queryProps
@@ -941,7 +943,7 @@ export class Database{
 
     private static async _find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext, applyFilter: EntityQueryOptions<D> | null) {   
         
-        let source = (entityClass.schema as D).datasource(existingContext)
+        let source = (entityClass.schema as D).datasource('root', existingContext)
 
         let options: SingleSourceQueryOptions<D> | null
         if(applyFilter instanceof Function){
@@ -1002,7 +1004,7 @@ export class Database{
         const schema = entityClass.schema
         const actionName = isDelete?'delete':'update'
 
-        const s = entityClass.schema.datasource(existingContext)
+        const s = entityClass.schema.datasource('root', existingContext)
         let propValues = await Database._prepareNewData(data, schema, actionName, existingContext)
 
         // let deleteMode: 'soft' | 'real' | null = null
@@ -1237,8 +1239,8 @@ export class Entity {
     //     return this._ctx.models[this.constructor.name]
     // }
 
-    static datasource<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), ctx: ExecutionContext ): Datasource<I["schema"]> {
-        return this.schema.datasource(ctx)
+    static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name, ctx: ExecutionContext ): Datasource<I["schema"], Name> {
+        return this.schema.datasource(name, ctx)
     }
 
     static parseRaw<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), row: MutationEntityPropertyKeyValues, propName: string, ctx: ExecutionContext): I{

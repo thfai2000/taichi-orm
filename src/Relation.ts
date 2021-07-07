@@ -3,30 +3,39 @@ import { Column, Dataset, Datasource, makeBuilder, Scalar, Scalarable } from "./
 import { ConditionOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
 
+export type UnionToIntersection<T> = 
+  (T extends any ? (x: T) => any : never) extends 
+  (x: infer R) => any ? R : never
+
+export type AddPrefix<E, k extends string> = {
+    [key in keyof E & string as `${k}.${key}`]: E[key]
+}
 
 
 export type SingleSourceQueryOptions<S extends Schema> = {
-    props?: SingleSourceProps<S>,
+    props?: AcceptableSourceProps<S>,
     filter?: SingleSourceFilter<S>,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
 }
 
-export type SingleSourceQueryFunction<S extends Schema> = (ctx: ExecutionContext, root: Datasource<S>) => {
-    props?: SingleSourceProps<S>,
+export type SingleSourceQueryFunction<S extends Schema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
+    props?: AcceptableSourceProps<S>,
     filter?: RawFilter,
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
 }
 
-export type RelationFilterFunction<Root extends Schema, Related extends Schema> = (ctx: ExecutionContext, root: Datasource<Root>, related: Datasource<Related>) => {
-    props?: SingleSourceProps<Root>
+export type TwoSourcesFilterFunction<Root extends Schema, RootName extends string, Related extends Schema, RelatedName extends string> =
+    (ctx: ExecutionContext, root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
+
+    props?: AcceptableSourceProps<Root>
     filter?: RawFilter
 }
 
-export type SingleSourceProps<E extends Schema > = Partial<{
+export type AcceptableSourceProps<E extends Schema > = Partial<{
     [key in keyof Omit<E, keyof SchemaBase> & string]:
         E[key] extends undefined ?
             never:
@@ -44,17 +53,24 @@ export type SingleSourceProps<E extends Schema > = Partial<{
 export type RawFilter = ConditionOperator | Scalar | Promise<Scalar> | RawFilter[] | boolean
 export type RawProps = { [key: string]: Scalar }
 
-export type Expression<S extends Schema = any> = ConditionOperator | Scalar | Promise<Scalar> | QueryEntityPropertyKeyValues<S> | Array<Expression<S> > | boolean
+export type Expression<O> =  O  | ConditionOperator | Scalar | Promise<Scalar> | Array<Expression<O> > | boolean
+
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
-export type QueryEntityPropertyKeyValues<S extends Schema = any> = S extends Schema? 
+export type FilterEntityPropertyKeyValues<S extends Schema = any> = S extends Schema? 
 Partial<{
     [key in keyof Omit<S, keyof SchemaBase> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
 }>
 : 
 { [key: string]: QueryEntityPropertyValue | QueryEntityPropertyValue[] }
 
-export type SingleSourceFilter<S extends Schema = any> = Expression<S>
+export type SingleSourceFilter<S extends Schema = any> = Expression< FilterEntityPropertyKeyValues<S> >
+
+export type TwoSourcesFilter<S0 extends Schema, S1 extends Schema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> >>
+
+export type ThreeSourcesFilter<S0 extends Schema, S1 extends Schema, S2 extends Schema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> | AddPrefix< FilterEntityPropertyKeyValues<S2>, 'through'> >>
+
+
 
 export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
 // export type QueryFilterResolver = (value: SingleSourceFilter) => Promise<Scalar> | Scalar
@@ -105,21 +121,20 @@ export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Colu
 
 function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SingleSourceQueryOptions< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
+        args?: SingleSourceQueryOptions< TypeClass["schema"]> | SingleSourceQueryFunction< TypeClass["schema"], 'root'> ): Scalarable => {
         let dataset = makeBuilder()
 
-        let rootSource = rootEntity.schema.datasource(context)
+        let rootSource = rootEntity.schema.datasource('root', context)
         
         if(args instanceof Function){
             let c = args(context, rootSource)
-            dataset.select( c.props )
+            dataset.props( c.props )
         } else {
-            dataset.select( args )
+            dataset.props( args )
         }
 
-        let fromClause = rootSource
-       
-        return dataset.from(fromClause)
+        return dataset.from(rootSource)
     }
 
     return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
@@ -127,19 +142,22 @@ function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(r
 
 function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"]>, args?: SingleSourceQueryOptions< TypeClass["schema"]> | RelationFilterFunction<RootClass["schema"], TypeClass["schema"]>): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
+        args?: SingleSourceQueryOptions< TypeClass["schema"]> | TwoSourcesFilterFunction<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+
         let dataset = makeBuilder()
 
-        let relatedSource = relatedEntity.schema.datasource(context)
+        let relatedSource = relatedEntity.schema.datasource('related', context)
         
         if(args instanceof Function){
             let c = args(context, root, relatedSource)
-            dataset.select( c.props )
+            dataset.props( c.props )
         } else {
-            dataset.select( args )
+            dataset.props( args )
         }
 
-        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty(ormConfig.primaryKeyName)
+        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.$.id
+
 
         let fromClause = relatedSource.innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
        
@@ -151,7 +169,7 @@ function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Ent
 
 function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"]>, args?: SingleSourceQueryOptions< TypeClass["schema"] >): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"], 'root'>, args?: SingleSourceQueryOptions< TypeClass["schema"] >): Scalarable => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {
@@ -217,7 +235,18 @@ async() => {
     })
 }
 
+let b: SingleSourceFilter<ShopSchema> = {
 
+}
+
+
+
+
+// type A =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<ShopSchema> | AddPrefix< FilterEntityPropertyKeyValues<ShopSchema>, '0'>  | AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, '1'> >>
+
+// let aaa: A = {
+//     "1.shopId": 5
+// }
 
 // type Simple<Name extends string, T> = {[key in keyof Name & string as Name]: T }
 // let xb: Simple<'a', Scalar<any> > // = { 'a': 5}
@@ -344,14 +373,21 @@ const simpleQuery = <T extends Schema>(row: Dataset, selector: Datasource<T>, qu
 
 
 
-export type EntityFilterResolver = (source: Datasource<Schema>, filter?: SingleSourceFilter | null) => RawFilter
+export type EntityFilterResolver = (filter: SingleSourceFilter | null, ...sources: Datasource<Schema>[]) => RawFilter
 
-export function resolveEntityFilter(source: Datasource<Schema>, filter?: SingleSourceFilter | null): RawFilter {
+export type EntityPropsResolver = <S extends Schema>(filter: AcceptableSourceProps<S> | null, firstSource:Datasource<S>, ...sources: Datasource<Schema>[]) => RawFilter
+
+
+
+
+export const resolveEntityFilter: EntityFilterResolver = function(filter: SingleSourceFilter | null, ...sources: Datasource<Schema>[]): RawFilter {
     throw new Error('Function not implemented.')
+
 }
 
 
-export function resolveEntityProps<S extends Schema>(source: Datasource<S>, props?: SingleSourceProps<S> | null ): RawProps {
+export function resolveEntityProps<S extends Schema>(source: Datasource<S>, props?: AcceptableSourceProps<S> | null ): RawProps {
+
 
     return function querySelectResolver(selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
         // let selector = getSelectorFunc()[0]

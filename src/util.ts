@@ -75,10 +75,9 @@ export const findGlobalNamedProperty = function(propAlias: string): Property{
     return r
 }
 
-export const metaTableAlias = function(schema: Schema): string{
-    return schema.entityName + META_FIELD_DELIMITER + makeid(5)
+export const metaTableAlias = function(schema: Schema, name: string): string{
+    return schema.entityName + META_FIELD_DELIMITER + name
 }
-
 
 export const metaFieldAlias = function(p: Property): string{
     let propAlias = registerGlobalNamedProperty(p)
