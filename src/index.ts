@@ -8,7 +8,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
-import { SingleSourceFilter, AcceptableSourceProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps } from './Relation'
+import { SingleSourceFilter, SelectableProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 
@@ -188,6 +188,7 @@ export class Property {
 export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends TableSchema = TableSchema, Name extends string = 'root', Arg extends any[] = any[], R = any> extends Property {
 
     definition: D
+    type: 'ComputeProperty' = 'ComputeProperty'
     compute: ComputeFunction<Root, Name, Arg, R>
 
     constructor(
@@ -201,6 +202,7 @@ export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefi
 export class FieldProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition> extends Property {
 
     definition: D
+    type: 'FieldProperty' = 'FieldProperty'
 
     constructor(
         definition: D){
@@ -249,6 +251,8 @@ export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promis
 let registeredModels: {
     [key: string]: typeof Entity
 } = {}
+
+
 
 export class Schema {
 
@@ -582,7 +586,7 @@ export const models = globalContext.models
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions<T extends TableSchema> = {
     failIfNone: boolean
-    queryProps: AcceptableSourceProps<T>
+    queryProps: SelectableProps<T>
 }
 type DatabaseAction<I, S extends TableSchema> = (context: ExecutionContext, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
 
@@ -662,7 +666,7 @@ export class DatabaseMutationRunner<I, S extends TableSchema> extends DatabaseQu
         super(ctx, action)
     }
 
-    async fetch<T>(queryProps: AcceptableSourceProps<S>){
+    async fetch<T>(queryProps: SelectableProps<S>){
         this.options = {
             ...this.options,
             queryProps: queryProps

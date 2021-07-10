@@ -1,19 +1,40 @@
 import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema } from "."
-import { Column, Dataset, Datasource, makeBuilder, Scalar, Scalarable } from "./Builder"
-import { ConditionOperator, ValueOperator } from "./Operator"
+import { Column, Dataset, Datasource, FromClause, makeBuilder, Scalar, Scalarable } from "./Builder"
+import { And, AndOperator, ConditionOperator, ConditionOperatorCall, ValueOperator } from "./Operator"
 import { ArrayOfType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
+
+
+export type SchemaLike = {
+    [key: string]: ComputeProperty | FieldProperty
+}
 
 export type UnionToIntersection<T> = 
   (T extends any ? (x: T) => any : never) extends 
   (x: infer R) => any ? R : never
 
-export type AddPrefix<E, k extends string> = {
-    [key in keyof E & string as `${k}.${key}`]: E[key]
+export type Prefixed<Prefix extends string, MainName extends String, Content> = {
+    type: 'Prefixed',
+    prefix: Prefix,
+    mainName: MainName,
+    content: Content
 }
+
+export type AddPrefix<E, k extends string> = {
+    [key in keyof E & string as `${k}.${key}`]: Prefixed<k, key, E[key]>
+}
+
+// export type QueryOptions<F extends FromClause<any> > = {
+//     props: SelectableProps< F extends FromClause<infer S>? S: any>,
+//     from: F,
+//     filter: SingleSourceFilter< F extends FromClause<infer S>? S: any>,
+//     limit?: number,
+//     offset?: number,
+//     orderBy?: QueryOrderBy
+// }
 
 
 export type SingleSourceQueryOptions<S extends TableSchema> = {
-    props?: AcceptableSourceProps<S>,
+    props?: SelectableProps<S>,
     filter?: SingleSourceFilter<S>,
     limit?: number,
     offset?: number,
@@ -21,7 +42,7 @@ export type SingleSourceQueryOptions<S extends TableSchema> = {
 }
 
 export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
-    props?: AcceptableSourceProps<S>,
+    props?: SelectableProps<S>,
     filter?: Expression<never>,
     limit?: number,
     offset?: number,
@@ -31,36 +52,64 @@ export type SingleSourceQueryFunction<S extends TableSchema, SName extends strin
 export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
     (ctx: ExecutionContext, root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
 
-    props?: AcceptableSourceProps<Root>
+    props?: SelectableProps<Root>
     filter?: Expression<never>
 }
 
-export type AcceptableSourceProps<E extends TableSchema > = Partial<{
-    [key in keyof Omit<E, keyof Schema> & string]:
-        E[key] extends undefined ?
-            never:
-            (
-                E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
-                (
-                    Arg[0]       
-                ): 
-                    E[key] extends FieldProperty<infer D>? 
-                    Scalar<D> | boolean:
+
+export type ExtractProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
+                    E[key] extends FieldProperty<any>? key:
                     never
-            )
+})[keyof E]> 
+
+export type ExtractFieldProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends FieldProperty<any>? key:
+                    never
+})[keyof E]> 
+
+
+export type ExtractComputeProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
+                    never
+})[keyof E]> 
+
+// export type SelectableComputeProps<E > = Partial<{
+//     [key in ( (keyof ExtractComputeProps<E>) & string)  as `$${key}`]:
+//         E[key] extends ComputeProperty<infer D, infer Root, infer Arg, infer R>? 
+//                 (
+//                     Arg[0]       
+//                 ): 
+//                     // E[key] extends FieldProperty<infer D>? 
+//                     // Scalar<D> | boolean:
+//                     never
+            
+// }>
+
+// export type SelectableProps<E > = 
+//     (SelectableComputeProps<E> | (string & keyof E) | Column<(string & keyof E), any extends ComputeProperty<infer D>? D: never> )[]
+
+
+export type FieldPropertyValueMap<E> =  Partial<{
+    [key in keyof E]:
+        E[key] extends Prefixed<any, any, infer C>? (
+                C extends FieldProperty<infer D>? ReturnType<D["parseRaw"]>: never
+             ): E[key] extends FieldProperty<infer D>? ReturnType<D["parseRaw"]>: never
+             
 }>
+       
 
-// export type RawFilter = ConditionOperator | Scalar | Promise<Scalar> | RawFilter[] | boolean
-export type RawProps = { [key: string]: Scalar }
-
-export type Expression<O> =  Partial<O>  | ConditionOperator<O> | Scalar | Array<Expression<O> > | boolean
+export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  | AndOperator<O, M> | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
 
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
-export type FilterEntityPropertyKeyValues<S> = 
-{
-    [key in keyof Omit<S, keyof Schema> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
-}
+// export type FilterEntityPropertyKeyValues<S> = 
+// {
+//     [key in keyof ExtractProps<S> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
+// }
 
 export type SingleSourceFilter<S extends TableSchema = any> = Expression< FilterEntityPropertyKeyValues<S> >
 
@@ -231,24 +280,49 @@ async() => {
     })
 }
 
+// type X<P> = {
+//     [key in P]
+// }
+
 let s = Shop.datasource('shop', null)
 let p = Product.datasource('product', null)
 
-let dd = makeBuilder().from( s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) ) )
+let dd = makeBuilder()
+        .from(s)
+        .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id) )
+        .innerJoin(p, ({And, product}) => And({"product.id": 5}) )
+        .filter( 
+            ({And, product, shop}) => And({
+                "shop.id": 5,
+                "shop.name": "ssss"
+            }, product.name.equals(shop.name) )
+        )
+        .props({
+            ""
+        })
+
+// let f = s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) )
+
+// console.log(f)
 
 
-let x : Expression< AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, 'product' > > = {
-    "product.name": false
-}
+// let x : Expression< AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, 'product' >, {} > = {
 
-console.log(x)
+// }
 
-dd.filter({
-    "shop.name": "333",
-    "product.name": 3
-})
+// console.log(x)
 
+// let y :  AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, 'product' > 
 
+// let f = s.asFromClause()
+
+//  a: { o: 5, p:6},
+//     b: {i: 1, j: 2}
+
+// type AA = typeof c
+// type BB = {
+//     [key in keyof AA[ key2 in keyof AA] ]: number
+// }
 
 // type A =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<ShopSchema> | AddPrefix< FilterEntityPropertyKeyValues<ShopSchema>, '0'>  | AddPrefix< FilterEntityPropertyKeyValues<ProductSchema>, '1'> >>
 
