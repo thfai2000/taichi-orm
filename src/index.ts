@@ -7,7 +7,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
+import { breakdownMetaFieldAlias, ExtractProps, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
 import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
@@ -39,7 +39,7 @@ export function compute<D extends PropertyTypeDefinition, Root extends TableSche
 // let aaa: Col<'sss', BooleanType>
 
 export type SelectorMap<E> = {
-    [key in keyof Omit<E, keyof Schema> & string ]:
+    [key in keyof ExtractProps<E> & string ]:
             E[key] extends undefined?
             never:
             (
@@ -429,12 +429,12 @@ function makeTableDatasource<E extends TableSchema, Name extends string>(schema:
     let tableAlias = name
     let tableName = executionContext.tablePrefix + schema.tableName
     
-    const selector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as TableDatasource<E, Name>
-    let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E, Name>
+    const newSelector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as Datasource<E, Name>
+    // let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E, Name>
     
     newSelector.schema = schema
     newSelector.executionContext = executionContext
-    newSelector.tableName = tableName
+    // newSelector.tableName = tableName
     newSelector.tableAlias = {
         [tableAlias]: tableAlias
     }
@@ -446,16 +446,16 @@ function makeTableDatasource<E extends TableSchema, Name extends string>(schema:
             if(typeof sKey === 'string'){
                 let prop = oTarget.propertiesMap[sKey]
                 if(prop instanceof FieldProperty){
-                    let tableAlias = quote(selector.tableAlias[tableAlias] )
-                    let fieldName: string = quote(prop.fieldName)
+                    // let tableAlias = quote(tableAlias)
+                    // let fieldName: string = 
                     let alias = metaFieldAlias(prop)
-                    let rawTxt = `${tableAlias}.${fieldName}`
+                    let rawTxt = `${quote(tableAlias)}.${quote(prop.fieldName)}`
                     return makeColumn(alias, makeScalar(raw(rawTxt), prop.definition ) )
                 }
                 if(prop instanceof ComputeProperty){
                     const cProp = prop
-                    return (queryOptions?: any) => {
-                        const subquery = cProp.compute.call(cProp, executionContext, newSelector, queryOptions)
+                    return (args?: any) => {
+                        const subquery = cProp.compute.call(cProp, executionContext, newSelector, args)
                         let alias = metaFieldAlias(cProp)
                         return makeColumn(alias, subquery)
                     }

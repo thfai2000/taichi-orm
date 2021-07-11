@@ -2,18 +2,8 @@ import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldPropert
 import { Column, Dataset, Datasource, FromClause, makeBuilder, Scalar, Scalarable } from "./Builder"
 import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
+import { ExtractProps, UnionToIntersection } from "./util"
 
-
-
-
-// export type QueryOptions<F extends FromClause<any> > = {
-//     props: SelectableProps< F extends FromClause<infer S>? S: any>,
-//     from: F,
-//     filter: SingleSourceFilter< F extends FromClause<infer S>? S: any>,
-//     limit?: number,
-//     offset?: number,
-//     orderBy?: QueryOrderBy
-// }
 
 
 export type SingleSourceQueryOptions<S extends TableSchema> = {
@@ -201,6 +191,7 @@ function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entit
 class ProductSchema extends TableSchema {
 
     id = field(PrimaryKeyType)
+    // uuid = field(StringType)
     name = field(StringType)
     shopId = field(NumberType)
     // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
@@ -227,38 +218,44 @@ class Shop extends Entity {
     static schema = new ShopSchema()
 }
 
-
-// type A = <A extends {[key:string]: number}>(x: A) => A
-
-
-// let aaa: A
-
-// let eee = aaa!({a:55})
+type A = Pick<ProductSchema, ({
+    [key in keyof ProductSchema]: ProductSchema[key] extends ComputeProperty<any>? key:
+                    never
+})[keyof ProductSchema]> 
 
 
-let s = new ShopSchema().datasource('shop', null)
-let p = new ProductSchema().datasource('product', null)
+let s = Shop.datasource('shop', null)
+
+let p = Product.datasource('product', null)
+
+
+
+// type A = UnionToIntersection< {a: 5} | never>
+
 let xxx: Scalar<BooleanType>
 
 let dd = makeBuilder()
         .from(s)
-        // .innerJoin(p, ({pr}) => ({}) )
-        // .innerJoin(p, ({And}) => And({"product.id": 5}) )
-        // .innerJoin( 
-        //     makeBuilder().from(s).props("shop.id", "shop.name").datasource("myShop", null),
-        //     ({myShop, product}) => myShop.id
-        // )
-        // .filter( 
-        //     ({And, product, shop}) => And({
-        //         "shop.id": 5,
-        //         "shop.name": "ssss"
-        //     }, product.name.equals(shop.name) )
-        // )
-        // .props(
-        //     "product.id",
-        //     "shop.id",
-        //     "myShop.name"
-        // )
+        .innerJoin(p, ({product}) => product.id.equals(5) )
+        .innerJoin(p, ({And}) => And({"product.id": 5}) )
+        .innerJoin( 
+            makeBuilder().from(s).props({"hello": xxx!}, "shop.id", "shop.name").datasource("myShop", null),
+            ({myShop, product, shop}) => shop.
+        )
+        .filter( 
+            ({And, product, shop}) => And({
+                "shop.id": 5,
+                "shop.name": "ssss"
+            }, product.name.equals(shop.name) )
+        )
+        .props(
+            ({product}) => ({
+                "ee": product.id.toScalar(),
+            }),
+            "product.id",
+            "shop.id",
+            "myShop.name"
+        )
 // let f = s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) )
 
 // console.log(f)

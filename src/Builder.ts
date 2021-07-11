@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { getKnexInstance, TableSchema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field } from "."
 import { And, AndOperator, ConditionOperator, Contain, Equal, IsNull, Or, SQLKeywords, ValueOperator } from "./Operator"
 import { BooleanType, NumberType, PropertyTypeDefinition } from "./PropertyType"
-import { ExtractFieldProps, SimpleObject, SimpleObjectClass, UnionToIntersection } from "./util"
+import { ExtractFieldProps, notEmpty, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -27,8 +27,6 @@ declare module "knex" {
     }
 }
 
-
-
 export type FieldPropertyValueMap<E> =  Partial<{
     [key in keyof E]:
         E[key] extends Prefixed<any, any, infer C>? (
@@ -38,6 +36,7 @@ export type FieldPropertyValueMap<E> =  Partial<{
 }>
 
 export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  | AndOperator<O, M> | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
+
 
 
 export type Prefixed<Prefix extends string, MainName extends String, Content> = {
@@ -65,7 +64,7 @@ export interface Datasource<E extends Schema, alias extends string> {
     // impl: Datasource
     schema: E
     executionContext: ExecutionContext
-    $: SelectorMap<E>
+    // $: SelectorMap<E>
     //TODO: implement
     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
@@ -88,10 +87,45 @@ export type SelectableProps<E> = {
 } | SelectableProps<E>[]
 
 // type ConvertProps<NewProps, SourceProps> = 
-export type ValuesOf<T extends any[]>= T[number];
+// export type ValuesOf<T extends any[]>= T[number];
 
 
-
+type SourcePropsToDataset<Adhoc, P,SourceProps, SourcePropMap> = Dataset<
+            UnionToIntersection<
+            {
+                [key in keyof SourceProps
+                    as 
+                    (
+                        key extends P? (
+                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
+                            N & string
+                            : 
+                            never
+                        ): never
+                        
+                    )
+                ]: 
+                    key extends P? (
+                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
+                            C
+                            : 
+                            never
+                        ): never
+            }
+            | 
+            (Adhoc extends never? never:
+                {
+                [key in keyof Adhoc] :
+                    Adhoc[key] extends Scalar<infer D> ?
+                        D extends PropertyTypeDefinition?
+                        FieldProperty<D>
+                        : never
+                    : never 
+                }
+            )
+            >
+        , 
+        SourceProps, SourcePropMap>
 
 export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.Raw, Scalarable {
     __type: 'Dataset'
@@ -116,102 +150,45 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
     clearSelect(): Dataset<any, SourceProps, SourcePropMap>
     
     // select(...cols: Column[]): Dataset<T, any, any>
-    
-    props<P extends keyof SourceProps>(...properties: P[]): 
-        Dataset<
-            UnionToIntersection<
-            {
-                [key in keyof SourceProps
-                    as 
-                    (
-                        key extends P? (
-                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            N & string
-                            : 
-                            never
-                        ): never
-                        
-                    )
-                ]: 
-                    key extends P? (
-                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            C
-                            : 
-                            never
-                        ): never
-            }
-            >
-        , 
-        SourceProps, SourcePropMap>
 
-    props<S extends {[key: string]: Scalar<any>}, P extends keyof SourceProps>(named: S, ...properties: P[]): 
-        Dataset<
-            UnionToIntersection<
-            {
-                [key in keyof SourceProps
-                    as 
-                    (
-                        key extends P? (
-                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            N & string
-                            : 
-                            never
-                        ): never
-                        
-                    )
-                ]: 
-                    key extends P? (
-                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            C
-                            : 
-                            never
-                        ): never
-            }
-            |
-            {
-                [key in keyof S] :
-                    S[key] extends Scalar<infer D> ?
-                        D extends PropertyTypeDefinition?
-                        FieldProperty<D>
-                        : never
-                    : never 
-            }
-            >
-        , 
-        SourceProps, SourcePropMap>
+    props<P extends keyof SourceProps>(...properties: P[]): 
+        SourcePropsToDataset<never, P, SourceProps, SourcePropMap>
+        
+    props<S extends {[key: string]: Scalar<any>}, P extends keyof SourceProps>(named: (S | ((map: SourcePropMap) => S)), ...properties: P[]): 
+        SourcePropsToDataset<S, P, SourceProps, SourcePropMap>
 
     filter(filter?: Expression<SourceProps, 
         UnionToIntersection< SourcePropMap | SQLKeywords<SourceProps, SourcePropMap> >        
                 > ): Dataset<SelectProps, SourceProps, SourcePropMap>
 
-    from<D>(source: D): 
-        D extends Datasource<infer S, infer SName>?
+    from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
         Dataset<any, 
-            UnionToIntersection< AddPrefix< ExtractFieldProps< S>, '', ''> | AddPrefix< ExtractFieldProps< S>, SName> >,
+            UnionToIntersection< AddPrefix< ExtractFieldProps< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
         >
-        :never
 
-    innerJoin<D>(source: D, 
-        condition:  D extends Datasource<infer S, infer SName>? 
-        Expression<
+    innerJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, 
+        condition: Expression<
             UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
             UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
-        >: unknown ):
-        
-        D extends Datasource<infer S, infer SName>?
-            Dataset<any, 
-            UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
-            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
-            >
-            : never
+        >): Dataset<any, 
+        UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
+        UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
+    >
      
-    leftJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, condition: Scalar<BooleanType>):Dataset<any, 
+    leftJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, 
+        condition: Expression<
+            UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
+            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        >): Dataset<any, 
         UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
         UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
     >
 
-    rightJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, condition: Scalar<BooleanType>):Dataset<any, 
+    rightJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, condition: Expression<
+            UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
+            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        >):Dataset<any, 
         UnionToIntersection< SourceProps | AddPrefix< ExtractFieldProps< S>, SName>>,
         UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
     >
@@ -240,7 +217,15 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
 
 export type Column<Name extends string, T> = {
     [key in keyof Name & string as Name]: Scalar<T>
-} & Scalar<T>
+} & {
+    count:  () => Scalar<NumberType> 
+    exists(): Scalar<BooleanType> 
+    equals: (value: any) => Scalar<BooleanType>
+    is(operator: string, value: any): Scalar<BooleanType> 
+    toRaw(): Knex.Raw
+    toScalar(): Scalar<T>
+    clone(): Scalar<T>
+}
 
 export interface Scalar<T = any> extends Knex.Raw {
     __type: 'Scalar'
@@ -248,14 +233,8 @@ export interface Scalar<T = any> extends Knex.Raw {
     // __namedProperty: NamedProperty
     __definition: PropertyTypeDefinition | null
     __expression: Knex.QueryBuilder | Knex.Raw
-    count(): Scalar<NumberType> 
-    exists(): Scalar<BooleanType> 
-    equals: (value: any) => Scalar<BooleanType>
-    is(operator: string, value: any): Scalar<BooleanType> 
-    toRaw(): Knex.Raw
-    toScalar(): Scalar<T>
-    clone(): Scalar<T>
-    asColumn<Name extends string>(propName: string & Name): Column<Name, T>         //TODO: implement rename
+   
+    asColumn<Name extends string>(propName: string & Name): Column<Name, T> 
 }
 
 export interface FromClause<Props, PropMap> extends Knex.Raw {
