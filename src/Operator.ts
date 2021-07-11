@@ -12,7 +12,7 @@ abstract class SQLFunction<Props> {
     abstract toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>
 }
 
-export abstract class ConditionOperator<Props> {
+export abstract class ConditionOperator<Props, PropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
 
@@ -27,7 +27,7 @@ export abstract class ValueOperator {
     abstract toScalar(leftOperand: Scalar ): Scalar | Promise<Scalar>
 }
 
-class AndOperator<Props, PropMap> extends ConditionOperator<Props>{
+class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
     args: Array<Expression<Props, PropMap> >
     constructor(...args: Array<Expression<Props, PropMap> >){
         super()

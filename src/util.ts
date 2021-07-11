@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { client, FieldProperty, Property, TableSchema } from "."
+import { client, ComputeProperty, FieldProperty, Property, TableSchema } from "."
 
 
 export type SimpleObject = { [key:string]: any}
@@ -7,6 +7,32 @@ export const SimpleObjectClass = ({} as {[key:string]: any}).constructor
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
+
+export type UnionToIntersection<T> = 
+  (T extends any ? (x: T) => any : never) extends 
+  (x: infer R) => any ? R : never
+
+
+
+export type ExtractProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
+                    E[key] extends FieldProperty<any>? key:
+                    never
+})[keyof E]> 
+
+export type ExtractFieldProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends FieldProperty<any>? key:
+                    never
+})[keyof E]> 
+
+
+export type ExtractComputeProps<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
+                    never
+})[keyof E]> 
 
 export function thenResultArray<T, R>(
     value: Array<T | Promise<T>>, 

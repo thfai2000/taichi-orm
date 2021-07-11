@@ -8,7 +8,7 @@ import {makeBuilder as builder, makeRaw as raw, makeColumn, makeFromClause, make
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
 import { breakdownMetaFieldAlias, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
-import { SingleSourceFilter, SelectableProps, SingleSourceQueryOptions, SingleSourceQueryFunction, resolveEntityProps } from './Relation'
+import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
 

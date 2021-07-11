@@ -1,27 +1,10 @@
 import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema } from "."
 import { Column, Dataset, Datasource, FromClause, makeBuilder, Scalar, Scalarable } from "./Builder"
-import { And, AndOperator, ConditionOperator, ConditionOperatorCall, ValueOperator } from "./Operator"
-import { ArrayOfType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
+import { And, AndOperator, ValueOperator } from "./Operator"
+import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
 
 
-export type SchemaLike = {
-    [key: string]: ComputeProperty | FieldProperty
-}
 
-export type UnionToIntersection<T> = 
-  (T extends any ? (x: T) => any : never) extends 
-  (x: infer R) => any ? R : never
-
-export type Prefixed<Prefix extends string, MainName extends String, Content> = {
-    type: 'Prefixed',
-    prefix: Prefix,
-    mainName: MainName,
-    content: Content
-}
-
-export type AddPrefix<E, k extends string> = {
-    [key in keyof E & string as `${k}.${key}`]: Prefixed<k, key, E[key]>
-}
 
 // export type QueryOptions<F extends FromClause<any> > = {
 //     props: SelectableProps< F extends FromClause<infer S>? S: any>,
@@ -57,25 +40,6 @@ export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends 
 }
 
 
-export type ExtractProps<E> = 
-Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
-                    E[key] extends FieldProperty<any>? key:
-                    never
-})[keyof E]> 
-
-export type ExtractFieldProps<E> = 
-Pick<E, ({
-    [key in keyof E]: E[key] extends FieldProperty<any>? key:
-                    never
-})[keyof E]> 
-
-
-export type ExtractComputeProps<E> = 
-Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
-                    never
-})[keyof E]> 
 
 // export type SelectableComputeProps<E > = Partial<{
 //     [key in ( (keyof ExtractComputeProps<E>) & string)  as `$${key}`]:
@@ -93,16 +57,6 @@ Pick<E, ({
 //     (SelectableComputeProps<E> | (string & keyof E) | Column<(string & keyof E), any extends ComputeProperty<infer D>? D: never> )[]
 
 
-export type FieldPropertyValueMap<E> =  Partial<{
-    [key in keyof E]:
-        E[key] extends Prefixed<any, any, infer C>? (
-                C extends FieldProperty<infer D>? ReturnType<D["parseRaw"]>: never
-             ): E[key] extends FieldProperty<infer D>? ReturnType<D["parseRaw"]>: never
-             
-}>
-       
-
-export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  | AndOperator<O, M> | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
 
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
 export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
@@ -264,6 +218,7 @@ class Product extends Entity{
 class ShopSchema extends TableSchema {
     id= field(PrimaryKeyType)
     name = field(StringType)
+    hour= field(NumberType)
     // products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
     products = hasMany(Shop, Product, Product.schema.shopId)
 }
@@ -272,35 +227,38 @@ class Shop extends Entity {
     static schema = new ShopSchema()
 }
 
-async() => {
-    let x = await Product.findOne({
-        filter: {
-            name: 333
-        }
-    })
-}
 
-// type X<P> = {
-//     [key in P]
-// }
+// type A = <A extends {[key:string]: number}>(x: A) => A
 
-let s = Shop.datasource('shop', null)
-let p = Product.datasource('product', null)
+
+// let aaa: A
+
+// let eee = aaa!({a:55})
+
+
+let s = new ShopSchema().datasource('shop', null)
+let p = new ProductSchema().datasource('product', null)
+let xxx: Scalar<BooleanType>
 
 let dd = makeBuilder()
         .from(s)
-        .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id) )
-        .innerJoin(p, ({And, product}) => And({"product.id": 5}) )
-        .filter( 
-            ({And, product, shop}) => And({
-                "shop.id": 5,
-                "shop.name": "ssss"
-            }, product.name.equals(shop.name) )
-        )
-        .props({
-            ""
-        })
-
+        // .innerJoin(p, ({pr}) => ({}) )
+        // .innerJoin(p, ({And}) => And({"product.id": 5}) )
+        // .innerJoin( 
+        //     makeBuilder().from(s).props("shop.id", "shop.name").datasource("myShop", null),
+        //     ({myShop, product}) => myShop.id
+        // )
+        // .filter( 
+        //     ({And, product, shop}) => And({
+        //         "shop.id": 5,
+        //         "shop.name": "ssss"
+        //     }, product.name.equals(shop.name) )
+        // )
+        // .props(
+        //     "product.id",
+        //     "shop.id",
+        //     "myShop.name"
+        // )
 // let f = s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) )
 
 // console.log(f)
