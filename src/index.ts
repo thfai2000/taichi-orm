@@ -334,7 +334,7 @@ export abstract class TableSchema extends Schema {
      * field pointers
      * @returns 
      */
-    datasource<T extends TableSchema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : TableDatasource<T, Name>{
+    datasource<T extends TableSchema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : Datasource<T, Name>{
         let selectorImpl = makeTableDatasource(this, name, existingContext?? globalContext)
         return selectorImpl
     }

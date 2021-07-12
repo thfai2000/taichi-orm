@@ -1,8 +1,8 @@
 import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema } from "."
-import { Column, Dataset, Datasource, FromClause, makeBuilder, Scalar, Scalarable } from "./Builder"
+import { Column, Dataset, Datasource, FromClause, makeBuilder, PartialK, Scalar, Scalarable } from "./Builder"
 import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
-import { ExtractProps, UnionToIntersection } from "./util"
+import { ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
 
 
 
@@ -218,10 +218,28 @@ class Shop extends Entity {
     static schema = new ShopSchema()
 }
 
-type A = Pick<ProductSchema, ({
-    [key in keyof ProductSchema]: ProductSchema[key] extends ComputeProperty<any>? key:
-                    never
-})[keyof ProductSchema]> 
+
+// type A = UnionToIntersection<{
+//     [key: string]: boolean
+// } | {
+//     a: number
+//     b: number
+// }>
+
+// let zzz: A = {
+//     a: 333,
+//     eeeee: true,
+//     ccc: true
+// }
+type B = {a: number, b: string}
+type A = PartialK<{[key in keyof B ]: boolean}, keyof B>
+
+let aaa = {
+    a: true,
+    c: 5
+}
+
+type C = typeof aaa extends A? boolean: number
 
 
 let s = Shop.datasource('shop', null)
@@ -230,7 +248,7 @@ let p = Product.datasource('product', null)
 
 
 
-// type A = UnionToIntersection< {a: 5} | never>
+// type A = ExtractSynComputeProps<ProductSchema>
 
 let xxx: Scalar<BooleanType>
 
@@ -239,8 +257,8 @@ let dd = makeBuilder()
         .innerJoin(p, ({product}) => product.id.equals(5) )
         .innerJoin(p, ({And}) => And({"product.id": 5}) )
         .innerJoin( 
-            makeBuilder().from(s).props({"hello": xxx!}, "shop.id", "shop.name").datasource("myShop", null),
-            ({myShop, product, shop}) => shop.
+            makeBuilder().from(s).fields("shop.id", "shop.name").datasource("myShop", null),
+            ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
         )
         .filter( 
             ({And, product, shop}) => And({
@@ -248,14 +266,20 @@ let dd = makeBuilder()
                 "shop.name": "ssss"
             }, product.name.equals(shop.name) )
         )
-        .props(
-            ({product}) => ({
-                "ee": product.id.toScalar(),
-            }),
+        .fields(
             "product.id",
             "shop.id",
-            "myShop.name"
+            "myShop.name",
+            "shop.id"
         )
+        .select(
+            ({shop}) => ({
+                "product": xxx!,
+                "aa": xxx!,
+                ...shop.products().value()
+            })
+        )
+
 // let f = s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) )
 
 // console.log(f)
