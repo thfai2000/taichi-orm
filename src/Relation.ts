@@ -272,7 +272,7 @@ let dd = makeBuilder()
             "myShop.name",
             "shop.id"
         )
-        .select(
+        .props(
             ({shop}) => ({
                 "product": xxx!,
                 "aa": xxx!,
