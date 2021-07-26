@@ -1,23 +1,23 @@
-import {Scalar, isScalar, makeScalar, makeRaw as raw, ExpressionResolver} from './Builder'
+import {Scalar, isScalar, makeScalar, makeRaw as raw, ExpressionResolver, Expression} from './Builder'
 import {Knex} from 'knex'
 import { BooleanType } from './PropertyType'
-import { Expression } from './Relation'
+// import { Expression } from './Relation'
 import { thenResult, thenResultArray } from './util'
 
 
-abstract class SQLFunction<Props> {
+abstract class SQLFunction<Props, SourcePropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
-    abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>
+    abstract toRaw(resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
 }
 
-export abstract class ConditionOperator<Props, PropMap> {
+export abstract class ConditionOperator<Props, SourcePropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
 
-    abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>
+    abstract toRaw(resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
 }
 
 export abstract class ValueOperator {
@@ -27,13 +27,13 @@ export abstract class ValueOperator {
     abstract toScalar(leftOperand: Scalar ): Scalar | Promise<Scalar>
 }
 
-class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
+export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
     args: Array<Expression<Props, PropMap> >
     constructor(...args: Array<Expression<Props, PropMap> >){
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver<Props>): Knex.Raw | Promise<Knex.Raw>{
+    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
         return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw( 
             args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
@@ -41,21 +41,21 @@ class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
         //     this.args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         // )
     }
-    toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>{
+    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
 
-class OrOperator<Props> extends ConditionOperator<Props>{
-    args: Array<Expression<Props>>
-    constructor(...args: Array<Expression<Props>>){
+export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
+    args: Array<Expression<Props, PropMap>>
+    constructor(...args: Array<Expression<Props, PropMap>>){
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver<Props>): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<Expression<Props> >) => raw(
+    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(
             `(${args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
         // return raw( 
@@ -63,33 +63,33 @@ class OrOperator<Props> extends ConditionOperator<Props>{
         // )
     }
     
-    toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>{
+    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
 
-class NotOperator<Props> extends ConditionOperator<Props>{
-    arg: Expression<Props>
-    constructor(arg: Expression<Props> ){
+export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
+    arg: Expression<Props, PropMap>
+    constructor(arg: Expression<Props, PropMap> ){
         super()
         this.arg = arg
     }
 
-    toRaw(resolver: ExpressionResolver<Props>): Knex.Raw | Promise<Knex.Raw>{
+    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
         return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
         // return raw( `NOT (${resolver(this.arg).toString()})`)
     }
     
-    toScalar(resolver: ExpressionResolver<Props>): Scalar | Promise<Scalar>{
+    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
         const p = this.toRaw(resolver)
         return thenResult(p, r => makeScalar(r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
 
-class ContainOperator extends ValueOperator {
+export class ContainOperator extends ValueOperator {
     rightOperands: any[]
     constructor(...rightOperands: any[]){
         super()
@@ -108,7 +108,7 @@ class ContainOperator extends ValueOperator {
     }
 }
 
-class NotContainOperator extends ValueOperator {
+export class NotContainOperator extends ValueOperator {
     rightOperands: any[]
     constructor(...rightOperands: any[]){
         super()
@@ -255,7 +255,9 @@ class IsNotNullOperator extends ValueOperator {
 
 
 export type SQLKeywords<Props, PropMap> = {
-    And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>
+    And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
+    Or: (...condition: Array<Expression<Props, PropMap> > ) => OrOperator<Props, PropMap>,
+    Not: (condition: Expression<Props, PropMap>) => NotOperator<Props, PropMap>
 }
 
 // const Or = (...condition: Array<Expression<any>>) => new OrOperator<any>(...condition)
@@ -269,17 +271,4 @@ export type SQLKeywords<Props, PropMap> = {
 // const IsNull = () => new IsNullOperator()
 // const IsNotNull = () => new IsNotNullOperator()
 
-export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator}
-
-
-// let s = builder().props({
-//     dd: await 
-// }).from( Product.datasource("c") ).filter(And(
-//     {'c.eeee': 5}
-// )).toDatasource("a")
-
-// builder().from(
-//     s.asfromClause().innerJoin(t2)
-// ).filter({
-//     "a.id": 5
-// })
+// export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator}

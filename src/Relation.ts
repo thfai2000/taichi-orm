@@ -1,32 +1,73 @@
-import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema } from "."
-import { Column, Dataset, Datasource, FromClause, makeBuilder, PartialK, Scalar, Scalarable } from "./Builder"
-import { And, AndOperator, ValueOperator } from "./Operator"
+import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
+import { AddPrefix, Column, Dataset, Datasource, Expression, makeBuilder, Scalar, Scalarable } from "./Builder"
+// import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
-import { ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
+import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
+
+export type SelectableProps<E> = {
+    [key in keyof E]: Scalar<any>
+} | SelectableProps<E>[]
 
 
+export type ComputePropertyArgsMap<E> = {
+    [key in keyof ExtractComputeProps<E> & string ]:
+            E[key] extends undefined?
+            never:
+            (
+                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg, infer R>? 
+                Arg: never
+            )
+}
 
-export type SingleSourceQueryOptions<S extends TableSchema> = {
-    props?: SelectableProps<S>,
-    filter?: SingleSourceFilter<S>,
+
+export type SingleSourceArg<S extends TableSchema> = {
+    props?: ComputePropertyArgsMap<S>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S> }  >        
+                >
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
 }
 
-export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
-    props?: SelectableProps<S>,
-    filter?: Expression<never>,
+export type SingleSourceFilter<S extends TableSchema> = Expression<
+        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S> }  >        
+    >
+
+// export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
+//     props?: ComputePropertyArgsMap<S>,
+//     filter?: Expression<never>,
+//     limit?: number,
+//     offset?: number,
+//     orderBy?: QueryOrderBy
+// }
+
+export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
+
+    props?: ComputePropertyArgsMap<Root>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+                >
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
 }
+
 
 export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
     (ctx: ExecutionContext, root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
 
-    props?: SelectableProps<Root>
-    filter?: Expression<never>
+    props?: ComputePropertyArgsMap<Root>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+                >
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
 }
 
 
@@ -49,17 +90,20 @@ export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends 
 
 
 // export type ExpressionSelectorFunction = (...selectors: Selector[]) => Scalar
-export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
+
+// export type QueryEntityPropertyValue = null|number|string|boolean|Date|ValueOperator
+
+
 // export type FilterEntityPropertyKeyValues<S> = 
 // {
 //     [key in keyof ExtractProps<S> & string]: QueryEntityPropertyValue | QueryEntityPropertyValue[]
 // }
 
-export type SingleSourceFilter<S extends TableSchema = any> = Expression< FilterEntityPropertyKeyValues<S> >
+// export type SingleSourceFilter<S extends TableSchema = any> = Expression< FilterEntityPropertyKeyValues<S> >
 
-export type TwoSourcesFilter<S0 extends TableSchema, S1 extends TableSchema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> >>
+// export type TwoSourcesFilter<S0 extends TableSchema, S1 extends TableSchema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> >>
 
-export type ThreeSourcesFilter<S0 extends TableSchema, S1 extends TableSchema, S2 extends TableSchema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> | AddPrefix< FilterEntityPropertyKeyValues<S2>, 'through'> >>
+// export type ThreeSourcesFilter<S0 extends TableSchema, S1 extends TableSchema, S2 extends TableSchema> =  Expression< UnionToIntersection< FilterEntityPropertyKeyValues<S0> | AddPrefix< FilterEntityPropertyKeyValues<S0>, 'root'>  | AddPrefix< FilterEntityPropertyKeyValues<S1>, 'related'> | AddPrefix< FilterEntityPropertyKeyValues<S2>, 'through'> >>
 
 
 
@@ -110,55 +154,54 @@ export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Colu
 //     return compute( new ArrayOfType< ObjectOfEntity<InstanceType<TypeClass>> >( new ObjectOfEntity(schema) ), computeFn )
 // }
 
-function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass) {
+// function all<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
-        args?: SingleSourceQueryOptions< TypeClass["schema"]> | SingleSourceQueryFunction< TypeClass["schema"], 'root'> ): Scalarable => {
-        let dataset = makeBuilder()
+//     let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
+//         args?: SingleSourceQueryOptions< TypeClass["schema"]> | SingleSourceQueryFunction< TypeClass["schema"], 'root'> ): Scalarable => {
+//         let dataset = makeBuilder()
 
-        let rootSource = rootEntity.schema.datasource('root', context)
+//         let rootSource = rootEntity.schema.datasource('root', context)
         
-        if(args instanceof Function){
-            let c = args(context, rootSource)
-            return simpleQuery(dataset, rootSource, c)
-        } else {
-            return simpleQuery(dataset, rootSource, args)
-        }
-    }
+//         if(args instanceof Function){
+//             let c = args(context, rootSource)
+//             return simpleQuery(dataset, rootSource, c)
+//         } else {
+//             return simpleQuery(dataset, rootSource, args)
+//         }
+//     }
 
-    return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
-}
+//     return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
+// }
 
-function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
+export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
     let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
-        args?: SingleSourceQueryOptions< TypeClass["schema"]> | TwoSourcesFilterFunction<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+        args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
 
         let dataset = makeBuilder()
 
         let relatedSource = relatedEntity.schema.datasource('related', context)
         
-        if(args instanceof Function){
-            let c = args(context, root, relatedSource)
-            dataset.props( c.props )
-        } else {
-            dataset.props( args )
+        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
+       
+        dataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
+
+        if(args?.props){
+            // dataset.props(args.props)
+        }
+        if(args?.filter){
+            dataset = dataset.filter(args.filter)
         }
 
-        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.$.id
-
-
-        let fromClause = relatedSource.innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
-       
-        return dataset.from(fromClause)
+        return dataset
     }
 
     return compute( new ObjectOfType(relatedEntity), computeFn )
 }
 
-function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
+export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"], 'root'>, args?: SingleSourceQueryOptions< TypeClass["schema"] >): Scalarable => {
+    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {
@@ -188,97 +231,6 @@ function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entit
 // } & InstanceType<T>
 
 
-class ProductSchema extends TableSchema {
-
-    id = field(PrimaryKeyType)
-    // uuid = field(StringType)
-    name = field(StringType)
-    shopId = field(NumberType)
-    // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
-    shop = belongsTo(Product, Shop, Product.schema.shopId)
-    myABC = compute(StringType, (ctx: ExecutionContext, root: any, args: number): Scalarable => {
-        throw new Error()
-    })
-}
-
-class Product extends Entity{
-    static schema = new ProductSchema()
-    myName: number  = 5
-}
-
-class ShopSchema extends TableSchema {
-    id= field(PrimaryKeyType)
-    name = field(StringType)
-    hour= field(NumberType)
-    // products = hasMany<typeof Shop, typeof Product>('Product', 'shopId')
-    products = hasMany(Shop, Product, Product.schema.shopId)
-}
-
-class Shop extends Entity {
-    static schema = new ShopSchema()
-}
-
-
-// type A = UnionToIntersection<{
-//     [key: string]: boolean
-// } | {
-//     a: number
-//     b: number
-// }>
-
-// let zzz: A = {
-//     a: 333,
-//     eeeee: true,
-//     ccc: true
-// }
-type B = {a: number, b: string}
-type A = PartialK<{[key in keyof B ]: boolean}, keyof B>
-
-let aaa = {
-    a: true,
-    c: 5
-}
-
-type C = typeof aaa extends A? boolean: number
-
-
-let s = Shop.datasource('shop', null)
-
-let p = Product.datasource('product', null)
-
-
-
-// type A = ExtractSynComputeProps<ProductSchema>
-
-let xxx: Scalar<BooleanType>
-
-let dd = makeBuilder()
-        .from(s)
-        .innerJoin(p, ({product}) => product.id.equals(5) )
-        .innerJoin(p, ({And}) => And({"product.id": 5}) )
-        .innerJoin( 
-            makeBuilder().from(s).fields("shop.id", "shop.name").datasource("myShop", null),
-            ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
-        )
-        .filter( 
-            ({And, product, shop}) => And({
-                "shop.id": 5,
-                "shop.name": "ssss"
-            }, product.name.equals(shop.name) )
-        )
-        .fields(
-            "product.id",
-            "shop.id",
-            "myShop.name",
-            "shop.id"
-        )
-        .props(
-            ({shop}) => ({
-                "product": xxx!,
-                "aa": xxx!,
-                ...shop.products().value()
-            })
-        )
 
 // let f = s.asFromClause().innerJoin(p, s.$.id.equals(p.$.shopId) )
 
@@ -349,22 +301,16 @@ let dd = makeBuilder()
 // })
 
 
-
-
 // let models = {
 //     Product,
 //     Shop
 // }
 
 // let f = function(x: {[key:string]: typeof Entity}){
-    
 // }
 
-
 // models.Shop.createEach()
-
 // let cc = x!.shop()
-
 // type A = number
 // let x: A
 // let y: string
@@ -375,126 +321,64 @@ let dd = makeBuilder()
 // let c = my(x!)
 
 
-const simpleQuery = <T extends TableSchema>(row: Dataset, selector: Datasource<T>, queryOptions: QueryObject<T>) => {
-    let stmt = row.toQueryBuilder()
-
-    let isWholeFilter = true
-
-    if(queryOptions.limit){
-        stmt = stmt.limit(queryOptions.limit)
-        isWholeFilter = false
-    }
-    if(queryOptions.offset){
-        stmt = stmt.offset(queryOptions.offset)
-        isWholeFilter = false
-    }
-    if(queryOptions.orderBy){
-        stmt = stmt.orderBy(queryOptions.orderBy)
-        isWholeFilter = false
-    }
-    if(queryOptions.select){
-        isWholeFilter = false
-    }
-    if(queryOptions.args){
-        isWholeFilter = false
-    }
-    // if(queryOptions.fn){
-    //     isWholeFilter = false
-    // }
-
-    let stmtOrPromise: Dataset | Promise<Dataset> = stmt
-    if (queryOptions.select){
-        stmtOrPromise = makeQuerySelectResolver(() => [selector])(queryOptions.select, row)
-    }
-    let filterOption: SingleSourceFilter | null = null
-    if(queryOptions.filter){
-        filterOption = queryOptions.filter
-        isWholeFilter = false
-    }
-    if(isWholeFilter){
-        filterOption = queryOptions as SingleSourceFilter
-    }
-    if(filterOption){
-        const resolved = makeQueryFilterResolver(() => [selector])(filterOption)
-        stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
-            stmt.toQueryBuilder().where(r).toRow()
-            return stmt
-        }))
-    }
-
-    if(!isWholeFilter){
-        const expectedKeys = ['limit', 'offset', 'orderBy', 'select', 'filter']
-        if(! Object.keys(queryOptions).every(key => expectedKeys.includes(key)) ) {
-            throw new Error(`The query option must be with keys of [${expectedKeys.join(',')}]`)
-        }
-    }
-
-    return stmtOrPromise
-}
 
 
 
-// export type EntityFilterResolver = (filter: SingleSourceFilter | null, ...sources: Datasource<any, any>[]) => RawFilter
 
 
-// export function makeQueryFilterResolver( getSelectorFunc: () => Datasource[] ){
+// const simpleQuery = <T extends TableSchema>(row: Dataset, selector: Datasource<T>, queryOptions: QueryObject<T>) => {
+//     let stmt = row.toQueryBuilder()
 
-//     // console.log('aaaaaa', getSelectorFunc())
-    
-//     const resolveExpression: QueryFilterResolver = function(value: Expression) {
-//         if (value === true || value === false) {
-//             return makeScalar(makeRaw('?', [value]), Types.Boolean())
-//         } else if(value instanceof ConditionOperator){
-//             return value.toScalar(resolveExpression)
-//         } else if(Array.isArray(value)){
-//             return resolveExpression(Or(...value))
-//         // } else if(value instanceof Function) {
-//         //     const casted = value as ExpressionSelectorFunction
-//         //     return casted(...(getSelectorFunc() ).map(s => s.interface!))
-//         } else if(isScalar(value)){
-//             return value as Scalar
-//         } else if (isDataset(value)) {
-//             throw new Error('Unsupport')
-//         } else if(value instanceof SimpleObjectClass){
-//             const firstSelector = getSelectorFunc()[0]
-//             let dict = value as SimpleObject
-//             let sqls = Object.keys(dict).reduce( (accSqls, key) => {
-//                 let prop = firstSelector.getProperties().find((prop) => prop.name === key)
-//                 if(!prop){
-//                     throw new Error(`cannot found property '${key}'`)
-//                 }
+//     let isWholeFilter = true
 
-//                 let operator: ValueOperator
-//                 if(dict[key] instanceof ValueOperator){
-//                     operator = dict[key]
-//                 }else if( Array.isArray(dict[key]) ){
-//                     operator = Contain(...dict[key])
-//                 } else if(dict[key] === null){
-//                     operator = IsNull()
-//                 } else {
-//                     operator = Equal(dict[key])
-//                 }
+//     if(queryOptions.limit){
+//         stmt = stmt.limit(queryOptions.limit)
+//         isWholeFilter = false
+//     }
+//     if(queryOptions.offset){
+//         stmt = stmt.offset(queryOptions.offset)
+//         isWholeFilter = false
+//     }
+//     if(queryOptions.orderBy){
+//         stmt = stmt.orderBy(queryOptions.orderBy)
+//         isWholeFilter = false
+//     }
+//     if(queryOptions.select){
+//         isWholeFilter = false
+//     }
+//     if(queryOptions.args){
+//         isWholeFilter = false
+//     }
+//     // if(queryOptions.fn){
+//     //     isWholeFilter = false
+//     // }
 
-//                 if(!prop.definition.computeFunc){
-//                     let converted = firstSelector.getNormalCompiled(key)
-//                     accSqls.push( operator.toScalar(converted) )
-//                 } else {
-//                     let compiled = (firstSelector.getComputedCompiledPromise(key))()
-//                     // if(compiled instanceof Promise){
-//                     //     accSqls.push( compiled.then(col => operator.toRaw(col) ) )
-//                     // } else {
-//                     //     accSqls.push( operator.toRaw(compiled) )
-//                     // }
-//                     accSqls.push( thenResult(compiled, col => operator.toScalar(col)) )
-//                 }
+//     let stmtOrPromise: Dataset | Promise<Dataset> = stmt
+//     if (queryOptions.select){
+//         stmtOrPromise = makeQuerySelectResolver(() => [selector])(queryOptions.select, row)
+//     }
+//     let filterOption: SingleSourceFilter | null = null
+//     if(queryOptions.filter){
+//         filterOption = queryOptions.filter
+//         isWholeFilter = false
+//     }
+//     if(isWholeFilter){
+//         filterOption = queryOptions as SingleSourceFilter
+//     }
+//     if(filterOption){
+//         const resolved = makeQueryFilterResolver(() => [selector])(filterOption)
+//         stmtOrPromise = thenResult(stmtOrPromise, stmt => thenResult(resolved, (r) => {
+//             stmt.toQueryBuilder().where(r).toRow()
+//             return stmt
+//         }))
+//     }
 
-//                 return accSqls
-
-//             }, [] as Array<Promise<Scalar> | Scalar> )
-//             return resolveExpression(And(...sqls))
-//         } else {
-//             throw new Error('Unsupport Where clause')
+//     if(!isWholeFilter){
+//         const expectedKeys = ['limit', 'offset', 'orderBy', 'select', 'filter']
+//         if(! Object.keys(queryOptions).every(key => expectedKeys.includes(key)) ) {
+//             throw new Error(`The query option must be with keys of [${expectedKeys.join(',')}]`)
 //         }
 //     }
-//     return resolveExpression
+
+//     return stmtOrPromise
 // }

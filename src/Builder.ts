@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { getKnexInstance, TableSchema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty } from "."
-import { And, AndOperator, ConditionOperator, Contain, Equal, IsNull, Or, SQLKeywords, ValueOperator } from "./Operator"
+import { AndOperator, ConditionOperator, SQLKeywords, ValueOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, notEmpty, quote, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
@@ -93,9 +93,6 @@ export interface Datasource<E extends Schema, alias extends string> {
 export interface TableDatasource<E extends TableSchema, Name extends string> extends Datasource<E, Name> {
     tableName: string
 }
-export type SelectableProps<E> = {
-    [key in keyof E]: Scalar<any>
-} | SelectableProps<E>[]
 
 // type ConvertProps<NewProps, SourceProps> = 
 // export type ValuesOf<T extends any[]>= T[number];
@@ -615,46 +612,6 @@ export const makeColumn = <Name extends string, T>(alias: Name, col: Scalar<T>) 
     return column
 }
 
-// export const makeFromClause = (parentSource: FromClause | null, joinText: string | null, selector: Datasource<any> | null, condition: Scalar<BooleanType> | null ): FromClause => {
-//     let t = selector?.toString() ?? ''
-
-//     joinText  = (joinText ?? '').trim()
-
-//     let raw = `${joinText} ${t}${joinText.length === 0 || !condition?'':` ON ${condition.toString()}`}`
-
-//     let target = makeRaw(raw) as unknown as FromClause
-//     target.__type = 'FromClause'
-//     // target.__raw = raw
-//     target.__parentSource = parentSource
-    
-//     target.innerJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
-//         let s = makeFromClause(target, `${target.toString()} INNER JOIN`, source, condition)
-//         return s
-//     }
-
-//     target.leftJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
-//         let s = makeFromClause(target, `${target.toString()} LEFT JOIN`, source, condition)
-//         return s
-//     }
-
-//     target.rightJoin = (source: Datasource<any>, condition: Scalar<BooleanType>) => {
-//         let s = makeFromClause(target, `${target.toString()} RIGHT JOIN`, source, condition)
-//         return s
-//     }
-
-//     target.__realClone = target.clone
-//     target.clone = () => {
-//         let newT = makeRaw(raw) as unknown as FromClause
-//         newT.__type = 'FromClause'
-//         // newT.__selector = target.__selector
-//         // newT.__raw = target.__raw
-//         newT.__parentSource = target.__parentSource
-//         return newT
-//     }
-
-//     return target
-// }
-
 // export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
     
 //     // let ourBuilder = castAsRow(builderOrRaw)
@@ -744,112 +701,112 @@ export const makeExpressionResolver = function<Props, M extends SelectorMap<any>
 }
 
 
-export type EntityPropsResolver = <S extends Schema>() => RawFilter
+// export type EntityPropsResolver = <S extends Schema>() => RawFilter
 
 
-export function makePropsResolver<AcceptableSourceProps>(): EntityPropsResolver {
+// export function makePropsResolver<AcceptableSourceProps>(): EntityPropsResolver {
 
 
-    const resolver = (selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
-        // let selector = getSelectorFunc()[0]
-        let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
-        let allColumns: Array<Column | Promise<Column>> = []
-        if(querySelect && !Array.isArray(querySelect)){
-            let select = querySelect
-            if (select && Object.keys(select).length > 0) {
+//     const resolver = (selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
+//         // let selector = getSelectorFunc()[0]
+//         let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
+//         let allColumns: Array<Column | Promise<Column>> = []
+//         if(querySelect && !Array.isArray(querySelect)){
+//             let select = querySelect
+//             if (select && Object.keys(select).length > 0) {
 
-                let removeNormalPropNames = Object.keys(select).map((key: string) => {
-                    const item = select[key]
-                    if (item === false) {
-                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
-                        if (!prop) {
-                            throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
-                        } else {
-                            if (!prop.definition.computeFunc) {
-                                return prop.name
-                            }
-                        }
-                    }
-                    return null
-                }).filter(notEmpty)
+//                 let removeNormalPropNames = Object.keys(select).map((key: string) => {
+//                     const item = select[key]
+//                     if (item === false) {
+//                         let prop = selector.schema.fieldProperties.find(p => p.name === key)
+//                         if (!prop) {
+//                             throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
+//                         } else {
+//                             if (!prop.definition.computeFunc) {
+//                                 return prop.name
+//                             }
+//                         }
+//                     }
+//                     return null
+//                 }).filter(notEmpty)
 
-                if (removeNormalPropNames.length > 0) {
-                    const shouldIncludes = selector.schema.fieldProperties.filter(p => !removeNormalPropNames.includes(p.name))
-                    stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
-                }
+//                 if (removeNormalPropNames.length > 0) {
+//                     const shouldIncludes = selector.schema.fieldProperties.filter(p => !removeNormalPropNames.includes(p.name))
+//                     stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
+//                 }
 
-                //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
-                let executedProps = Object.keys(select).map((key: string) => {
-                    const item = select[key]
-                    if (item === true) {
-                        let prop = selector.schema.fieldProperties.find(p => p.name === key)
-                        if (!prop) {
-                            throw new Error(`The property ${key} cannot be found in datasource '${selector}'`)
-                        }
-                        if (prop.definition.computeFunc) {
-                            return selector.$[prop.name]()
-                        }
-                    } else if (item instanceof SimpleObjectClass) {
-                        let options = item as QueryOptions
+//                 //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
+//                 let executedProps = Object.keys(select).map((key: string) => {
+//                     const item = select[key]
+//                     if (item === true) {
+//                         let prop = selector.schema.fieldProperties.find(p => p.name === key)
+//                         if (!prop) {
+//                             throw new Error(`The property ${key} cannot be found in datasource '${selector}'`)
+//                         }
+//                         if (prop.definition.computeFunc) {
+//                             return selector.$[prop.name]()
+//                         }
+//                     } else if (item instanceof SimpleObjectClass) {
+//                         let options = item as QueryOptions
 
-                        let prop = selector.schema.fieldProperties.find(p => p.name === key && p.definition.computeFunc)
+//                         let prop = selector.schema.fieldProperties.find(p => p.name === key && p.definition.computeFunc)
 
-                        if (!prop) {
-                            // if (options instanceof PropertyDefinition) {
-                            //     selector.registerProp(new NamedProperty(key, options))
-                            //     return selector.$$[key]()
-                            // } else {
-                            //     throw new Error('Temp Property must be propertyDefinition')
-                            // }
-                            throw new Error(`Cannot find Property ${key}`)
-                        } else {
-                            if (!prop.definition.computeFunc) {
-                                throw new Error('Only COmputeProperty allows QueryOptions')
-                            }
-                            return selector.$$[key](options)
-                        }
-                    } else if (isScalar(item)){
-                        let scalar = item as Scalar
-                        return scalar.asColumn(key)
-                    }
-                    return null
-                }).filter(notEmpty)
-                allColumns.push(...executedProps)
-            }
-        } else if (querySelect && querySelect instanceof Array) {
-            let select = querySelect
+//                         if (!prop) {
+//                             // if (options instanceof PropertyDefinition) {
+//                             //     selector.registerProp(new NamedProperty(key, options))
+//                             //     return selector.$$[key]()
+//                             // } else {
+//                             //     throw new Error('Temp Property must be propertyDefinition')
+//                             // }
+//                             throw new Error(`Cannot find Property ${key}`)
+//                         } else {
+//                             if (!prop.definition.computeFunc) {
+//                                 throw new Error('Only COmputeProperty allows QueryOptions')
+//                             }
+//                             return selector.$$[key](options)
+//                         }
+//                     } else if (isScalar(item)){
+//                         let scalar = item as Scalar
+//                         return scalar.asColumn(key)
+//                     }
+//                     return null
+//                 }).filter(notEmpty)
+//                 allColumns.push(...executedProps)
+//             }
+//         } else if (querySelect && querySelect instanceof Array) {
+//             let select = querySelect
 
-            let props = select.map(s => {
-                if( isColumn(s)) {
-                    return s  as Column
-                } else if( typeof s === 'string'){
-                    let prop = selector.schema.fieldProperties.find(p => p.name === s)
-                    if (!prop) {
-                        throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
-                    }
-                    if (prop.definition.computeFunc) {
-                        return selector.$$[prop.name]()
-                    } else {
-                        return selector._[prop.name]
-                    }
-                }
-                throw new Error('Unexpected type')
-            })
+//             let props = select.map(s => {
+//                 if( isColumn(s)) {
+//                     return s  as Column
+//                 } else if( typeof s === 'string'){
+//                     let prop = selector.schema.fieldProperties.find(p => p.name === s)
+//                     if (!prop) {
+//                         throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
+//                     }
+//                     if (prop.definition.computeFunc) {
+//                         return selector.$$[prop.name]()
+//                     } else {
+//                         return selector._[prop.name]
+//                     }
+//                 }
+//                 throw new Error('Unexpected type')
+//             })
 
-            allColumns.push(...props)
-        }
+//             allColumns.push(...props)
+//         }
 
-        // !important: must use a constant to reference the object before it is re-assigned
-        const prevStmt = stmtOrPromise
-        let stmtOrPromiseNext = thenResultArray(allColumns, columns => {
-            return columns.reduce((stmt, column) => {
-                return thenResult(stmt, stmt => stmt.select(column))
-            }, prevStmt)
-        })
+//         // !important: must use a constant to reference the object before it is re-assigned
+//         const prevStmt = stmtOrPromise
+//         let stmtOrPromiseNext = thenResultArray(allColumns, columns => {
+//             return columns.reduce((stmt, column) => {
+//                 return thenResult(stmt, stmt => stmt.select(column))
+//             }, prevStmt)
+//         })
 
-        return thenResult(stmtOrPromiseNext, stmt => stmt.toRow())
-    }
-}
+//         return thenResult(stmtOrPromiseNext, stmt => stmt.toRow())
+//     }
+// }
 
 
 // function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
