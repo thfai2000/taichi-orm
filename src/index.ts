@@ -760,7 +760,7 @@ export class Database{
                     insertedId = r[0][0].insertId
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
 
-                    let record = await this.findOne<T, TableSchema>(entityClass, existingContext, {
+                    let record = await this.findOne<T, typeof schema>(entityClass, existingContext, {
                         filter: {
                             id: insertedId
                         }
@@ -771,16 +771,14 @@ export class Database{
                     const insertStmt = input.sqlString.toString()
                     const r = await this.executeStatement(insertStmt, existingContext)
                     
-                    if(ormConfig.enableUuid){
+                    if(ormConfig.enableUuid && schema.uuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.uuid, uuid]))
-                            let record = await Database.findOne<T, TableSchema>(entityClass, existingContext, {
-                                filter: {
-                                    uuid: uuid
-                                }
+                            let record = await Database.findOne<T, typeof schema>(entityClass, existingContext, {
+                                //@ts-ignore
+                                filter: ({root}) => root.uuid.equals(uuid)
                             })
 
                             return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
@@ -1098,7 +1096,7 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( builder(s).toQueryBuilder().where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( ( await builder(schema.datasource('root', existingContext)).toQueryBuilder() ).where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
                         }
                         return finalRecord
                         
@@ -1116,7 +1114,7 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( builder(s).toQueryBuilder().where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( ( await builder(schema.datasource('root', existingContext)).toQueryBuilder() ).where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
                         }
                         return finalRecord
                     } else {
@@ -1200,28 +1198,26 @@ export class Database{
                 }
             }
 
-            if(namedProperty &&  ( !(namedProperty instanceof FieldProperty) || !(namedProperty instanceof ComputeProperty) )  ){
-                throw new Error('Unexpected type of Property.')
-            }
-            else {
+            if(namedProperty !== null && ( namedProperty instanceof ComputeProperty  || namedProperty instanceof FieldProperty) ){
 
                 /**
                  * it can be boolean, string, number, Object, Array of Object (class)
                  * Depends on the props..
                  */
                 let propValue = namedProperty?.definition!.parseRaw(row[fieldName], namedProperty.name, context)
+
+                Object.defineProperty(entityInstance, namedProperty?.name!, {
+                    configurable: true,
+                    enumerable: true,
+                    writable: true,
+                    value: propValue
+                })
+                return entityInstance
                 
             }
-
             
+            throw new Error('Unexpected type of Property.')
             
-            Object.defineProperty(entityInstance, namedProperty?.name!, {
-                configurable: true,
-                enumerable: true,
-                writable: true,
-                value: propValue
-            })
-            return entityInstance
         }, new entityClass(context) as InstanceType<T>)
         return entityInstance
     }

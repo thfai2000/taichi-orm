@@ -1,7 +1,6 @@
 import {Scalar, isScalar, makeScalar, makeRaw as raw, ExpressionResolver, Expression} from './Builder'
 import {Knex} from 'knex'
 import { BooleanType } from './PropertyType'
-// import { Expression } from './Relation'
 import { thenResult, thenResultArray } from './util'
 
 
@@ -126,7 +125,7 @@ export class NotContainOperator extends ValueOperator {
     }
 }
 
-class LikeOperator extends ValueOperator {
+export class LikeOperator extends ValueOperator {
     rightOperand: any
     constructor(rightOperand: any[]){
         super()
@@ -144,7 +143,7 @@ class LikeOperator extends ValueOperator {
     }
 }
 
-class NotLikeOperator extends ValueOperator {
+export class NotLikeOperator extends ValueOperator {
     rightOperand: any
     constructor(rightOperand: any[]){
         super()
@@ -162,7 +161,7 @@ class NotLikeOperator extends ValueOperator {
     }
 }
 
-class EqualOperator extends ValueOperator {
+export class EqualOperator extends ValueOperator {
     rightOperand: any
     constructor(rightOperand: any){
         super()
@@ -190,7 +189,7 @@ class EqualOperator extends ValueOperator {
     }
 }
 
-class NotEqualOperator extends ValueOperator {
+export class NotEqualOperator extends ValueOperator {
     rightOperand: any
     constructor(rightOperand: any){
         super()
@@ -216,7 +215,7 @@ class NotEqualOperator extends ValueOperator {
     }
 }
 
-class IsNullOperator extends ValueOperator {
+export class IsNullOperator extends ValueOperator {
     constructor(){
         super()
     }
@@ -231,7 +230,7 @@ class IsNullOperator extends ValueOperator {
     }
 }
 
-class IsNotNullOperator extends ValueOperator {
+export class IsNotNullOperator extends ValueOperator {
     constructor(){
         super()
     }

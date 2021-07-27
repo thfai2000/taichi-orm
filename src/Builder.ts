@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { getKnexInstance, TableSchema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty } from "."
-import { AndOperator, ConditionOperator, SQLKeywords, ValueOperator } from "./Operator"
+import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, OrOperator, SQLKeywords, ValueOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, notEmpty, quote, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
@@ -35,7 +35,10 @@ export type FieldPropertyValueMap<E> =  Partial<{
              
 }>
 
-export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  | AndOperator<O, M> | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
+export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  
+    | AndOperator<O, M> 
+    | OrOperator<O, M> 
+    | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
 
 // export type PartialK<T, K extends PropertyKey = PropertyKey> =
 //   Partial<Pick<T, Extract<keyof T, K>>> & Omit<T, K> extends infer O ?
@@ -142,8 +145,8 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
     __type: 'Dataset'
     __whereRawItem: (selectorMap: { [key: string ]: SelectorMap<any> }) => Promise<any>
     __selectItems: (selectorMap: { [key: string ]: SelectorMap<any> }) => Promise<SelectItem[]>
-    __fromItem: any
-    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: any, expression: Promise<any> }>
+    __fromItem: Datasource<Schema, string>
+    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Promise<any> }>
 
     // __realSelect: Function
     // __realClearSelect: Function
@@ -157,7 +160,7 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
     toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap>
     // clone(): Dataset<SelectProps, SourceProps, SourcePropMap>
     
-    getSelectorMap(): Promise<{ [key: string ]: SelectorMap<any> }>
+    getSelectorMap(): { [key: string ]: SelectorMap<any> }
     selectedPropNames(): Promise<string[]>
     toQueryBuilder(): Promise<Knex.QueryBuilder>
     toScalar<T extends PropertyTypeDefinition>(d: T): Promise<Scalar<T>>
@@ -428,12 +431,20 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
     //     sealBuilder.__selectItems = Promise.resolve([])
     //     return sealBuilder.__realClearSelect()
     // }
-    sealBuilder.getSelectorMap = async () => {
+    sealBuilder.getSelectorMap = () => {
         let sources = sealBuilder.__joinItems.map(item => item.source)
+        sources.push(sealBuilder.__fromItem)
 
-        sources.push(sealBuilder.__fromItem.toString())
+        const sourcePropMap = sources.reduce( (acc, source) => {
+            const t = Object.keys(source.tableAlias)[0]
+            acc[t] = source.schema.properties.reduce( (acc, prop) => {
+                acc[prop.name] = source.getComputeProperty(prop.name)
+                return acc
+            }, {} as SelectorMap<any>)
+            return acc
+        }, {} as {[key:string]: SelectorMap<any> } )
 
-        throw new Error()
+        return sourcePropMap
     }
 
     // sealBuilder.__realClone = sealBuilder.clone
@@ -524,8 +535,9 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
     }
 
     sealBuilder.filter = (expression: Expression<any, any>): Dataset<any, any, any> => {
-        sealBuilder.__whereRawItem = async (selectorMap: any) => {
-            let resolver = makeExpressionResolver(selectorMap)
+        sealBuilder.__whereRawItem = async (selectorMap: {[key:string]: SelectorMap<any>}) => {
+            let sources = sealBuilder.__joinItems.map(item => item.source)
+            let resolver = makeExpressionResolver(sealBuilder.__fromItem, sources, selectorMap)
             let boolScalar = await resolver(expression)
             return boolScalar
         }
@@ -581,7 +593,7 @@ export const makeScalar = <T extends PropertyTypeDefinition>(expression: Knex.Ra
 
     scalar.equals = (value: any): Scalar<BooleanType> => {
 
-        return makeScalar<BooleanType>( Equal(value).toRaw(scalar), new BooleanType())
+        return makeScalar<BooleanType>( new EqualOperator(value).toRaw(scalar), new BooleanType())
     }
 
     scalar.is = (operator: string, value: any): Scalar<BooleanType> => {
@@ -622,24 +634,22 @@ export const makeColumn = <Name extends string, T>(alias: Name, col: Scalar<T>) 
 
 export type ExpressionResolver<Props, M> = (value: Expression<Props, M>) => Scalar | Promise<Scalar>
 
-export const makeExpressionResolver = function<Props, M extends SelectorMap<any>>(selectorMap: M) {
+export const makeExpressionResolver = function<Props, M extends {[key:string]: SelectorMap<any>}>(fromSource: Datasource<any, any>, sources: Datasource<any, any>[], sourcePropMap: M) {
 
-    const sources: Datasource<Schema, any>[]
-    
-    const resolver: ExpressionResolver<Props, M> = async <Props, M>(expression: Expression<Props, M>) => {
+    const resolver: ExpressionResolver<Props, M> = async (expression: Expression<Props, M>) => {
         let value
         if( expression instanceof Function) {
-            value = await expression(selectorMap as M)
+            value = await expression(sourcePropMap)
         } else {
             value = expression
         }
-        
         if (value === true || value === false) {
             return makeScalar(makeRaw('?', [value]), new BooleanType() )
         } else if(value instanceof ConditionOperator){
             return value.toScalar(resolver)
         } else if(Array.isArray(value)){
-            return resolver(Or<Props>(...value))
+            const expr = new OrOperator<Props, M>(...value )
+            return resolver( expr )
         } else if(isScalar(value)){
             return value as Scalar
         } else if (isDataset(value)) {
@@ -651,9 +661,9 @@ export const makeExpressionResolver = function<Props, M extends SelectorMap<any>
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
                     propName = sourceName
-                    sourceName = Object.keys(sources[0]?.tableAlias)[0]
+                    sourceName = Object.keys(fromSource.tableAlias)[0]
                 }
-                let source = sources.find(s => s.tableAlias[sourceName] = sourceName)
+                let source = sources.find(s => Object.keys(s.tableAlias)[0] === sourceName)
                 if(!source){
                     throw new Error(`cannot found source (${source})`)
                 }
@@ -667,11 +677,11 @@ export const makeExpressionResolver = function<Props, M extends SelectorMap<any>
                 if(dict[key] instanceof ValueOperator){
                     operator = dict[key]
                 }else if( Array.isArray(dict[key]) ){
-                    operator = Contain(...dict[key])
+                    operator = new ContainOperator(...dict[key])
                 } else if(dict[key] === null){
-                    operator = IsNull()
+                    operator = new IsNullOperator()
                 } else {
-                    operator = Equal(dict[key])
+                    operator = new EqualOperator(dict[key])
                 }
     
                 if(prop instanceof FieldProperty){
@@ -689,7 +699,7 @@ export const makeExpressionResolver = function<Props, M extends SelectorMap<any>
     
             }, [] as Array<Scalar> )
 
-            let arr = And(...sqls)
+            let arr = new AndOperator<Props, M>(...sqls)
             return resolver(arr)
         } else {
             throw new Error('Unsupport Where clause')
