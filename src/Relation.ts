@@ -1,7 +1,7 @@
 import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
 import { AddPrefix, Column, Dataset, Datasource, Expression, makeBuilder, Scalar, Scalarable } from "./Builder"
 // import { And, AndOperator, ValueOperator } from "./Operator"
-import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, StringType } from "./PropertyType"
+import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
 
 export type SelectableProps<E> = {
@@ -173,7 +173,7 @@ export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Colu
 //     return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
 // }
 
-export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
+export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
     
     let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
         args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
@@ -184,22 +184,22 @@ export function belongsTo<RootClass extends typeof Entity, TypeClass extends typ
         
         let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
        
-        dataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
+        let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
 
         if(args?.props){
             // dataset.props(args.props)
         }
         if(args?.filter){
-            dataset = dataset.filter(args.filter)
+            newDataset = newDataset.filter(args.filter)
         }
 
-        return dataset
+        return newDataset
     }
 
     return compute( new ObjectOfType(relatedEntity), computeFn )
 }
 
-export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty, rootKey?: FieldProperty) {
+export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
     
     let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
         

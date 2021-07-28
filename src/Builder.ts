@@ -78,7 +78,7 @@ export interface Datasource<E extends Schema, alias extends string> {
     // impl: Datasource
     schema: E
     executionContext: ExecutionContext
-    // $: SelectorMap<E>
+    $: SelectorMap<E>
     //TODO: implement
     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
@@ -137,7 +137,6 @@ export interface TableDatasource<E extends TableSchema, Name extends string> ext
 //             >
 //         , 
 //         SourceProps, SourcePropMap>
-
 
 
 
@@ -234,7 +233,7 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
                 > ): Dataset<SelectProps, SourceProps, SourcePropMap>
 
     from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
-        Dataset<{}, 
+        Dataset<S, 
             UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
         >
@@ -385,7 +384,7 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
                 nameMap = await named( selectorMap )
             else nameMap = named
 
-            let items = Object.keys(nameMap).map( k => {
+            let items = await Promise.all(Object.keys(nameMap).map( async(k) => {
                 let scalar = nameMap[k] 
                 let expression = scalar.__expression
                 let definition = scalar.__definition
@@ -420,7 +419,7 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
                     value: makeRaw(`${text} AS ${quote(alias)}`),
                     actualAlias: alias
                 }
-            })
+            }))
             return items
         }
         return sealBuilder as any
@@ -437,10 +436,11 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
 
         const sourcePropMap = sources.reduce( (acc, source) => {
             const t = Object.keys(source.tableAlias)[0]
-            acc[t] = source.schema.properties.reduce( (acc, prop) => {
-                acc[prop.name] = source.getComputeProperty(prop.name)
-                return acc
-            }, {} as SelectorMap<any>)
+            // acc[t] = source.schema.properties.reduce( (acc, prop) => {
+            //     acc[prop.name] = source.getComputeProperty(prop.name)
+            //     return acc
+            // }, {} as SelectorMap<any>)
+            acc[t] = source.$
             return acc
         }, {} as {[key:string]: SelectorMap<any> } )
 
@@ -528,10 +528,10 @@ export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any,
     }
 
     sealBuilder.__realFrom = sealBuilder.from
-    sealBuilder.from = (source: Datasource<any, any>) => {
+    sealBuilder.from = <S extends Schema, SName extends string>(source: Datasource<S, SName>) => {
         sealBuilder.__fromItem = source
         sealBuilder.__realFrom(source.toString())
-        return sealBuilder
+        return sealBuilder as unknown as Dataset<S, any, any>
     }
 
     sealBuilder.filter = (expression: Expression<any, any>): Dataset<any, any, any> => {
@@ -656,7 +656,8 @@ export const makeExpressionResolver = function<Props, M extends {[key:string]: S
             throw new Error('Unsupport')
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
-            let sqls = Object.keys(dict).reduce( (accSqls, key) => {
+            let sqls = await Object.keys(dict).reduce( async (accSqlsPromise, key) => {
+                const accSqls = await accSqlsPromise
                 
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
@@ -697,7 +698,7 @@ export const makeExpressionResolver = function<Props, M extends {[key:string]: S
     
                 return accSqls
     
-            }, [] as Array<Scalar> )
+            }, Promise.resolve([]) as Promise<Array<Scalar>> )
 
             let arr = new AndOperator<Props, M>(...sqls)
             return resolver(arr)
@@ -707,7 +708,6 @@ export const makeExpressionResolver = function<Props, M extends {[key:string]: S
     }
 
     return resolver
-
 }
 
 

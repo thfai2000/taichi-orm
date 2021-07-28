@@ -47,11 +47,13 @@ class Shop extends Entity {
 //     ccc: true
 // }
 
-let s = Shop.datasource('shop', null)
+const context = new ExecutionContext('test')
 
-let p = Product.datasource('product', null)
+let s = Shop.datasource('shop', context)
 
+let p = Product.datasource('product', context)
 
+let myShop = makeBuilder().from(s).fields("shop.id", "shop.name").datasource("myShop")
 
 // type A = ExtractSynComputeProps<ProductSchema>
 
@@ -62,7 +64,7 @@ let dd = makeBuilder()
         .innerJoin(p, ({product}) => product.id.equals(5) )
         .innerJoin(p, ({And}) => And({"product.id": 5}) )
         .innerJoin( 
-            makeBuilder().from(s).fields("shop.id", "shop.name").datasource("myShop", null),
+            myShop,
             ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
         )
         .filter( 

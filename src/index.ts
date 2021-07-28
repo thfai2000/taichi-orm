@@ -59,7 +59,8 @@ export type SelectorMap<E> = {
             )
 }
 
-export type ComputeFunction<Root extends TableSchema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> = (this: ComputeProperty, context: ExecutionContext, selector: Datasource<Root, Name>, ...args: ARG) => R
+export type ComputeFunction<Root extends Schema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> 
+= (this: ComputeProperty<PropertyTypeDefinition, Root, Name, ARG, R>, context: ExecutionContext, source: Datasource<Root, Name>, ...args: ARG) => R
 
 export type CompiledComputeFunction<Name extends string, ARG extends any[], R> = (...args: ARG) => Column<Name, R>
 
@@ -184,7 +185,7 @@ export class Property {
     }
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition, Root extends TableSchema = TableSchema, Name extends string = 'root', Arg extends any[] = any[], R = any> extends Property {
+export class ComputeProperty<D extends PropertyTypeDefinition, Root extends Schema, Name extends string, Arg extends any[], R> extends Property {
 
     definition: D
     type: 'ComputeProperty' = 'ComputeProperty'
@@ -198,7 +199,7 @@ export class ComputeProperty<D extends PropertyTypeDefinition = PropertyTypeDefi
             this.compute = compute
         }
 }
-export class FieldProperty<D extends PropertyTypeDefinition = PropertyTypeDefinition> extends Property {
+export class FieldProperty<D extends PropertyTypeDefinition> extends Property {
 
     definition: D
     type: 'FieldProperty' = 'FieldProperty'
@@ -257,8 +258,10 @@ export class Schema {
 
     tableName?: string
     entityName?: string
-    properties: (ComputeProperty | FieldProperty)[] = []
-    propertiesMap: {[key:string]: (ComputeProperty | FieldProperty)} = {}
+    properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[], any> 
+        | FieldProperty<PropertyTypeDefinition>)[] = []
+    propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[], any> 
+        | FieldProperty<PropertyTypeDefinition>)} = {}
     hooks: Hook[] = []
     // id: PropertyDefinition
     // uuid: PropertyDefinition | null
@@ -277,7 +280,8 @@ export class Schema {
         this.entityName = entityName
         this.tableName = this.tableName ??  Schema.convertTableName(entityName)
  
-        let fields : (ComputeProperty | FieldProperty)[] = []
+        let fields : (ComputeProperty<PropertyTypeDefinition, Schema, string, any[], any> 
+        | FieldProperty<PropertyTypeDefinition>)[] = []
         for(let field in this){
             if(typeof field === 'string'){
                 const actual = this[field]
@@ -305,7 +309,7 @@ export class Schema {
             throw new Error('Not register yet')
         }
         if(this.tableName.length > 0){
-            let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty[]
+            let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<PropertyTypeDefinition>[]
 
             return `CREATE TABLE IF NOT EXISTS ${quote( (tablePrefix??'') + this.tableName)} (\n${
                 props.map( prop => {
@@ -325,8 +329,8 @@ export class Schema {
 }
 
 export abstract class TableSchema extends Schema {
-    abstract id: FieldProperty
-    uuid?: FieldProperty = undefined
+    abstract id: FieldProperty<PropertyTypeDefinition>
+    uuid?: FieldProperty<PropertyTypeDefinition> = undefined
 
     /**
      * Selector is used for locating the table name / field names / computed functions

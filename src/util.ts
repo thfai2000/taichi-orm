@@ -17,7 +17,7 @@ export type UnionToIntersection<T> =
 
 export type ExtractProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, any>? key:
                     E[key] extends FieldProperty<any>? key:
                     never
 })[keyof E]> 
@@ -31,7 +31,7 @@ Pick<E, ({
 
 export type ExtractComputeProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, any>? key:
                     never
 })[keyof E]> 
 
