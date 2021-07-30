@@ -1,5 +1,5 @@
 import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
-import { AddPrefix, Column, Dataset, Datasource, Expression, makeBuilder, Scalar, Scalarable } from "./Builder"
+import { AddPrefix, Column, Dataset, Datasource, Expression, Scalar, Scalarable } from "./Builder"
 // import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
@@ -175,12 +175,12 @@ export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Colu
 
 export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<RootClass["schema"], 'root'>, 
+    let computeFn = (root: Datasource<RootClass["schema"], 'root'>, 
         args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
 
-        let dataset = makeBuilder()
+        let dataset = new Dataset()
 
-        let relatedSource = relatedEntity.schema.datasource('related', context)
+        let relatedSource = relatedEntity.schema.datasource('related')
         
         let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
        
@@ -201,7 +201,7 @@ export function belongsTo<RootClass extends typeof Entity, TypeClass extends typ
 
 export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
     
-    let computeFn = (context: ExecutionContext, root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+    let computeFn = (root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
         
         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
         //     return {

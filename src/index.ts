@@ -3,7 +3,7 @@ import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
-import {makeBuilder as builder, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column} from './Builder'
+import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
@@ -60,7 +60,7 @@ export type SelectorMap<E> = {
 }
 
 export type ComputeFunction<Root extends Schema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> 
-= (this: ComputeProperty<PropertyTypeDefinition, Root, Name, ARG, R>, context: ExecutionContext, source: Datasource<Root, Name>, ...args: ARG) => R
+= (this: ComputeProperty<PropertyTypeDefinition, Root, Name, ARG, R>, source: Datasource<Root, Name>, ...args: ARG) => R
 
 export type CompiledComputeFunction<Name extends string, ARG extends any[], R> = (...args: ARG) => Column<Name, R>
 
@@ -74,13 +74,13 @@ export type MutationEntityPropertyKeyValues = {
 // export type EntityQueryOptions<S extends TableSchema> = SingleSourceQueryOptions<S>
 
 
-export type ORMConfig = {
+export type ORMConfig<EntityClassMap extends {[key:string]: typeof Entity}> = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
         connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
     },
     // types: { [key: string]: typeof PropertyDefinition },
-    models: {[key:string]: typeof Entity}
+    models: EntityClassMap
     createModels: boolean,
     modelsPath?: string,
     outputSchemaPath?: string,
@@ -94,11 +94,10 @@ export type ORMConfig = {
     // useSoftDeleteAsDefault: boolean
     // primaryKeyName: string
     enableUuid: boolean
-    uuidPropName: string,
-    globalContext: Partial<ExecutionContextConfig>
+    uuidPropName: string
 }
 
-const ormConfig: ORMConfig = {
+const defaultORMConfig: ORMConfig<any> = {
     // primaryKeyName: 'id',
     enableUuid: false,
     // useSoftDeleteAsDefault: true,
@@ -108,46 +107,13 @@ const ormConfig: ORMConfig = {
     models: {},
     knexConfig: {
         client: 'mysql' //default mysql
-    },
-    globalContext: {
-        tablePrefix: ''
     }
 }
 
 // the new orm config
-export {ormConfig}
+// export {defaultORMConfig as ormConfig}
 
 
-let _globalKnexInstance: Knex | null = null
-
-// a global knex instance
-export const getKnexInstance = (): Knex => {
-    if(_globalKnexInstance){
-        return _globalKnexInstance
-    }
-
-    let newKnexConfig = Object.assign({
-        useNullAsDefault: true
-    }, ormConfig.knexConfig)
-
-    if(typeof newKnexConfig.connection !== 'object'){
-        throw new Error('Configuration connection only accept object.')
-    }
-
-    if(typeof newKnexConfig.client !== 'string'){
-        throw new Error('Configuration client only accept string')
-    }
-
-    // multipleStatements must be true
-    newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
-    
-    
-    // console.log('newKnexConfig', newKnexConfig)
-    _globalKnexInstance = knex(newKnexConfig)
-    return _globalKnexInstance
-}
-
-export const client = (): string => ormConfig.knexConfig.client.toString()
 
 
 export class Property {
@@ -169,7 +135,7 @@ export class Property {
     }
     
     static convertFieldName(propName: string){
-        return ormConfig.propNameTofieldName ? ormConfig.propNameTofieldName(propName) : propName
+        return defaultORMConfig.propNameTofieldName ? defaultORMConfig.propNameTofieldName(propName) : propName
     }
 
     get fieldName(){
@@ -211,46 +177,6 @@ export class FieldProperty<D extends PropertyTypeDefinition> extends Property {
         }
 }
 
-
-export const startTransaction = async<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> => {
-    let knex = getKnexInstance()
-    const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
-        return thenResult( func(trx), async(result) => {
-            if(!isExistingTrx){
-                await trx.commit()
-            }
-            return result
-        }, async (error) => {
-            if(!isExistingTrx){
-                await trx.rollback()
-            }
-            throw error
-        })
-    }
-        
-    if(existingTrx){
-        // use existing
-        return useTrx(existingTrx, true)
-    } else {
-        // use new
-        // let result: T | Promise<T>, error
-        
-        try{
-            //{isolationLevel: 'read committed'}
-            const trx = await knex.transaction()
-            return await useTrx(trx, false)
-        }catch(e){
-            // console.log('herere error', e)
-            // error = e
-            throw e
-        }
-    }
-    
-}
-
-let registeredModels: {
-    [key: string]: typeof Entity
-} = {}
 
 
 
@@ -296,7 +222,7 @@ export class Schema {
     }
 
     static convertTableName(entityName : string) {
-        return (ormConfig.entityNameToTableName? ormConfig.entityNameToTableName(entityName):entityName )
+        return (defaultORMConfig.entityNameToTableName? defaultORMConfig.entityNameToTableName(entityName):entityName )
     }
 
     setTableName(name: string) {
@@ -337,9 +263,9 @@ export abstract class TableSchema extends Schema {
      * field pointers
      * @returns 
      */
-    datasource<T extends TableSchema, Name extends string>(this: T, name: Name, existingContext: ExecutionContext | null) : Datasource<T, Name>{
-        let selectorImpl = makeTableDatasource(this, name, existingContext?? globalContext)
-        return selectorImpl
+    datasource<T extends TableSchema, Name extends string>(this: T, name: Name) : Datasource<T, Name>{
+        const source = new TableDatasource(this, name)
+        return source
     }
 }
 
@@ -367,51 +293,119 @@ export type HookInfo = {
 
 export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
 
+export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
 
-export const configure = async function(newConfig: Partial<ORMConfig>){
-    Object.assign(ormConfig, newConfig)
-    Object.assign(ormConfig.globalContext, newConfig.globalContext)
+    ormConfig: ORMConfig<EntityClassMap>
+    // @ts-ignore
+    registeredModels: EntityClassMap = {}
 
-    const registerEntity = (entityName: string, entityClass: typeof Entity) => {
-        registeredModels[entityName] = entityClass
-        entityClass.schema.register(entityName)
+    constructor(newConfig: Partial<ORMConfig<EntityClassMap>>){
+        let newOrmConfig: ORMConfig<EntityClassMap> = Object.assign({}, defaultORMConfig, newConfig)
+        // newOrmConfig.ormContext = Object.assign({}, defaultORMConfig.ormContext, newConfig.ormContext)
+
+        const registerEntity = (entityName: string, entityClass: typeof Entity) => {
+            // @ts-ignore
+            this.registeredModels[entityName] = entityClass
+            entityClass.schema.register(entityName)
+        }
+        
+        //register models 
+        if(newOrmConfig.models){
+            let models = newOrmConfig.models
+            Object.keys(models).forEach(key => {
+                registerEntity(key, models[key]);
+            })
+        }
+
+        //register models by path
+        if(newOrmConfig.modelsPath){
+            let files = fs.readdirSync(newOrmConfig.modelsPath)
+            files.forEach( (file) => {
+                if(file.endsWith('.js')){
+                    let path = newOrmConfig.modelsPath + '/' + file
+                    path = path.replace(/\.js$/,'')
+                    // console.debug('load model file:', path)
+                    let p = path.split('/')
+                    let entityName = p[p.length - 1]
+                    let entityClass = require(path)
+                    registerEntity(entityName, entityClass.default);
+                }
+            })
+        }
+        this.ormConfig = newOrmConfig
     }
-    
-    //register models 
-    if(ormConfig.models){
-        let models = ormConfig.models
-        Object.keys(models).forEach(key => {
-            registerEntity(key, models[key]);
-        })
+
+    getRepository(config?: Partial<EntityRepositoryConfig>): EntityRepository<EntityClassMap> {
+        return new EntityRepository(this, this.registeredModels, config)
     }
 
-    //register models by path
-    if(ormConfig.modelsPath){
-        let files = fs.readdirSync(ormConfig.modelsPath)
-        await Promise.all(files.map( async(file) => {
-            if(file.endsWith('.js')){
-                let path = ormConfig.modelsPath + '/' + file
-                path = path.replace(/\.js$/,'')
-                // console.debug('load model file:', path)
-                let p = path.split('/')
-                let entityName = p[p.length - 1]
-                let entityClass = require(path)
-                registerEntity(entityName, entityClass.default);
+    _globalKnexInstance: Knex | null = null
+
+    // a global knex instance
+    getKnexInstance(): Knex {
+        if(this._globalKnexInstance){
+            return this._globalKnexInstance
+        }
+
+        let newKnexConfig = Object.assign({
+            useNullAsDefault: true
+        }, defaultORMConfig.knexConfig)
+
+        if(typeof newKnexConfig.connection !== 'object'){
+            throw new Error('Configuration connection only accept object.')
+        }
+
+        if(typeof newKnexConfig.client !== 'string'){
+            throw new Error('Configuration client only accept string')
+        }
+
+        // multipleStatements must be true
+        newKnexConfig.connection = Object.assign({}, newKnexConfig.connection, {multipleStatements: true})
+        
+        
+        // console.log('newKnexConfig', newKnexConfig)
+        this._globalKnexInstance = knex(newKnexConfig)
+        return this._globalKnexInstance
+    }
+
+    client = (): string => this.ormConfig.knexConfig.client.toString()
+
+    async startTransaction<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> {
+        let knex = this.getKnexInstance()
+        const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
+            return thenResult( func(trx), async(result) => {
+                if(!isExistingTrx){
+                    await trx.commit()
+                }
+                return result
+            }, async (error) => {
+                if(!isExistingTrx){
+                    await trx.rollback()
+                }
+                throw error
+            })
+        }
+            
+        if(existingTrx){
+            // use existing
+            return useTrx(existingTrx, true)
+        } else {
+            // use new
+            // let result: T | Promise<T>, error
+            
+            try{
+                //{isolationLevel: 'read committed'}
+                const trx = await knex.transaction()
+                return await useTrx(trx, false)
+            }catch(e){
+                // console.log('herere error', e)
+                // error = e
+                throw e
             }
-        }))
+        }
+        
     }
-    
-    if(ormConfig.outputSchemaPath){
-        globalContext.outputSchema(ormConfig.outputSchemaPath)
-    }
-
-    if(ormConfig.createModels){
-       await globalContext.createModels()
-    }
-
-    return await globalContext
 }
-
 
 
 // const breakdownMetaTableAlias = function(metaAlias: string) {
@@ -427,81 +421,32 @@ export const configure = async function(newConfig: Partial<ORMConfig>){
 // }
 
 
-function makeTableDatasource<E extends TableSchema, Name extends string>(schema: E, name: Name, executionContext: ExecutionContext){
-
-    let tableAlias = name
-    let tableName = executionContext.tablePrefix + schema.tableName
-    
-    const newSelector = makeRaw(`${quote(tableName)} AS ${quote(tableAlias)}`) as unknown as Datasource<E, Name>
-    // let newSelector = makeFromClause(null, null, selector, null) as unknown as TableDatasource<E, Name>
-    
-    newSelector.schema = schema
-    newSelector.executionContext = executionContext
-    // newSelector.tableName = tableName
-    newSelector.tableAlias = {
-        [tableAlias]: tableAlias
-    }
-
-    //@ts-ignore
-    newSelector.$ = new Proxy( this.schema ,{
-        get: (oTarget: TableSchema, sKey: string) => {
-
-            if(typeof sKey === 'string'){
-                let prop = oTarget.propertiesMap[sKey]
-                if(prop instanceof FieldProperty){
-                    // let tableAlias = quote(tableAlias)
-                    // let fieldName: string = 
-                    let alias = metaFieldAlias(prop)
-                    let rawTxt = `${quote(tableAlias)}.${quote(prop.fieldName)}`
-                    return makeColumn(alias, makeScalar(raw(rawTxt), prop.definition ) )
-                }
-                if(prop instanceof ComputeProperty){
-                    const cProp = prop
-                    return (args?: any) => {
-                        const subquery = cProp.compute.call(cProp, executionContext, newSelector, args)
-                        let alias = metaFieldAlias(cProp)
-                        return makeColumn(alias, subquery)
-                    }
-                }
-            }
-
-        }
-    }) as SelectorMap<E>
-
-    return newSelector
-}
-
-
-export type ExecutionContextConfig = {
+export type EntityRepositoryConfig = {
     tablePrefix: string
-    // isSoftDeleteMode: boolean
-    sqlRunCallback: ((sql: string) => void) | null
-    trx: Knex.Transaction<any, any[]> | null
 }
 
-export class ExecutionContext{
+export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entity}> {
+    private config: Partial<EntityRepositoryConfig> | null = null
+    readonly orm
+    private registeredModels: EntityClassMap
 
-    private _config: Partial<ExecutionContextConfig> | null = null
-    readonly name
-
-    constructor(name: string, config?: Partial<ExecutionContextConfig>){
-        this.name = name
-        this._config = config ?? null
+    constructor(orm: ORM<EntityClassMap>, registeredModels: EntityClassMap, config?: Partial<EntityRepositoryConfig> ){
+        // this.name = name
+        this.orm = orm
+        this.config = config ?? {}
+        this.registeredModels = registeredModels
     }
 
-    get config() {
-        if(!this._config){  
-            return ormConfig.globalContext
-        }
-        return this._config
+    get tablePrefix(){
+        return this.config?.tablePrefix ?? ''
     }
 
     get models(){
-        const context = this
-        const models = registeredModels
+        const repository = this
+        const models: EntityClassMap = this.registeredModels
         let proxyEntities = new Map<string, typeof Entity>()
 
-        let proxyRoot: {[key:string]: typeof Entity} = new Proxy(models, {
+        let proxyRoot: EntityClassMap = new Proxy(models, {
             get: (models, sKey: string): typeof Entity => {
                 let e = proxyEntities.get(sKey)
                 if(e){
@@ -509,13 +454,18 @@ export class ExecutionContext{
                 }else {
                     const newE: typeof Entity = new Proxy(models[sKey], {
                         get: (entityClass: typeof Entity, sKey: string) => {
-                            //@ts-ignore
-                            const method = entityClass[sKey]
-                            //@ts-ignore
-                            const referMethod = Database[sKey]
-                            if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
-                                return (...args: any[]) => referMethod(newE, context, ...args)
+
+                            if(sKey === 'repository'){
+                                return repository
                             }
+                            // @ts-ignore
+                            const method = entityClass[sKey]
+
+                            // //@ts-ignore
+                            // const referMethod = Database[sKey]
+                            // if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
+                            //     return (...args: any[]) => referMethod(newE, repository, ...args)
+                            // }
                             return method
                         }
                     })
@@ -530,7 +480,7 @@ export class ExecutionContext{
 
     schemaSqls(){
         let m = this.models
-        let sqls = Object.keys(m).map(k => m[k].schema).map(s => s.createTableStmt(this.config.tablePrefix)).filter(t => t)
+        let sqls = Object.keys(m).map(k => m[k].schema).map(s => s.createTableStmt(this.tablePrefix)).filter(t => t)
         return sqls
     }
 
@@ -544,47 +494,63 @@ export class ExecutionContext{
         // create tables
         // important: sqllite3 doesn't accept multiple statements
         await Promise.all( this.schemaSqls().map( async(sql) => {
-            await getKnexInstance().raw(sql)
+            await this.orm.getKnexInstance().raw(sql)
         }) )
     }
-
-    get sqlRunCallback(){
-        return this.config.sqlRunCallback
-    }
-
-    get trx(){
-        return this.config.trx
-    }
-
-    get tablePrefix(){
-        return this.config.tablePrefix ?? ''
-    }
-
-    // get isSoftDeleteMode(){
-    //     return this._isSoftDeleteMode
-    // }
-
-    async withTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
-        let result = await startTransaction<T>( async (trx) => {
-            return await func(trx === this.trx? this: this.clone({trx}))
-        }, this.trx)
-        return result
-    }
-
-    async withNewTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
-        let result = await startTransaction<T>( async (trx) => {
-            return await func(this.clone({trx}))
-        })
-        return result
-    }
-
-    clone(newConfig: Partial<ExecutionContextConfig>){
-        let final = Object.assign({}, this.config, newConfig)
-        return new ExecutionContext(this.name + '>' + makeid(5), final)
-    }
 }
-export const globalContext = new ExecutionContext('global')
-export const models = globalContext.models
+
+
+export type ExecutionOptions = {
+    // isSoftDeleteMode: boolean
+    onSqlRun?: ((sql: string) => void) | null
+    trx?: Knex.Transaction<any, any[]> | null
+}
+
+// export type ExecutionContextConfig = {
+//     // isSoftDeleteMode: boolean
+//     sqlRunCallback: ((sql: string) => void) | null
+//     trx: Knex.Transaction<any, any[]> | null
+// }
+
+// export class ExecutionContext{
+
+//     private _config: Partial<ExecutionContextConfig>
+
+//     constructor(config: Partial<ExecutionContextConfig> ){
+//         this._config = config
+//     }
+
+//     get trx(){
+//         return this._config.trx
+//     }
+
+//     // get isSoftDeleteMode(){
+//     //     return this._isSoftDeleteMode
+//     // }
+
+//     static async withTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
+//         let result = await startTransaction<T>( async (trx) => {
+//             return await func(trx === this.trx? this: this.clone({trx}))
+//         }, this.trx)
+//         return result
+//     }
+
+//     static async withNewTransaction<T>(func: (context: ExecutionContext) => (Promise<T> | T) ): Promise<T> {
+//         let result = await startTransaction<T>( async (trx) => {
+//             return await func(this.clone({trx}))
+//         })
+//         return result
+//     }
+
+//     clone(newConfig: Partial<ExecutionContextConfig>){
+//         let final = Object.assign({}, this.config, newConfig)
+//         return new ExecutionContext(this.name + '>' + makeid(5), final)
+//     }
+//     get sqlRunCallback(){
+//         return this.config.sqlRunCallback
+//     }
+// }
+
 
 type DatabaseActionResult<T> = T
 type DatabaseActionOptions<T extends TableSchema> = {
@@ -592,23 +558,23 @@ type DatabaseActionOptions<T extends TableSchema> = {
     //TODO: NYI
     // queryProps: SelectableProps<T>
 }
-type DatabaseAction<I, S extends TableSchema> = (context: ExecutionContext, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
+type DatabaseAction<I, S extends TableSchema> = (executionOptions: ExecutionOptions, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
 
 class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<I>{
-    protected ctx: ExecutionContext
+    protected execOptions: ExecutionOptions
     protected action: DatabaseAction<I, S>
     protected options: Partial<DatabaseActionOptions<S> > = {}
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(ctx: ExecutionContext, action: DatabaseAction<I, S>){
+    constructor(action: DatabaseAction<I, S>){
         // this.beforeAction = beforeAction
-        this.ctx = ctx
+        this.execOptions = {}
         this.action = action
     }
 
     protected async execAction(){
-        return await this.action(this.ctx, this.options)
+        return await this.action(this.execOptions, this.options)
     }
 
     async then<TResult1, TResult2 = never>(
@@ -638,17 +604,17 @@ class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<
     }
 
     usingConnection(trx: Knex.Transaction): this{
-        this.ctx = this.ctx.clone({trx})
+        this.execOptions.trx = trx
         return this
     }
 
     onSqlRun(callback: ((sql: string) => void) | null ) : this{
-        this.ctx = this.ctx.clone({sqlRunCallback: callback})
+        this.execOptions.onSqlRun = callback
         return this
     }
 
-    usingContext(ctx: ExecutionContext) : this{
-        this.ctx = ctx
+    withOptions(execOptions: ExecutionOptions) : this{
+        this.execOptions = execOptions
         return this
     }
 } 
@@ -666,8 +632,8 @@ export class DatabaseQueryRunner<I, S extends TableSchema> extends DatabaseActio
 
 export class DatabaseMutationRunner<I, S extends TableSchema> extends DatabaseQueryRunner<I, S>{
 
-    constructor(ctx: ExecutionContext, action: DatabaseAction<I, S>){
-        super(ctx, action)
+    constructor(action: DatabaseAction<I, S>){
+        super(action)
     }
 
     //TODO: implement
@@ -686,11 +652,10 @@ export class Database{
         return arg1
     }
     
-    static createOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T>, D>{
+    static createOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T>, D>{
         return new DatabaseMutationRunner< InstanceType<T>, D>(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let result = await Database._create<T>(entityClass, existingContext, [data])
+            async (executionOptions: ExecutionOptions) => {
+                let result = await Database._create<T>(entityClass, executionOptions, [data])
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
@@ -699,11 +664,10 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[], D>{
+    static createEach<T extends typeof Entity, D extends T["schema"]>(entityClass: T, arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[], D>{
         return new DatabaseMutationRunner< InstanceType<T>[], D >(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let result = await Database._create<T>(entityClass, existingContext, arrayOfData)
+            async (executionOptions: ExecutionOptions) => {
+                let result = await Database._create<T>(entityClass, executionOptions, arrayOfData)
                 return result.map( data => {
                         if(data === null){
                             throw new Error('Unexpected Flow.')
@@ -713,13 +677,18 @@ export class Database{
             })
     }
 
-    private static async _create<T extends typeof Entity>(entityClass: T, existingContext: ExecutionContext, values: MutationEntityPropertyKeyValues[]) {
+    private static async _create<T extends typeof Entity>(entityClass: T, executionOptions: ExecutionOptions, values: MutationEntityPropertyKeyValues[]) {
         const schema = entityClass.schema
         const actionName = 'create'
+
+        if(!entityClass.repository){
+            throw new Error('Not yet registered')
+        }
+        const repository = entityClass.repository
         
-        let useUuid: boolean = !!ormConfig.enableUuid
-        if (ormConfig.knexConfig.client.startsWith('sqlite')) {
-            if (!ormConfig.enableUuid ){
+        let useUuid: boolean = !!repository.orm.ormConfig.enableUuid
+        if (defaultORMConfig.knexConfig.client.startsWith('sqlite')) {
+            if (!defaultORMConfig.enableUuid ){
                 throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
             }
         }
@@ -728,10 +697,10 @@ export class Database{
         const schemaPrimaryKeyPropName = schema.id.name
         const schemaUUIDPropName = schema.uuid?.name
         
-        let fns = await existingContext.withTransaction(async (existingContext) => {
+        let fns = await entityClass.repository.orm.startTransaction(async (trx) => {
             let allResults = await Promise.all(values.map(async (value) => {
 
-                let propValues = await Database._prepareNewData(value, schema, actionName, existingContext)
+                let propValues = await Database._prepareNewData(value, schema, actionName, {trx})
                 
                 let newUuid = null
                 if(useUuid){
@@ -741,9 +710,10 @@ export class Database{
                     newUuid = uuidv4()
                     propValues[schemaUUIDPropName] = newUuid
                 }
-                let stmt = getKnexInstance()(existingContext.tablePrefix + schema.tableName).insert( this.extractRealField(schema, propValues) )
+                
+                let stmt = repository.orm.getKnexInstance()( repository.tablePrefix + schema.tableName).insert( this.extractRealField(schema, propValues) )
         
-                if (ormConfig.knexConfig.client.startsWith('pg')) {
+                if ( repository.orm.client().startsWith('pg')) {
                     stmt = stmt.returning( schemaPrimaryKeyFieldName )
                 }
         
@@ -757,52 +727,54 @@ export class Database{
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
                 // console.debug('========================')
-                if (ormConfig.knexConfig.client.startsWith('mysql')) {
+                if (repository.orm.client().startsWith('mysql')) {
                     let insertedId: number
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                    const r = await this.executeStatement(insertStmt, existingContext)
+                    const r = await this.executeStatement(insertStmt, executionOptions)
                     insertedId = r[0][0].insertId
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
 
-                    let record = await this.findOne<T, typeof schema>(entityClass, existingContext, {
+                    let record = await this.findOne<T, typeof schema>(entityClass, {
                         filter: {
                             id: insertedId
                         }
-                    })
-                    let b = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
+                    }).withOptions(executionOptions)
+
+                    let b = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
                     return b
-                } else if (ormConfig.knexConfig.client.startsWith('sqlite')) {
+                } else if (repository.orm.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
-                    const r = await this.executeStatement(insertStmt, existingContext)
+                    const r = await this.executeStatement(insertStmt, executionOptions)
                     
-                    if(ormConfig.enableUuid && schema.uuid){
+                    if(defaultORMConfig.enableUuid && schema.uuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await Database.findOne<T, typeof schema>(entityClass, existingContext, {
+                            let record = await Database.findOne<T, typeof schema>(entityClass, {
                                 //@ts-ignore
                                 filter: ({root}) => root.uuid.equals(uuid)
-                            })
+                            }).withOptions(executionOptions)
 
-                            return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
+                            return await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
                         }
                     } else {
                         return null
                     }
 
-                } else if (ormConfig.knexConfig.client.startsWith('pg')) {
+                } else if (repository.orm.client().startsWith('pg')) {
                     const insertStmt = input.sqlString.toString()
                     let insertedId: number
-                    const r = await this.executeStatement(insertStmt, existingContext)
+                    const r = await this.executeStatement(insertStmt, executionOptions)
                     
                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
-                    let record = await this.findOne<T, TableSchema>(entityClass, existingContext, {
+                    let record = await this.findOne<T, TableSchema>(entityClass, {
                         filter: {
                             id: insertedId
                         }
-                    })
-                    return await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
+                    }).withOptions(executionOptions)
+
+                    return await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
 
                 } else {
                     throw new Error('Unsupport client')
@@ -816,7 +788,7 @@ export class Database{
         return fns
     }
 
-    private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: TableSchema, actionName: MutationName, context: ExecutionContext) {
+    private static async _prepareNewData(data: MutationEntityPropertyKeyValues, schema: TableSchema, actionName: MutationName, executionOptions: ExecutionOptions) {
         
         let propValues = Object.keys(data).reduce(( propValues, propName) => {
             let foundProp = schema.properties.find(p => {
@@ -826,7 +798,7 @@ export class Database{
                 throw new Error(`The Property [${propName}] doesn't exist in ${schema.entityName}`)
             }
             const prop = foundProp
-            const propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, context)
+            const propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, executionOptions)
             propValues[prop.name] = propertyValue
             return propValues
         }, {} as MutationEntityPropertyKeyValues)
@@ -842,7 +814,7 @@ export class Database{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(context, record, {
+            record = await h.action(executionOptions, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundProp.name,
@@ -855,7 +827,7 @@ export class Database{
 
         propValues = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(context, record, {
+            record = await h.action(executionOptions, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
@@ -874,7 +846,7 @@ export class Database{
         schema: TableSchema,
         actionName: MutationName,
         inputProps: MutationEntityPropertyKeyValues, 
-        context: ExecutionContext): Promise<InstanceType<T>> {
+        executionOptions: ExecutionOptions): Promise<InstanceType<T>> {
 
         Object.keys(inputProps).forEach( key => {
             if( !(key in record) ){
@@ -893,7 +865,7 @@ export class Database{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(context, record, {
+            record = await h.action(executionOptions, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundProp.name,
@@ -906,7 +878,7 @@ export class Database{
 
         record = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(context, record, {
+            record = await h.action(executionOptions, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
@@ -925,11 +897,10 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>,  D >{
+    static findOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>,  D >{
         return new DatabaseQueryRunner< InstanceType<T>, D>(
-        existingContext?? globalContext,
-        async (existingContext: ExecutionContext) => {
-            let rows = await Database._find(entityClass, existingContext, applyFilter?? null)
+        async (executionOptions: ExecutionOptions) => {
+            let rows = await Database._find(entityClass, executionOptions, applyFilter?? null)
             return rows[0] ?? null
         })
     }
@@ -939,72 +910,71 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>[],  D >{
+    static find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>[],  D >{
         return new DatabaseQueryRunner< Array<InstanceType<T>>, D >(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext) => {
-                let rows = await Database._find(entityClass, existingContext, applyFilter?? null)
+            async (executionOptions: ExecutionOptions) => {
+                let rows = await Database._find(entityClass, executionOptions, applyFilter?? null)
                 return rows
         })
     }
 
-    private static async _find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, existingContext: ExecutionContext, applyFilter: SingleSourceArg<D> | null) {   
+    private static async _find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, executionOptions: ExecutionOptions, applyOptions: SingleSourceArg<D> | null) {   
         
-        let source = (entityClass.schema as D).datasource('root', existingContext)
+        let source = (entityClass.schema as D).datasource('root')
 
-        let options: SingleSourceQueryOptions<D> | null
-        if(applyFilter instanceof Function){
-            const f = applyFilter
-            options = applyFilter(existingContext, source)
-        }else {
-            options = applyFilter
-        }
-        let sqlString = builder()
+        // let options: SingleSourceQueryOptions<D> | null
+        // if(applyFilter instanceof Function){
+        //     const f = applyFilter
+        //     options = applyFilter(existingContext, source)
+        // }else {
+        //     options = applyFilter
+        // }
+        let sqlString = new Dataset()
             .props( resolveEntityProps(source, options?.props ) )
-            .from(source.asFromClause() )
-            .filter( options?.filter )
+            .from(source)
+
+        sqlString = applyOptions?.filter ? sqlString.filter(applyOptions?.filter) : sqlString
+
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        let resultData = await Database.executeStatement(sqlString, existingContext)
+        let resultData = await Database.executeStatement(sqlString, executionOptions)
 
         let rowData = null
-        if(ormConfig.knexConfig.client.startsWith('mysql')){
+        if(defaultORMConfig.knexConfig.client.startsWith('mysql')){
             rowData = resultData[0][0]
-        } else if(ormConfig.knexConfig.client.startsWith('sqlite')){
+        } else if(defaultORMConfig.knexConfig.client.startsWith('sqlite')){
             rowData = resultData[0]
-        } else if(ormConfig.knexConfig.client.startsWith('pg')){
+        } else if(defaultORMConfig.knexConfig.client.startsWith('pg')){
             rowData = resultData.rows[0]
         } else {
             throw new Error('Unsupport client.')
         }
-        let dualInstance = this.parseRaw(entityClass, existingContext, rowData)
+        let dualInstance = this.parseRaw(entityClass, executionOptions, rowData)
         // let str = "data" as keyof Dual
         let rows = dualInstance as Array<InstanceType<T>>
         return rows
     }
 
-    static updateOne<T extends typeof Entity, S extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
+    static updateOne<T extends typeof Entity, S extends T["schema"]>(entityClass: T, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
         return new DatabaseQueryRunner< InstanceType<T>, S >(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
-                let result = await Database._update(entityClass, existingContext, data, applyFilter??null, true, false,  actionOptions)
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
+                let result = await Database._update(entityClass, executionOptions, data, applyFilter??null, true, false,  actionOptions)
                 return result[0] ?? null
             }
         )
     }
 
-    static update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
+    static update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
         return new DatabaseMutationRunner< InstanceType<T>[], S >(
-            existingContext?? globalContext,
-            async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
-                let result = await Database._update(entityClass, existingContext, data, applyFilter??null, false, false, actionOptions)
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
+                let result = await Database._update(entityClass, executionOptions, data, applyFilter??null, false, false, actionOptions)
                 return result
             }
         )
     }
 
-    private static async _update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, existingContext: ExecutionContext, data: MutationEntityPropertyKeyValues,  
+    private static async _update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, executionOptions: ExecutionOptions, data: MutationEntityPropertyKeyValues,  
         applyFilter: SingleSourceFilter<S> | null, 
         isOneOnly: boolean,
         isDelete: boolean,
@@ -1014,8 +984,8 @@ export class Database{
         const schema = entityClass.schema
         const actionName = isDelete?'delete':'update'
 
-        const rootSource = entityClass.schema.datasource('root', existingContext)
-        let propValues = await Database._prepareNewData(data, schema, actionName, existingContext)
+        const rootSource = entityClass.schema.datasource('root')
+        let propValues = await Database._prepareNewData(data, schema, actionName, executionOptions)
 
         // let deleteMode: 'soft' | 'real' | null = null
         // if(isDelete){
@@ -1024,38 +994,44 @@ export class Database{
 
         const realFieldValues = this.extractRealField(schema, propValues)
         const input = {
-            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? (applyFilter? builder().from( rootSource.asFromClause() ).filter( resolveEntityFilter(s, applyFilter)).toQueryBuilder(): builder().from(rootSource.asFromClause() ).toQueryBuilder().update(realFieldValues) ): null,
-            selectSqlString: (applyFilter? builder().from(rootSource).filter( resolveEntityFilter(rootSource, applyFilter)): builder().from(rootSource.asFromClause()) ),
+            updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? 
+                            (applyFilter? new Dataset()
+                                            .from( rootSource )
+                                            .filter(applyFilter): 
+                                            new Dataset().from(rootSource ).native( qb => qb.update(realFieldValues)) ): null,
+            selectSqlString: (applyFilter? new Dataset()
+                                            .from(rootSource)
+                                            .filter(applyFilter):
+                                        new Dataset().from(rootSource) ),
             entityData: data
         }
 
         const schemaPrimaryKeyFieldName = schema.id.fieldName
         const schemaPrimaryKeyPropName = schema.id.name
 
-        let fns = await existingContext.withTransaction(async (existingContext) => {
+        let fns = await startTransaction(async (trx) => {
             if(!input.selectSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
             }
             let updateStmt = input.updateSqlString
-            let selectStmt = (await input.selectSqlString.toQueryBuilder()).select( schemaPrimaryKeyFieldName )
+            let selectStmt = input.selectSqlString.addNative( qb => qb.select( schemaPrimaryKeyFieldName ) )
             
             let pks: number[] = []
-            if (ormConfig.knexConfig.client.startsWith('pg')) {
+            if (defaultORMConfig.knexConfig.client.startsWith('pg')) {
                 let targetResult
                 if(updateStmt){
-                    updateStmt = updateStmt.returning(schemaPrimaryKeyFieldName)
-                    targetResult = await this.executeStatement(updateStmt, existingContext)
+                    updateStmt = updateStmt.native( qb => qb.returning(schemaPrimaryKeyFieldName) )
+                    targetResult = await this.executeStatement(updateStmt, executionOptions)
                 } else {
-                    targetResult = await this.executeStatement(selectStmt, existingContext)
+                    targetResult = await this.executeStatement(selectStmt, executionOptions)
                 }
                 let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
                     let pkValue = row[ schemaPrimaryKeyFieldName ]
-                    let record = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
-                    let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
+                    let record = await this.findOne(entityClass, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
+                    let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
                     if(isDelete){
-                        await this.executeStatement( builder(s).toQueryBuilder().where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
+                        await this.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                     }
-
                     // {
                     //     ...(querySelectAfterMutation? {select: querySelectAfterMutation}: {}),
                     //     where: { [entityClass.schema.primaryKey.name]: pkValue} 
@@ -1067,11 +1043,11 @@ export class Database{
                 return outputs
             } else {
 
-                if (ormConfig.knexConfig.client.startsWith('mysql')) {
-                    let result = await this.executeStatement(selectStmt, existingContext)
+                if (defaultORMConfig.knexConfig.client.startsWith('mysql')) {
+                    let result = await this.executeStatement(selectStmt, executionOptions)
                     pks = result[0].map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
-                } else if (ormConfig.knexConfig.client.startsWith('sqlite')) {
-                    let result = await this.executeStatement(selectStmt, existingContext)
+                } else if (defaultORMConfig.knexConfig.client.startsWith('sqlite')) {
+                    let result = await this.executeStatement(selectStmt, executionOptions)
                     pks = result.map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
                 } else {
                     throw new Error('NYI.')
@@ -1086,9 +1062,9 @@ export class Database{
                 }
     
                 return await Promise.all(pks.flatMap( async (pkValue) => {
-                    if (ormConfig.knexConfig.client.startsWith('mysql')) {
+                    if (defaultORMConfig.knexConfig.client.startsWith('mysql')) {
                         if(updateStmt){
-                            let updateResult = await this.executeStatement(updateStmt.clone().andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]), existingContext)
+                            let updateResult = await this.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), existingContext)
                             let numUpdates: number
                             numUpdates = updateResult[0].affectedRows
                             if(numUpdates > 1){
@@ -1100,13 +1076,13 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( ( await builder(schema.datasource('root', existingContext)).toQueryBuilder() ).where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( new Dataset(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), existingContext)
                         }
                         return finalRecord
                         
-                    } else if (ormConfig.knexConfig.client.startsWith('sqlite')) {
+                    } else if (defaultORMConfig.knexConfig.client.startsWith('sqlite')) {
                         if(updateStmt){
-                            let updateResult = await this.executeStatement(updateStmt.clone().andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]), existingContext)
+                            let updateResult = await this.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), existingContext)
                             let found = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
                             let data = input.entityData!
                             let unmatchedKey = Object.keys(data).filter( k => data[k] !== found[k])
@@ -1118,7 +1094,7 @@ export class Database{
                         let record = await this.findOne(entityClass, existingContext, {[schemaPrimaryKeyPropName]: pkValue})
                         let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, existingContext)
                         if(isDelete){
-                            await this.executeStatement( ( await builder(schema.datasource('root', existingContext)).toQueryBuilder() ).where( {[schemaPrimaryKeyFieldName]: pkValue} ).del(), existingContext)
+                            await this.executeStatement( new Dataset(schema.datasource('root') ).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), existingContext)
                         }
                         return finalRecord
                     } else {
@@ -1128,14 +1104,13 @@ export class Database{
             }
 
 
-        })
+        }, executionOptions.trx)
 
         return fns.filter(notEmpty)
     }
 
     static deleteOne<T extends typeof Entity, S extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
         return new DatabaseQueryRunner< InstanceType<T>, S>(
-            existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions< S > > ) => {
                 let result = await Database._update(entityClass, existingContext, data, applyFilter??null, true, true, actionOptions)
                 return result[0] ?? null
@@ -1145,7 +1120,6 @@ export class Database{
 
     static delete<T extends typeof Entity, S extends T["schema"]>(entityClass: T, existingContext: ExecutionContext | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
         return new DatabaseQueryRunner< InstanceType<T>[], S>(
-            existingContext?? globalContext,
             async (existingContext: ExecutionContext, actionOptions: Partial<DatabaseActionOptions< S > > ) => {
                 let result = await Database._update(entityClass, existingContext, data, applyFilter??null, false, true, actionOptions)
                 return result
@@ -1192,7 +1166,7 @@ export class Database{
                 })
 
                 if(!prop){
-                    if(!ormConfig.suppressErrorOnPropertyNotFound){
+                    if(!defaultORMConfig.suppressErrorOnPropertyNotFound){
                         throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
                     }
                 }else{
@@ -1241,23 +1215,24 @@ export class Database{
 }
 
 export class Entity {
+    static repository: EntityRepository<any> | null = null;
+
     [key: string]: any
     static schema: TableSchema
-    readonly _ctx: ExecutionContext
+    // readonly _ctx: ExecutionContext
     
-    constructor(ctx: ExecutionContext){
-        this._ctx = ctx
+    constructor(){
     }
 
     // get entityClass() {
     //     return this._ctx.models[this.constructor.name]
     // }
 
-    static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name, ctx: ExecutionContext ): Datasource<I["schema"], Name> {
-        return this.schema.datasource(name, ctx)
+    static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name ): Datasource<I["schema"], Name> {
+        return this.schema.datasource(name)
     }
 
-    static parseRaw<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), row: MutationEntityPropertyKeyValues, propName: string, ctx: ExecutionContext): I{
+    static parseRaw<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), row: MutationEntityPropertyKeyValues, propName: string, xc: ExecutionContext): I{
         let r = Database.parseRaw(this, null, row)
         return r as I
     }
@@ -1308,12 +1283,6 @@ export class Entity {
     static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["schema"]>): DatabaseQueryRunner<InstanceType<I>[], I["schema"]>{
         return Database.find(this, null, applyFilter)
     }
-
-    // static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), 
-    //     options: QueryX< I["schema"] > ): 
-    //     ObjectValue< I > { 
-    //     throw new Error()
-    // }
 
 }
 

@@ -1,7 +1,10 @@
-import { compute, Entity, ExecutionContext, field, TableSchema } from "."
-import { makeBuilder, Scalar, Scalarable } from "./Builder"
+import { compute, Entity, field, ORM, TableSchema } from "."
+import { Dataset, Scalar, Scalarable } from "./Builder"
 import { BooleanType, NumberType, PrimaryKeyType, StringType } from "./PropertyType"
 import { belongsTo, hasMany } from "./Relation"
+
+
+
 
 class ProductSchema extends TableSchema {
 
@@ -11,7 +14,7 @@ class ProductSchema extends TableSchema {
     shopId = field(NumberType)
     // shop = belongsTo<typeof Product, typeof Shop>('Shop', 'shopId')
     shop = belongsTo(Product, Shop, Product.schema.shopId)
-    myABC = compute(StringType, (ctx: ExecutionContext, root: any, args: number): Scalarable => {
+    myABC = compute(StringType, (root: any, args: number): Scalarable => {
         throw new Error()
     })
 }
@@ -34,32 +37,26 @@ class Shop extends Entity {
 }
 
 
-// type A = UnionToIntersection<{
-//     [key: string]: boolean
-// } | {
-//     a: number
-//     b: number
-// }>
+let orm = new ORM({
+    models: {Shop, Product}
+})
 
-// let zzz: A = {
-//     a: 333,
-//     eeeee: true,
-//     ccc: true
-// }
+let repository = orm.getRepository()
+repository.outputSchema('/schema')
+await repository.createModels()
 
-const context = new ExecutionContext('test')
 
-let s = Shop.datasource('shop', context)
+let s = repository.models.Shop.datasource('shop')
 
-let p = Product.datasource('product', context)
+let p = repository.models.Product.datasource('product')
 
-let myShop = makeBuilder().from(s).fields("shop.id", "shop.name").datasource("myShop")
+let myShop = new Dataset().from(s).fields("shop.id", "shop.name").datasource("myShop")
 
 // type A = ExtractSynComputeProps<ProductSchema>
 
 let xxx: Scalar<BooleanType>
 
-let dd = makeBuilder()
+let dd = new Dataset()
         .from(s)
         .innerJoin(p, ({product}) => product.id.equals(5) )
         .innerJoin(p, ({And}) => And({"product.id": 5}) )

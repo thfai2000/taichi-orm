@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { getKnexInstance, TableSchema, SelectorMap, ExecutionContext, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty } from "."
-import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, OrOperator, SQLKeywords, ValueOperator } from "./Operator"
+import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, ValueOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
-import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, notEmpty, quote, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -35,23 +35,18 @@ export type FieldPropertyValueMap<E> =  Partial<{
              
 }>
 
-export type Expression<O, M> = ((map: M) => Expression<O, M>) | Partial<FieldPropertyValueMap<O>>  
+export type SQLKeywords<Props, PropMap> = {
+    And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
+    Or: (...condition: Array<Expression<Props, PropMap> > ) => OrOperator<Props, PropMap>,
+    Not: (condition: Expression<Props, PropMap>) => NotOperator<Props, PropMap>
+}
+
+export type ExpressionFunc<O, M> = (map: M) => Expression<O, M>
+
+export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
     | AndOperator<O, M> 
     | OrOperator<O, M> 
     | Scalar | Promise<Scalar> | Array<Expression<O, M> > | boolean
-
-// export type PartialK<T, K extends PropertyKey = PropertyKey> =
-//   Partial<Pick<T, Extract<keyof T, K>>> & Omit<T, K> extends infer O ?
-//   { [P in keyof O]: O[P] } : never;
-
-
-//   type A = PartialK<{a: number, b: string}, "a" | "b">
-
-// let aaaa: A = {
-//     a: 5,
-//     b: "444",
-//     d: "eee"
-// }
 
 export type Prefixed<Prefix extends string, MainName extends String, Content> = {
     type: 'Prefixed',
@@ -74,98 +69,205 @@ export interface Scalarable {
 }
 
 export interface Datasource<E extends Schema, alias extends string> {
-    // (value: QueryFilter): Promise<Scalar> | Scalar
-    // impl: Datasource
+    sourceAlias: alias
     schema: E
-    executionContext: ExecutionContext
     $: SelectorMap<E>
-    //TODO: implement
+
+    toRaw(executionContext: ExecutionContext): SQLString
+    realSource(executionContext: ExecutionContext): SQLString
+    
     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
     getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
-    tableAlias: {
-        [key in keyof [alias] as alias]: string 
+    // tableAlias: {
+    //     [key in keyof [alias] as alias]: string 
+    // }
+}
+
+// export class DerivedDatasource<E extends Schema, Name extends string> implements Datasource<E, Name> {
+//     sourceAlias: Name
+//     schema: E
+//     $: SelectorMap<E>
+//     realSource(): SQLString {
+//         throw new Error("Method not implemented.")
+//     }
+//     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>
+//     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
+//     getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
+//     tableAlias: {}
+// }
+
+export class TableDatasource<E extends TableSchema, Name extends string> implements Datasource<E, Name> {
+
+    schema: E
+    sourceAlias: Name
+
+    $: SelectorMap<E>
+
+    constructor(schema: E, sourceAlias: Name){
+
+        if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
+            throw new Error('alias cannot start with Uppercase letter')
+        }
+
+        this.schema = schema
+        this.sourceAlias = sourceAlias
+
+        // this.executionContext = executionContext
+        // newSelector.tableName = tableName
+
+        // this.sourceAliasMap = {
+        //     [sourceAlias]: sourceAlias
+        // }
+        const datasource = this
+
+        //@ts-ignore
+        this.$ = new Proxy( this.schema ,{
+            get: (oTarget: Schema, sKey: string) => {
+
+                if(typeof sKey === 'string'){
+                    let prop = oTarget.propertiesMap[sKey]
+                    if(prop instanceof FieldProperty){
+                        // let tableAlias = quote(tableAlias)
+                        // let fieldName: string = 
+                        let alias = metaFieldAlias(prop)
+                        let rawTxt = `${quote(datasource.sourceAlias)}.${quote(prop.fieldName)}`
+                        return makeColumn(alias, makeScalar(makeRaw(rawTxt), prop.definition ) )
+                    }
+                    if(prop instanceof ComputeProperty){
+                        const cProp = prop
+                        return (args?: any) => {
+                            const subquery = cProp.compute.call(cProp, datasource, args)
+                            let alias = metaFieldAlias(cProp)
+                            return makeColumn(alias, subquery)
+                        }
+                    }
+                }
+
+            }
+        }) as SelectorMap<E>
     }
-    // allNormal: () => Column<any, any>[]
-    // asFromClause: () => FromClause< 
-    //         AddPrefix< FilterEntityPropertyKeyValues<E>, alias>,
-    //         {[key in alias]: FilterEntityPropertyKeyValues<E>}
-    //     >
-}
 
-export interface TableDatasource<E extends TableSchema, Name extends string> extends Datasource<E, Name> {
-    tableName: string
-}
-
-// type ConvertProps<NewProps, SourceProps> = 
-// export type ValuesOf<T extends any[]>= T[number];
-
-
-// type SourcePropsToDataset<Adhoc, P,SourceProps, SourcePropMap> = Dataset<
-//             UnionToIntersection<
-//             {
-//                 [key in keyof SourceProps
-//                     as 
-//                     (
-//                         key extends P? (
-//                             SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-//                             N & string
-//                             : 
-//                             never
-//                         ): never
-                        
-//                     )
-//                 ]: 
-//                     key extends P? (
-//                             SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-//                             C
-//                             : 
-//                             never
-//                         ): never
-//             }
-//             | 
-//             (Adhoc extends never? never:
-//                 {
-//                 [key in keyof Adhoc] :
-//                     Adhoc[key] extends Scalar<infer D> ?
-//                         D extends PropertyTypeDefinition?
-//                         FieldProperty<D>
-//                         : never
-//                     : never 
-//                 }
-//             )
-//             >
-//         , 
-//         SourceProps, SourcePropMap>
-
-
-
-export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.Raw, Scalarable {
-    __type: 'Dataset'
-    __whereRawItem: (selectorMap: { [key: string ]: SelectorMap<any> }) => Promise<any>
-    __selectItems: (selectorMap: { [key: string ]: SelectorMap<any> }) => Promise<SelectItem[]>
-    __fromItem: Datasource<Schema, string>
-    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Promise<any> }>
-
-    // __realSelect: Function
-    // __realClearSelect: Function
-    // clearSelect(): Dataset<any, SourceProps, SourcePropMap>
-    __realInnerJoin: Function
-    __realLeftJoin: Function
-    __realRightJoin: Function
-    // __realClone: Function //TODO: override the clone function
-    __realFrom: Function
-
-    toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap>
-    // clone(): Dataset<SelectProps, SourceProps, SourcePropMap>
+    getFieldProperty<Name extends string, T>(name: Name) : Column<Name, T> {
+        //TODO
+        throw new Error('NYI')
+    }
+    getComputeProperty<Name extends string, ARG extends any[], R>(name: string): CompiledComputeFunction<Name, ARG, R>{
+        //TODO
+        throw new Error('NYI')
+    }
+    getAysncComputeProperty<Name extends string, ARG extends any[], R>(name: string): CompiledComputeFunctionPromise<Name, ARG, R>{
+        //TODO
+        throw new Error('NYI')
+    }
     
-    getSelectorMap(): { [key: string ]: SelectorMap<any> }
-    selectedPropNames(): Promise<string[]>
-    toQueryBuilder(): Promise<Knex.QueryBuilder>
-    toScalar<T extends PropertyTypeDefinition>(d: T): Promise<Scalar<T>>
+    // tableAlias: {}
+
+    toRaw(){
+        return makeRaw(`${this.realSource()} AS ${quote(this.sourceAlias)}`)
+    }
+
+    realSource(){
+        let tableName = this.schema.tableName
+        if(!tableName){
+            throw new Error('Not yet registered')
+        }
+        return quote(tableName)
+    }
+}
+
+export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalarable {
+    __type: 'Dataset' = 'Dataset'
+    __whereRawItem: null |  ( (selectorMap: SourcePropMap) => Promise<any>) = null
+    __selectItems: null | ( (selectorMap: SourcePropMap) => Promise<SelectItem[]>) = null
+    __fromItem?: null | Datasource<Schema, string> = null
+    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> }> = []
+    
+    nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
+
+    constructor(fromSource?: Datasource<Schema, string> | null){
+        this.__fromItem = fromSource
+    }
+
+    toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap> {
+        return this
+    }
+    
+    getSelectorMap(): SourcePropMap {
+        let sources = this.__joinItems.map(item => item.source)
+        if(this.__fromItem){
+            sources.push(this.__fromItem)
+        }
+
+        const sourcePropMap = sources.reduce( (acc, source) => {
+            const t = source.sourceAlias
+            acc[t] = source.$
+            return acc
+        }, {} as {[key:string]: SelectorMap<any> } )
+
+        return sourcePropMap as unknown as SourcePropMap
+    }
+
+    async selectedPropNames(): Promise<string[]>{
+        if(!this.__selectItems){
+            return []
+        }
+        return (await this.__selectItems( this.getSelectorMap() ) ).map(item => {
+            return item.actualAlias
+        })
+    }
+    async toNativeBuilder(): Promise<Knex.QueryBuilder> {
+        let nativeQB = getKnexInstance().clearSelect()
+        
+        let finalSelectorMap = this.getSelectorMap()
+
+        await this.__joinItems.reduce( async(acc, item) => {
+            await acc
+            let finalExpr
+            if(item.expression instanceof Function){
+                finalExpr = await item.expression(finalSelectorMap)
+            }else{
+                finalExpr = item.expression
+            }
+            if(item.type === 'inner'){
+                nativeQB.innerJoin(item.source.toString(), finalExpr)
+            } else if(item.type === 'left'){
+                nativeQB.leftJoin(item.source.toString(), finalExpr)
+            } else if(item.type === 'right'){
+                nativeQB.rightJoin(item.source.toString(), finalExpr)
+            }
+            return true
+        }, Promise.resolve(true))
+        if(this.__whereRawItem){
+            nativeQB.where( await this.__whereRawItem( finalSelectorMap ) )
+        }
+        if(this.__selectItems){
+            nativeQB.select( await this.__selectItems( finalSelectorMap ) )
+        }
+        await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
+            await callback(nativeQB)
+        }))
+        return nativeQB
+    }
+
+    native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+        this.nativeBuilderCallbacks = []
+        this.addNative(nativeBuilderCallback)
+        return this
+    }
+    
+    addNative(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+        this.nativeBuilderCallbacks.push(nativeBuilderCallback)
+        return this
+    }
+
+    async toScalar<T extends PropertyTypeDefinition>(d: T): Promise<Scalar<T>>{
+        let qb = await this.toNativeBuilder()
+        return makeScalar(qb)
+    }
     
     fields<P extends keyof SourceProps>(...properties: P[]): 
-       Dataset<
+        Dataset<
             UnionToIntersection<
             SelectProps |
             {
@@ -190,11 +292,12 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
             }
             >
         , 
-        SourceProps, SourcePropMap>
+        SourceProps, SourcePropMap>{
+            throw new Error('NYI')
+    }
         
-    props<S extends { [key: string]: Scalar }>(named: S | 
-        ((exp: UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >        
-            ) => S) ): 
+    props<S extends { [key: string]: Scalar }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >>(named: S | 
+        ((map: Y ) => (Promise<S> | S) ) ): 
         Dataset<
             UnionToIntersection<
             SelectProps
@@ -209,65 +312,143 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
             }
             >
         , 
-        SourceProps, SourcePropMap>
+        SourceProps, SourcePropMap> {
+        this.__selectItems = async (selectorMap: SourcePropMap) => {
 
-    // compute<S extends Partial<{ [key in keyof SourceProps]: 
-    //      SourceProps[key] extends Prefixed<any, any, infer C> ? (
-    //          C extends ComputeProperty<any, any, any, infer Arg, any>?
-    //          Arg[0]: SourceProps[key]
-    //      ): never }> >(named: S): 
-    //     Dataset<
-    //         UnionToIntersection<
-    //         SelectProps
-    //         | 
-    //         {
-    //         [key in keyof S & keyof SourceProps] :
-    //             SourceProps[key]
-    //         }
-    //         >
-    //     , 
-    //     SourceProps, SourcePropMap>
+            let nameMap: { [key: string]: Scalar }
+            if(named instanceof Function){
+                const map = Object.assign({}, selectorMap, this.sqlKeywords<any, any>()) as Y
+                nameMap = await named(map)
+            }else {
+                nameMap = named
+            }
 
-    filter(filter?: Expression< ExtractFieldProps<SourceProps>, 
-        UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >        
-                > ): Dataset<SelectProps, SourceProps, SourcePropMap>
+            let items = await Promise.all(Object.keys(nameMap).map( async(k) => {
+                let scalar = nameMap[k] 
+                let expression = scalar.__expression
+                let definition = scalar.__definition
+                let alias = k
+                let finalExpr: string
+                if(definition && definition instanceof ComputePropertyTypeDefinition && definition.queryTransform){
+
+                    if(isDataset(expression)){
+                        let castedExpression = expression as unknown as Dataset<any, any, any>
+                        let extractedColumnNames = await castedExpression.selectedPropNames()
+                        if(extractedColumnNames.length === 0){
+                            throw new Error(`There is no selected column to be transformed as Computed Field '${alias}'. Please check your sql builder.`)
+                        }
+                        finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1').toString()
+                    
+                    } else if(isScalar(expression)){
+                        finalExpr = definition.queryTransform(expression, null, 'column1').toString()
+                    } else {
+                        throw new Error('QueryBuilders which are not created through TaiChi are not supported.')
+                    }
+
+                } else {
+                    finalExpr = expression.toString()
+                }
+
+                let text = finalExpr.toString().trim()
+
+                if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
+                    text = `(${text})`
+                }
+                return {
+                    value: makeRaw(`${text} AS ${quote(alias)}`),
+                    actualAlias: alias
+                }
+            }))
+            return items
+        }
+        return this as any
+    }
+
+    sqlKeywords<X, Y>(){
+        let sqlkeywords: SQLKeywords<X, Y> = {
+            
+        }
+        return sqlkeywords
+    }
+
+    clone(): Dataset<SelectProps, SourceProps, SourcePropMap> {
+        const newDataset = new Dataset<SelectProps, SourceProps, SourcePropMap>()
+        newDataset.__fromItem = this.__fromItem
+        newDataset.__joinItems = this.__joinItems.map(i => i)
+        newDataset.__selectItems = this.__selectItems
+        newDataset.__whereRawItem = this.__whereRawItem
+        newDataset.nativeBuilderCallbacks = this.nativeBuilderCallbacks.map(i => i)
+        return newDataset
+    }
+
+    filter<X extends ExtractFieldProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+        this.__whereRawItem = async (selectorMap: SourcePropMap) => {
+            let sources = this.__joinItems.map(item => item.source)
+            if(!this.__fromItem){
+                throw new Error('There must be a FROM before using filter.')
+            }
+            
+            let map = Object.assign({}, selectorMap, this.sqlKeywords<X, SourcePropMap>() ) as Y
+            let resolver = makeExpressionResolver<X, Y>(this.__fromItem, sources, map)
+            
+            let boolScalar = await resolver(expression)
+            return boolScalar
+        }
+        return this
+    }
 
     from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
         Dataset<S, 
             UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
-        >
+        > {
+            this.__fromItem = source
+            return this as any
+        }
 
-    innerJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, 
-        condition: Expression<
-            UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
-        >): Dataset<SelectProps, 
-        UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
-    >
+    innerJoin<S extends Schema, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        this.__joinItems.push( {
+            type: "inner",
+            source,
+            expression
+        })
+        return this as any
+    }
      
-    leftJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, 
-        condition: Expression<
-            UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
-        >): Dataset<SelectProps, 
-        UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
-    >
+    leftJoin<S extends Schema, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        this.__joinItems.push( {
+            type: "left",
+            source,
+            expression
+        })
+        return this as any
+    }
 
-    rightJoin<S extends Schema, SName extends string>(source: Datasource<S, SName>, condition: Expression<
-            UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-            UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
-        >):Dataset<SelectProps, 
-        UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } >
-    >
+    rightJoin<S extends Schema, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        this.__joinItems.push( {
+            type: "right",
+            source,
+            expression
+        })
+        return this as any
+    }
 
-    //TODO: implement
-    datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name>
+    datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
+        throw new Error('NYI')
+    }
 
-    //TODO: implement
     execute(): Promise<
         {
             [key in keyof SelectProps & string]: 
@@ -278,7 +459,9 @@ export interface Dataset<SelectProps, SourceProps, SourcePropMap> extends Knex.R
                     // boolean
                 : never
         }
-    >
+    > {
+        throw new Error('NYI')
+    }
 }
 
 
@@ -351,206 +534,6 @@ export const isScalar = (builder: any) : boolean => {
     return false
 }
 
-
-export const makeBuilder = function<T extends {}>(mainSelector?: Datasource<any, any> | null) : Dataset<T, any, any> {
-    let sealBuilder: Dataset<T, any, any>
-    // if(cloneFrom){
-    //     if(!isDataset(cloneFrom)){
-    //         throw new Error('Unexpected Flow.')
-    //     }
-    //     sealBuilder = cloneFrom.__realClone()
-    //     sealBuilder.__selectItems = cloneFrom.__selectItems.map(item => {
-    //         return {
-    //             actualAlias: item.actualAlias,
-    //             value: isScalar(item)? (item as unknown as Scalar).clone() : (isDataset(item)? (item as unknown as Dataset).toQueryBuilder().clone(): item.toString() )
-    //         }
-    //     })
-    //     sealBuilder.__fromSource = cloneFrom.__fromSource
-
-    // } else {
-    // }
-    sealBuilder = getKnexInstance().clearSelect() as unknown as Dataset<T, any, any>
-    sealBuilder.__joinItems = []
-    // @ts-ignore
-    sealBuilder.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-    sealBuilder.__type = 'Dataset'
-
-    // sealBuilder.__realSelect = sealBuilder.select
-    sealBuilder.props = <S extends { [key: string]: Scalar }>(named: S  | ((expr: any) => S | Promise<S> ) ) => {
-        sealBuilder.__selectItems = async (selectorMap: any) => {
-
-            let nameMap: { [key: string]: Scalar }
-            if(named instanceof Function) 
-                nameMap = await named( selectorMap )
-            else nameMap = named
-
-            let items = await Promise.all(Object.keys(nameMap).map( async(k) => {
-                let scalar = nameMap[k] 
-                let expression = scalar.__expression
-                let definition = scalar.__definition
-                let alias = k
-                let finalExpr: string
-                if(definition && definition instanceof ComputePropertyTypeDefinition && definition.queryTransform){
-
-                    if(isDataset(expression)){
-                        let castedExpression = expression as unknown as Dataset<any, any, any>
-                        let extractedColumnNames = await castedExpression.selectedPropNames()
-                        if(extractedColumnNames.length === 0){
-                            throw new Error(`There is no selected column to be transformed as Computed Field '${alias}'. Please check your sql builder.`)
-                        }
-                        finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1').toString()
-                    
-                    } else if(isScalar(expression)){
-                        finalExpr = definition.queryTransform(expression, null, 'column1').toString()
-                    } else {
-                        throw new Error('QueryBuilders which are not created through TaiChi are not supported.')
-                    }
-
-                } else {
-                    finalExpr = expression.toString()
-                }
-
-                let text = finalExpr.toString().trim()
-
-                if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
-                    text = `(${text})`
-                }
-                return {
-                    value: makeRaw(`${text} AS ${quote(alias)}`),
-                    actualAlias: alias
-                }
-            }))
-            return items
-        }
-        return sealBuilder as any
-    }
-
-    // sealBuilder.__realClearSelect = sealBuilder.clearSelect
-    // sealBuilder.clearSelect = function(){
-    //     sealBuilder.__selectItems = Promise.resolve([])
-    //     return sealBuilder.__realClearSelect()
-    // }
-    sealBuilder.getSelectorMap = () => {
-        let sources = sealBuilder.__joinItems.map(item => item.source)
-        sources.push(sealBuilder.__fromItem)
-
-        const sourcePropMap = sources.reduce( (acc, source) => {
-            const t = Object.keys(source.tableAlias)[0]
-            // acc[t] = source.schema.properties.reduce( (acc, prop) => {
-            //     acc[prop.name] = source.getComputeProperty(prop.name)
-            //     return acc
-            // }, {} as SelectorMap<any>)
-            acc[t] = source.$
-            return acc
-        }, {} as {[key:string]: SelectorMap<any> } )
-
-        return sourcePropMap
-    }
-
-    // sealBuilder.__realClone = sealBuilder.clone
-    // sealBuilder.clone = function(){
-    //     return makeBuilder(null, sealBuilder)
-    // }
-
-    sealBuilder.__realInnerJoin = sealBuilder.innerJoin
-    sealBuilder.innerJoin = (source: Datasource<any, any>, expr: any) => {
-        sealBuilder.__joinItems.push( {
-            type: "inner",
-            source,
-            expression: expr
-        })
-        return sealBuilder
-    }
-
-    sealBuilder.__realLeftJoin = sealBuilder.leftJoin
-    sealBuilder.leftJoin = (source: Datasource<any, any>, expr: any) => {
-        sealBuilder.__joinItems.push( {
-            type: "left",
-            source,
-            expression: expr
-        })
-        return sealBuilder
-    }
-
-    sealBuilder.__realRightJoin = sealBuilder.rightJoin
-    sealBuilder.rightJoin = (source: Datasource<any, any>, expr: any) => {
-        sealBuilder.__joinItems.push( {
-            type: "right",
-            source,
-            expression: expr
-        })
-        return sealBuilder
-    }
-
-    sealBuilder.selectedPropNames = async (): Promise<string[]> => {
-        // let ourBuilder = castAsRow(builderOrRaw)
-        
-        return (await sealBuilder.__selectItems( await sealBuilder.getSelectorMap() ) ).map(item => {
-            return item.actualAlias
-        })
-    }
-
-    sealBuilder.toQueryBuilder = async (): Promise<Knex.QueryBuilder> => {
-        let nativeQB = sealBuilder as unknown as Knex.QueryBuilder
-        
-        let finalSelectorMap = await sealBuilder.getSelectorMap()
-
-        await sealBuilder.__joinItems.reduce( async(acc, item) => {
-            await acc
-            let finalExpr
-            if(item.expression instanceof Function){
-                finalExpr = await item.expression(finalSelectorMap)
-            }else{
-                finalExpr = item.expression
-            }
-            if(item.type === 'inner'){
-                sealBuilder.__realInnerJoin(item.source.toString(), finalExpr)
-            } else if(item.type === 'left'){
-                sealBuilder.__realLeftJoin(item.source.toString(), finalExpr)
-            } else if(item.type === 'right'){
-                sealBuilder.__realRightJoin(item.source.toString(), finalExpr)
-            }
-            return true
-        }, Promise.resolve(true))
-
-        nativeQB.where( await sealBuilder.__whereRawItem( finalSelectorMap ) )
-        nativeQB.select( await sealBuilder.__selectItems( finalSelectorMap ) )
-        return nativeQB
-    }
-
-    sealBuilder.toDataset = (): Dataset<any, any, any> => {
-        return sealBuilder 
-    }
-
-    sealBuilder.toScalar = async <T extends PropertyTypeDefinition>(d: T): Promise<Scalar<T>> =>{
-        let qb = await sealBuilder.toQueryBuilder()
-        return makeScalar(qb)
-    }
-
-    sealBuilder.__realFrom = sealBuilder.from
-    sealBuilder.from = <S extends Schema, SName extends string>(source: Datasource<S, SName>) => {
-        sealBuilder.__fromItem = source
-        sealBuilder.__realFrom(source.toString())
-        return sealBuilder as unknown as Dataset<S, any, any>
-    }
-
-    sealBuilder.filter = (expression: Expression<any, any>): Dataset<any, any, any> => {
-        sealBuilder.__whereRawItem = async (selectorMap: {[key:string]: SelectorMap<any>}) => {
-            let sources = sealBuilder.__joinItems.map(item => item.source)
-            let resolver = makeExpressionResolver(sealBuilder.__fromItem, sources, selectorMap)
-            let boolScalar = await resolver(expression)
-            return boolScalar
-        }
-        return sealBuilder
-    }
-
-    // //after the select is override, add default 'all'
-    // if(mainSelector){
-    //     sealBuilder = sealBuilder.select(...mainSelector.all).from(mainSelector)
-    // }
-
-    return sealBuilder
-}
 
 export const makeRaw = (first: any, ...args: any[]) => {
     let r = getKnexInstance().raw(first, ...args)
@@ -632,14 +615,14 @@ export const makeColumn = <Name extends string, T>(alias: Name, col: Scalar<T>) 
 //     })
 // }
 
-export type ExpressionResolver<Props, M> = (value: Expression<Props, M>) => Scalar | Promise<Scalar>
+export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar | Promise<Scalar>
 
-export const makeExpressionResolver = function<Props, M extends {[key:string]: SelectorMap<any>}>(fromSource: Datasource<any, any>, sources: Datasource<any, any>[], sourcePropMap: M) {
+export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any>, sources: Datasource<any, any>[], dictionary: M) {
 
-    const resolver: ExpressionResolver<Props, M> = async (expression: Expression<Props, M>) => {
+    const resolver: ExpressionResolver<Props, M> = async (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
         let value
         if( expression instanceof Function) {
-            value = await expression(sourcePropMap)
+            value = await expression(dictionary)
         } else {
             value = expression
         }
@@ -662,9 +645,9 @@ export const makeExpressionResolver = function<Props, M extends {[key:string]: S
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
                     propName = sourceName
-                    sourceName = Object.keys(fromSource.tableAlias)[0]
+                    sourceName = fromSource.sourceAlias//Object.keys(fromSource.tableAlias)[0]
                 }
-                let source = sources.find(s => Object.keys(s.tableAlias)[0] === sourceName)
+                let source = sources.find(s => fromSource.sourceAlias === sourceName)
                 if(!source){
                     throw new Error(`cannot found source (${source})`)
                 }

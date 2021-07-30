@@ -253,12 +253,6 @@ export class IsNotNullOperator extends ValueOperator {
 // export type ConditionOperatorCall<Props> = (...condition: Array<Expression<Props> > ) => ConditionOperator<Props>
 
 
-export type SQLKeywords<Props, PropMap> = {
-    And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
-    Or: (...condition: Array<Expression<Props, PropMap> > ) => OrOperator<Props, PropMap>,
-    Not: (condition: Expression<Props, PropMap>) => NotOperator<Props, PropMap>
-}
-
 // const Or = (...condition: Array<Expression<any>>) => new OrOperator<any>(...condition)
 // const Not = (condition: Expression<any>) => new NotOperator<any>(condition)
 // const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
