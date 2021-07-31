@@ -1,12 +1,48 @@
 // import { Knex } from "knex"
 import { extend } from "lodash"
-import { Entity, client, FieldProperty, ExecutionContext, ComputeFunction, TableSchema, Property } from "."
+import { Entity, FieldProperty, ComputeFunction, TableSchema, Property, EntityRepository, ExecutionOptions, ORM } from "."
 import { makeid, quote, SimpleObject, SQLString } from "./util"
+
+
+const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
+const autoIncrement = (client: string) =>  client.startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
+const jsonArrayAgg = (client: string) => {
+    if( client.startsWith('sqlite') )
+        return 'JSON_GROUP_ARRAY'
+    else if (client.startsWith('mysql'))    
+        return 'JSON_ARRAYAGG'
+    else if (client.startsWith('pg'))
+        return 'JSON_AGG'
+    else
+        throw new Error('NYI')
+}
+const jsonObject = (client: string) => {
+    if( client.startsWith('sqlite') )
+        return 'JSON_OBJECT'
+    else if (client.startsWith('mysql'))    
+        return 'JSON_OBJECT'
+    else if (client.startsWith('pg'))
+        return 'JSON_BUILD_OBJECT'
+    else
+        throw new Error('NYI')   
+}
+
+const emptyJsonArray = (client: string) => {
+    if( client.startsWith('sqlite') )
+        return 'JSON_ARRAY()'
+    else if (client.startsWith('mysql'))    
+        return 'JSON_ARRAY()'
+    else if (client.startsWith('pg'))
+        return "'[]'::json"
+    else
+        throw new Error('NYI')
+}
+
 
 export interface Parsable<D>{
     new (...args: any[]): D
-    parseProperty(propertyvalue: D, propName: string, ctx: ExecutionContext): any
-    parseRaw(rawValue: any, prop: string, context: ExecutionContext): D
+    parseProperty(propertyvalue: D, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): D
 }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
@@ -27,59 +63,25 @@ export class PropertyTypeDefinition<I = any> {
     constructor(options?: any){
         this.options = this.options ??options
     }
-    parseRaw(rawValue: any, prop: string, context: ExecutionContext): I {
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): I {
         return rawValue
     }
-    parseProperty(propertyvalue: I, prop: string, context: ExecutionContext): any {
+    parseProperty(propertyvalue: I, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
         return propertyvalue
     }
 }
 
 export class FieldPropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
-    create(propName: string, fieldName: string) : string[] {
+    create(propName: string, fieldName: string, client: string) : string[] {
         throw new Error('It is not allowed')
     }
 }
 
 export class ComputePropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string): SQLString {
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): SQLString {
         throw new Error('It is not allowed')
     }
     
-}
-
-const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'
-const autoIncrement = () =>  client().startsWith('sqlite')? 'AUTOINCREMENT': 'AUTO_INCREMENT'
-const jsonArrayAgg = () => {
-    if( client().startsWith('sqlite') )
-        return 'JSON_GROUP_ARRAY'
-    else if (client().startsWith('mysql'))    
-        return 'JSON_ARRAYAGG'
-    else if (client().startsWith('pg'))
-        return 'JSON_AGG'
-    else
-        throw new Error('NYI')
-}
-const jsonObject = () => {
-    if( client().startsWith('sqlite') )
-        return 'JSON_OBJECT'
-    else if (client().startsWith('mysql'))    
-        return 'JSON_OBJECT'
-    else if (client().startsWith('pg'))
-        return 'JSON_BUILD_OBJECT'
-    else
-        throw new Error('NYI')   
-}
-
-const emptyJsonArray = () => {
-    if( client().startsWith('sqlite') )
-        return 'JSON_ARRAY()'
-    else if (client().startsWith('mysql'))    
-        return 'JSON_ARRAY()'
-    else if (client().startsWith('pg'))
-        return "'[]'::json"
-    else
-        throw new Error('NYI')
 }
 
 export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
@@ -102,12 +104,12 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
         return propertyvalue
     }
 
-    create(fieldName: string): string[]{
+    create(propName: string, fieldName: string, client: string): string[]{
 
-        if( client().startsWith('pg') ){
+        if( client.startsWith('pg') ){
             return [
                 [
-                    `${quote(fieldName)}`,
+                    `${quote(client, fieldName)}`,
                     'SERIAL', 
                     nullableText(false), 
                     'PRIMARY KEY',
@@ -116,11 +118,11 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
         } else {
             return [
                 [
-                    `${quote(fieldName)}`,
+                    `${quote(client, fieldName)}`,
                     'INTEGER', 
                     nullableText(false), 
                     'PRIMARY KEY', 
-                    autoIncrement(),
+                    autoIncrement(client),
                 ].join(' ')
             ]
         }
@@ -140,7 +142,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
         return true
     }
         
-    parseRaw(rawValue: any): number | null {
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>): number | null {
         if(rawValue === null)
             return null
         else if(Number.isInteger(rawValue)){
@@ -154,10 +156,10 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
         }
         return propertyvalue
     }
-    create(propName: string, fieldName: string){
+    create(propName: string, fieldName: string, client: string){
         return [
             [
-                `${quote(fieldName)}`, 
+                `${quote(client, fieldName)}`, 
                 'INTEGER', 
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
@@ -175,8 +177,8 @@ export class NumberTypeNotNull extends NumberType {
         return false
     }
 
-    override parseRaw(rawValue: any): number {
-        let r = super.parseRaw(rawValue)
+    override parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): number {
+        let r = super.parseRaw(rawValue, propName, repository)
         if(r === null){
             throw new Error('Unexpected')
         }
@@ -211,13 +213,13 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string){
+    create(propName: string, fieldName: string, client: string){
 
         let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
         return [
             [
-                `${quote(fieldName)}`, 
+                `${quote(client, fieldName)}`, 
                 `DECIMAL${c.length > 0?`(${c})`:''}`,
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
@@ -239,7 +241,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         return true
     }
 
-    parseRaw(rawValue: any, propName: string, ctx?: ExecutionContext): boolean | null {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): boolean | null {
         //TODO: warning if nullable is false but value is null
         if(rawValue === null)
             return null
@@ -252,20 +254,20 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: boolean | null, propName: string, ctx?: ExecutionContext): any {
+    parseProperty(propertyvalue: boolean | null, propName: string, repository: EntityRepository<any>): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue === null? null: (propertyvalue? '1': '0')
     }
 
-    create(propName: string, fieldName: string){
+    create(propName: string, fieldName: string, client: string){
         return [
             [
-                `${quote(fieldName)}`,
-                ( client().startsWith('pg')?'SMALLINT':`TINYINT(1)`),
+                `${quote(client, fieldName)}`,
+                ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, repository)}`:'') 
             ].join(' ')
         ]
     }
@@ -296,11 +298,11 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string){
+    create(propName: string, fieldName: string, client: string){
         let c = [this.options.length].filter(v => v).join(',')
         return [
             [
-                `${quote(fieldName)}`,
+                `${quote(client, fieldName)}`,
                 `VARCHAR${c.length > 0?`(${c})`:''}`,
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
@@ -351,10 +353,10 @@ export class DateType extends FieldPropertyTypeDefinition<Date | null> {
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string){
+    create(propName: string, fieldName: string, client: string){
         return [
             [
-                `${quote(fieldName)}`,
+                `${quote(client, fieldName)}`,
                 `DATE`,
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
@@ -388,12 +390,12 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string){
+   create(propName: string, fieldName: string, client: string){
         let c = [this.options.precision].filter(v => v).join(',')
         return [
             [
-                `${quote(fieldName)}`,
-                (client().startsWith('pg')? `TIMESTAMP${c.length > 0?`(${c})`:''}`: `DATETIME${c.length > 0?`(${c})`:''}`),
+                `${quote(client, fieldName)}`,
+                (client.startsWith('pg')? `TIMESTAMP${c.length > 0?`(${c})`:''}`: `DATETIME${c.length > 0?`(${c})`:''}`),
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
             ].join(' ')
@@ -416,17 +418,17 @@ export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeD
         return true
     }
                 
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string){
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>){
         if(columns === null){
             throw new Error('Only Dataset can be the type of \'ObjectOf\'')
         }
-        let jsonify =  `SELECT ${jsonObject()}(${
+        let jsonify =  `SELECT ${jsonObject(repository)}(${
                 columns.map(c => `'${c}', ${quote(c)}`).join(',')
             }) AS ${quote(intoSingleColumn)} FROM (${query.toString()}) AS ${quote(makeid(5))}`
         return jsonify
     }
     
-    parseRaw(rawValue: any, propName: string, context: ExecutionContext): E extends Parsable<infer D>? D: any {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): E extends Parsable<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -439,17 +441,17 @@ export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeD
             throw new Error('It is not supported.')
         }
         // const entityClass = context.models[this.entityClassName] as unknown as E
-        return this.parsable.parseRaw(parsed, propName, context)
+        return this.parsable.parseRaw(parsed, propName, repository, executionOptions)
     }
     
-    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, ctx: ExecutionContext): any {
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
         // return propertyvalue
         // throw new Error('NYI')
-        return this.parsable.parseProperty(propertyvalue, propName, ctx)
+        return this.parsable.parseProperty(propertyvalue, propName, repository, executionOptions)
     }
 }
 
@@ -479,7 +481,7 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         return this.type.transformFromMultipleRows
     }
 
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string) {
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions) {
 
         if(!intoSingleColumn){
             throw new Error('Unexpected Flow.')
@@ -489,21 +491,21 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         let objectify
 
         if(this.type instanceof ComputePropertyTypeDefinition && this.type.queryTransform){
-            objectify =  `(${this.type.queryTransform(query, columns, innerLevelColumnName)})`
+            objectify =  `(${this.type.queryTransform(query, columns, innerLevelColumnName, repository, executionOptions)})`
         } else {
             objectify =  `(${query})`
         }
 
         if( !this.type.transformIntoMultipleRows ){
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${query}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)}`
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg(repository)}(${query}), ${emptyJsonArray(repository)}) AS ${quote(intoSingleColumn)}`
             return jsonify
         } else {
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg()}(${quote(innerLevelColumnName)}), ${emptyJsonArray()}) AS ${quote(intoSingleColumn)} FROM ${objectify} AS ${quote(makeid(5))}`
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg(repository)}(${quote(innerLevelColumnName)}), ${emptyJsonArray(repository)}) AS ${quote(intoSingleColumn)} FROM ${objectify} AS ${quote(makeid(5))}`
             return jsonify
         }
     }
 
-    parseRaw(rawValue: any, propName: string, context: ExecutionContext): ReturnType<T["parseRaw"]>[] {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): ReturnType<T["parseRaw"]>[] {
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -515,15 +517,15 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
             throw new Error('It is not supported.')
         }
         return parsed.map( raw => {
-            return this.type.parseRaw(raw, propName, context)
+            return this.type.parseRaw(raw, propName, repository, executionOptions)
         })
     }
-    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, ctx: ExecutionContext): any {
+    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
-        return this.type.parseProperty(propertyvalue, propName, ctx)
+        return this.type.parseProperty(propertyvalue, propName, repository, executionOptions)
     }
 }
 

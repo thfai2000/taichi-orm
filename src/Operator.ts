@@ -2,28 +2,29 @@ import {Scalar, isScalar, makeScalar, makeRaw as raw, ExpressionResolver, Expres
 import {Knex} from 'knex'
 import { BooleanType } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
+import { EntityRepository } from '.'
 
 
 abstract class SQLFunction<Props, SourcePropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
-    abstract toRaw(resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
+    abstract toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
 }
 
 export abstract class ConditionOperator<Props, SourcePropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
 
-    abstract toRaw(resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
+    abstract toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, SourcePropMap>): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, SourcePropMap>): Scalar | Promise<Scalar>
 }
 
 export abstract class ValueOperator {
     // abstract toRaw(leftOperand: Scalar ): Knex.Raw
     // abstract toScalar(leftOperand: Scalar ): Scalar
-    abstract toRaw(leftOperand: Scalar ): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(leftOperand: Scalar ): Scalar | Promise<Scalar>
+    abstract toRaw(repository: EntityRepository<any>, leftOperand: Scalar ): Knex.Raw | Promise<Knex.Raw>
+    abstract toScalar(repository: EntityRepository<any>, leftOperand: Scalar ): Scalar | Promise<Scalar>
 }
 
 export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
@@ -32,17 +33,17 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw( 
+    toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
             args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         ))
         // return raw( 
         //     this.args.map(arg => `${resolver(arg).toString()}`).join(' AND ')
         // )
     }
-    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
-        const p = this.toRaw(resolver)
-        return thenResult(p, r => makeScalar(r, new BooleanType()))
+    toScalar(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
+        const p = this.toRaw(repository, resolver)
+        return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
@@ -53,8 +54,8 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         super()
         this.args = args
     }
-    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-        return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(
+    toRaw(repository: EntityRepository<any>,resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+        return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
             `(${args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
         ))
         // return raw( 
@@ -62,9 +63,9 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         // )
     }
     
-    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
-        const p = this.toRaw(resolver)
-        return thenResult(p, r => makeScalar(r, new BooleanType()))
+    toScalar(repository: EntityRepository<any>,resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
+        const p = this.toRaw(repository, resolver)
+        return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
@@ -76,14 +77,14 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         this.arg = arg
     }
 
-    toRaw(resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-        return thenResult(this.arg, arg => raw( `NOT (${resolver(arg).toString()})`) )
+    toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+        return thenResult(this.arg, arg => raw(repository, `NOT (${resolver(arg).toString()})`) )
         // return raw( `NOT (${resolver(this.arg).toString()})`)
     }
     
-    toScalar(resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
-        const p = this.toRaw(resolver)
-        return thenResult(p, r => makeScalar(r, new BooleanType()))
+    toScalar(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Scalar | Promise<Scalar>{
+        const p = this.toRaw(repository, resolver)
+        return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
     }
 }
@@ -95,15 +96,15 @@ export class ContainOperator extends ValueOperator {
         this.rightOperands = rightOperands
     }
 
-    toRaw(leftOperand: Scalar): Knex.Raw | Promise<Knex.Raw>{
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar): Knex.Raw | Promise<Knex.Raw>{
         // return  raw( `${leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
+        return thenResultArray(this.rightOperands, rightOperands => raw(repository, `${leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     }
 
-    toScalar(leftOperand: Scalar): Scalar | Promise<Scalar>{
-        const p = this.toRaw(leftOperand)
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar): Scalar | Promise<Scalar>{
+        const p = this.toRaw(repository, leftOperand)
         // return makeScalar(p, new BooleanType())
-        return thenResult(p, r => makeScalar(r, new BooleanType()))
+        return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
     }
 }
 
@@ -114,14 +115,14 @@ export class NotContainOperator extends ValueOperator {
         this.rightOperands = rightOperands
     }
 
-    toRaw(leftOperand: Scalar){
-        return  raw( `${leftOperand} NOT IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar){
+        return  raw(repository, `${leftOperand} NOT IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         // return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     }
 
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -132,14 +133,14 @@ export class LikeOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Scalar){
-        return raw( `${leftOperand} LIKE ?`, [this.rightOperand])
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar){
+        return raw(repository, `${leftOperand} LIKE ?`, [this.rightOperand])
         // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     }
     
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -150,14 +151,14 @@ export class NotLikeOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Scalar){
-        return raw( `${leftOperand} NOT LIKE ?`, [this.rightOperand])
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar){
+        return raw(repository, `${leftOperand} NOT LIKE ?`, [this.rightOperand])
         // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} NOT LIKE ?`, [rightOperand]) )
     }
     
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -168,7 +169,7 @@ export class EqualOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Scalar){
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar){
         // return thenResult(this.rightOperand, (value: any) => {
         //     if(isScalar(value)){
         //         return raw( `${leftOperand} = ??`, [value.toString()])
@@ -177,15 +178,15 @@ export class EqualOperator extends ValueOperator {
         // })
         
         if(isScalar(this.rightOperand)){
-            return raw( `${leftOperand} = ??`, [this.rightOperand.toString()])
+            return raw(repository, `${leftOperand} = ??`, [this.rightOperand.toString()])
         }
-        else return raw( `${leftOperand} = ?`, [this.rightOperand])
+        else return raw(repository, `${leftOperand} = ?`, [this.rightOperand])
     
     }
 
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -196,7 +197,7 @@ export class NotEqualOperator extends ValueOperator {
         this.rightOperand = rightOperand
     }
 
-    toRaw(leftOperand: Scalar): Knex.Raw {
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar): Knex.Raw {
         // return thenResult(this.rightOperand, (value: any) => {
         //     if(isScalar(value)){
         //         return raw( `${leftOperand} <> ??`, [value.toString()])
@@ -204,14 +205,14 @@ export class NotEqualOperator extends ValueOperator {
         //     else return raw( `${leftOperand} <> ?`, [value])
         // })
         if(isScalar(this.rightOperand)){
-            return raw( `${leftOperand} <> ??`, [this.rightOperand.toString()])
+            return raw(repository, `${leftOperand} <> ??`, [this.rightOperand.toString()])
         }
-        else return raw( `${leftOperand} <> ?`, [this.rightOperand])
+        else return raw(repository, `${leftOperand} <> ?`, [this.rightOperand])
     }
 
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -220,13 +221,13 @@ export class IsNullOperator extends ValueOperator {
         super()
     }
 
-    toRaw(leftOperand: Scalar): Knex.Raw {
-        return raw(`${leftOperand} IS NULL`)
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar): Knex.Raw {
+        return raw(repository, `${leftOperand} IS NULL`)
     }
 
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 
@@ -235,13 +236,13 @@ export class IsNotNullOperator extends ValueOperator {
         super()
     }
 
-    toRaw(leftOperand: Scalar): Knex.Raw {
-        return raw(`${leftOperand} IS NOT NULL`)
+    toRaw(repository: EntityRepository<any>, leftOperand: Scalar): Knex.Raw {
+        return raw(repository, `${leftOperand} IS NOT NULL`)
     }
 
-    toScalar(leftOperand: Scalar){
-        const p = this.toRaw(leftOperand)
-        return makeScalar(p, new BooleanType())
+    toScalar(repository: EntityRepository<any>, leftOperand: Scalar){
+        const p = this.toRaw(repository, leftOperand)
+        return makeScalar(repository, p, new BooleanType())
     }
 }
 

@@ -1,6 +1,7 @@
 import { Knex } from "knex"
-import { client, ComputeProperty, FieldProperty, Property, TableSchema } from "."
+import { ComputeProperty, FieldProperty, Property, TableSchema } from "."
 import { Scalar, Scalarable } from "./Builder";
+import { PropertyTypeDefinition } from "./PropertyType";
 
 
 export type SimpleObject = { [key:string]: any}
@@ -78,8 +79,8 @@ export function addBlanketIfNeeds(text: string) {
     return text
 }
 
-export const quote = (name: string) => {
-    let c = client()
+export const quote = (client: string, name: string) => {
+    let c = client
     if(c.startsWith('sqlite') || c.startsWith('mysql') ){
         return `\`${name.replace(/\`/g, '``')}\``
     } else if (c.startsWith('pg')){
@@ -90,10 +91,10 @@ export const quote = (name: string) => {
 
 
 export const META_FIELD_DELIMITER = '___'
-const map1 = new Map<Property, string>()
-const map2 = new Map<string, Property>()
+const map1 = new Map<Property<PropertyTypeDefinition>, string>()
+const map2 = new Map<string, Property<PropertyTypeDefinition>>()
 
-export const registerGlobalNamedProperty = function(d: Property): string{
+export const registerGlobalNamedProperty = function(d: Property<PropertyTypeDefinition>): string{
     let r = map1.get(d)
     if(!r){
         let key = makeid(5)
@@ -104,7 +105,7 @@ export const registerGlobalNamedProperty = function(d: Property): string{
     return r
 }
 
-export const findGlobalNamedProperty = function(propAlias: string): Property{
+export const findGlobalNamedProperty = function(propAlias: string): Property<PropertyTypeDefinition>{
     let r = map2.get(propAlias)
     if(!r){
         throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
@@ -113,10 +114,10 @@ export const findGlobalNamedProperty = function(propAlias: string): Property{
 }
 
 export const metaTableAlias = function(schema: TableSchema, name: string): string{
-    return schema.entityName + META_FIELD_DELIMITER + name
+    return schema.entityClass?.entityName + META_FIELD_DELIMITER + name
 }
 
-export const metaFieldAlias = function(p: Property): string{
+export const metaFieldAlias = function(p: Property<PropertyTypeDefinition>): string{
     let propAlias = registerGlobalNamedProperty(p)
     return `${p.name}${META_FIELD_DELIMITER}${propAlias}`
 }

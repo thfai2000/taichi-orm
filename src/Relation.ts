@@ -1,4 +1,4 @@
-import { compute, ComputeProperty, Entity, ExecutionContext, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
+import { compute, ComputeProperty, Entity, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
 import { AddPrefix, Column, Dataset, Datasource, Expression, Scalar, Scalarable } from "./Builder"
 // import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
