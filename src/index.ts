@@ -520,14 +520,14 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         }) )
     }
 
-    async executeStatement(stmt: SQLString, executionOptions: ExecutionOptions): Promise<any> {
+    async executeStatement(stmt: SQLString, executionOptions?: ExecutionOptions): Promise<any> {
 
         const sql = stmt.toString()
-        if(executionOptions.onSqlRun) {
+        if(executionOptions?.onSqlRun) {
             executionOptions.onSqlRun(sql)
         }
         let KnexStmt = this.orm.getKnexInstance().raw(sql)
-        if (executionOptions.trx) {
+        if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
         let result = null
@@ -540,10 +540,10 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
     }
 
     async execute<S, R extends {
-        [key in keyof S]: 
-        S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D>>? D :
-            (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D>, any, any, any, any>? D: never)
-    }>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions): Promise<R>
+        [key in keyof ExtractProps<S>]: 
+            S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D>>? D :
+                (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D>, any, any, any, any>? D: never)
+    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R>
      {
         let data = await this.executeStatement(dataset.toNativeBuilder(this), executionOptions)
         let result = parseDataBySchema({}, data, dataset.schema(), this.orm.client() )
