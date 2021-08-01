@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition } from './PropertyType'
+import { FieldPropertyTypeDefinition, NumberType, Parsable, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions} from './Builder'
 // export const Builtin = { ComputeFn }
@@ -89,7 +89,7 @@ export type ORMConfig<EntityClassMap extends {[key:string]: typeof Entity}> = {
     // tableNameToEntityName?: (params:string) => string,
     propNameTofieldName?: (params:string) => string,
     // fieldNameToPropName?: (params:string) => string,
-    suppressErrorOnPropertyNotFound?: string,
+    // suppressErrorOnPropertyNotFound?: string,
     useNullAsDefault?: boolean
     // useSoftDeleteAsDefault: boolean
     // primaryKeyName: string
@@ -425,22 +425,11 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
     }
 
     async executeStatement(stmt: SQLString, executionOptions: ExecutionOptions): Promise<any> {
+        return this.getRepository().executeStatement(stmt, executionOptions)
+    }
 
-        const sql = stmt.toString()
-        if(executionOptions.onSqlRun) {
-            executionOptions.onSqlRun(sql)
-        }
-        let KnexStmt = this.getKnexInstance().raw(sql)
-        if (executionOptions.trx) {
-            KnexStmt.transacting(executionOptions.trx)
-        }
-        let result = null
-        try{
-            result = await KnexStmt
-        }catch(error){
-            throw error
-        }
-        return result
+    async execute<S>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions) {
+        return this.getRepository().execute(dataset, executionOptions)
     }
 }
 
@@ -529,6 +518,36 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         await Promise.all( this.schemaSqls().map( async(sql) => {
             await this.orm.getKnexInstance().raw(sql)
         }) )
+    }
+
+    async executeStatement(stmt: SQLString, executionOptions: ExecutionOptions): Promise<any> {
+
+        const sql = stmt.toString()
+        if(executionOptions.onSqlRun) {
+            executionOptions.onSqlRun(sql)
+        }
+        let KnexStmt = this.orm.getKnexInstance().raw(sql)
+        if (executionOptions.trx) {
+            KnexStmt.transacting(executionOptions.trx)
+        }
+        let result = null
+        try{
+            result = await KnexStmt
+        }catch(error){
+            throw error
+        }
+        return result
+    }
+
+    async execute<S, R extends {
+        [key in keyof S]: 
+        S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D>>? D :
+            (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D>, any, any, any, any>? D: never)
+    }>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions): Promise<R>
+     {
+        let data = await this.executeStatement(dataset.toNativeBuilder(this), executionOptions)
+        let result = parseDataBySchema({}, data, dataset.schema(), this.orm.client() )
+        return result as R
     }
 }
 
@@ -831,7 +850,7 @@ export class Database{
                 throw new Error(`The Property [${propName}] doesn't exist in ${schema.entityClass?.entityName}`)
             }
             const prop = foundProp
-            const propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository, executionOptions)
+            const propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository.orm.client())
             propValues[prop.name] = propertyValue
             return propValues
         }, {} as MutationEntityPropertyKeyValues)
@@ -982,7 +1001,7 @@ export class Database{
         // console.debug("================================")
         let resultData = await repository.orm.executeStatement(sqlString, executionOptions)
 
-        let rowData = null
+        let rowData: any[]
         if(repository.orm.client().startsWith('mysql')){
             rowData = resultData[0][0]
         } else if(repository.orm.client().startsWith('sqlite')){
@@ -992,7 +1011,8 @@ export class Database{
         } else {
             throw new Error('Unsupport client.')
         }
-        let dualInstance = this.parseRaw(entityClass, repository, executionOptions, rowData)
+
+        let dualInstance = rowData.map( row => this.parseRaw(entityClass, row, repository.orm.client()) )
         // let str = "data" as keyof Dual
         let rows = dualInstance as Array<InstanceType<T>>
         return rows
@@ -1173,62 +1193,14 @@ export class Database{
         )
     }
 
-    static parseProperty<T extends typeof Entity>(entityClass: typeof Entity & (new (...args: any[]) => InstanceType<T> ), repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, row: MutationEntityPropertyKeyValues) {
-        return row
+    static parseEntity<T extends typeof Entity>(entityInstance: InstanceType<T>, client: string): any {
+        return entityInstance
     }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions | null, row: MutationEntityPropertyKeyValues): InstanceType<T>{
-        // let entityClass = (entityConstructor as unknown as typeof Entity)
-        // let entityClass = this
-
-        let entityInstance = Object.keys(row).reduce( (entityInstance, fieldName) => {
-            // let prop = this.compiledNamedPropertyMap.get(fieldName)
-            let metaInfo = breakdownMetaFieldAlias(fieldName)
-            // let propName = null
-            let namedProperty: Property<PropertyTypeDefinition> | null = null
-            if(metaInfo){
-                // propName = metaInfo.propName
-                namedProperty = metaInfo.namedProperty
-
-            } else{
-                
-                let prop = entityClass.schema.properties.find(p => {
-                    return p.fieldName === fieldName
-                })
-
-                if(!prop){
-                    if(!repository?.orm.ormConfig.suppressErrorOnPropertyNotFound){
-                        throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
-                    }
-                }else{
-                    namedProperty = prop
-                    // propName = prop.name
-                    // definition = prop.definition
-                }
-            }
-
-            if(namedProperty !== null && ( namedProperty instanceof ComputeProperty  || namedProperty instanceof FieldProperty) ){
-
-                /**
-                 * it can be boolean, string, number, Object, Array of Object (class)
-                 * Depends on the props..
-                 */
-                let propValue = namedProperty.definition!.parseRaw(row[fieldName], namedProperty.name, repository, executionOptions)
-
-                Object.defineProperty(entityInstance, namedProperty?.name!, {
-                    configurable: true,
-                    enumerable: true,
-                    writable: true,
-                    value: propValue
-                })
-                return entityInstance
-                
-            }
-            
-            throw new Error('Unexpected type of Property.')
-            
-        }, new entityClass() as InstanceType<T>)
-        return entityInstance
+    static parseRaw<T extends typeof Entity>(entityClass: T, row: MutationEntityPropertyKeyValues, client: string): InstanceType<T>{
+        const schema = entityClass.schema
+        const instance = new entityClass() as InstanceType<T>
+        return parseDataBySchema( instance, row, schema, client)
     }
 
     static extractRealField(schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
@@ -1245,7 +1217,7 @@ export class Database{
     }
 }
 
-export class Entity {
+export class Entity{
 
     // static repository: EntityRepository<any> | null = null;
     static orm?: ORM<any>
@@ -1271,13 +1243,12 @@ export class Entity {
         return this.schema.datasource(name, options)
     }
 
-    static parseRaw<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), row: MutationEntityPropertyKeyValues, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): I{
-        let r = Database.parseRaw(this, repository, executionOptions, row)
-        return r as I
+    static parseRaw(row: MutationEntityPropertyKeyValues, client: string): Entity{
+        return Database.parseRaw(this, row, client)
     }
 
-    static parseProperty<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), row: MutationEntityPropertyKeyValues, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any{
-        let r = Database.parseProperty(this, repository, executionOptions, row)
+    static parseEntity(entityInstance: Entity, client: string): any{
+        let r = Database.parseEntity(entityInstance, client)
         return r
     }
 
@@ -1325,6 +1296,53 @@ export class Entity {
 
 }
 
+
+function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyValues, schema: Schema, client: string): T {
+    entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
+        // let prop = this.compiledNamedPropertyMap.get(fieldName)
+        let metaInfo = breakdownMetaFieldAlias(fieldName)
+        // let propName = null
+        let namedProperty: Property<PropertyTypeDefinition> | null = null
+        if (metaInfo) {
+            // propName = metaInfo.propName
+            namedProperty = metaInfo.namedProperty
+
+        } else {
+
+            let prop = schema.properties.find(p => {
+                return p.fieldName === fieldName
+            })
+
+            if (!prop) {
+                throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
+            } else {
+                namedProperty = prop
+            }
+        }
+
+        if (namedProperty !== null && (namedProperty instanceof ComputeProperty || namedProperty instanceof FieldProperty)) {
+
+            /**
+             * it can be boolean, string, number, Object, Array of Object (class)
+             * Depends on the props..
+             */
+            let propValue = namedProperty.definition!.parseRaw(row[fieldName], namedProperty.name, client)
+
+            Object.defineProperty(entityInstance, namedProperty?.name!, {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: propValue
+            })
+            return entityInstance
+
+        }
+
+        throw new Error('Unexpected type of Property.')
+
+    }, entityInstance)
+    return entityInstance
+}
 // it is a special Entity or table. Just like the Dual in SQL Server
 // export class Dual extends Entity {
 

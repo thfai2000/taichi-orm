@@ -39,10 +39,10 @@ const emptyJsonArray = (client: string) => {
 }
 
 
-export interface Parsable<D>{
-    new (...args: any[]): D
-    parseProperty(propertyvalue: D, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any
-    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): D
+export type Parsable<D> = {
+    new (): D
+    parseEntity(entityInstance: D, client: string): any
+    parseRaw(rawValue: any, client: string): D
 }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
@@ -63,10 +63,10 @@ export class PropertyTypeDefinition<I = any> {
     constructor(options?: any){
         this.options = this.options ??options
     }
-    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): I {
+    parseRaw(rawValue: any, prop: string, client: string): I {
         return rawValue
     }
-    parseProperty(propertyvalue: I, prop: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
+    parseProperty(propertyvalue: I, prop: string, client: string): any {
         return propertyvalue
     }
 }
@@ -78,7 +78,7 @@ export class FieldPropertyTypeDefinition<I = any> extends PropertyTypeDefinition
 }
 
 export class ComputePropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): SQLString {
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string): SQLString {
         throw new Error('It is not allowed')
     }
     
@@ -142,7 +142,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
         return true
     }
         
-    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>): number | null {
+    parseRaw(rawValue: any, prop: string, client: string): number | null {
         if(rawValue === null)
             return null
         else if(Number.isInteger(rawValue)){
@@ -150,7 +150,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: number | null, propName: string) {
+    parseProperty(propertyvalue: number | null, propName: string, client: string) {
         if(propertyvalue === null && !this.options){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -162,7 +162,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
                 `${quote(client, fieldName)}`, 
                 'INTEGER', 
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
             ].join(' ')
         ]
     }
@@ -177,8 +177,8 @@ export class NumberTypeNotNull extends NumberType {
         return false
     }
 
-    override parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): number {
-        let r = super.parseRaw(rawValue, propName, repository)
+    override parseRaw(rawValue: any, propName: string, client: string): number {
+        let r = super.parseRaw(rawValue, propName, client)
         if(r === null){
             throw new Error('Unexpected')
         }
@@ -241,7 +241,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         return true
     }
 
-    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): boolean | null {
+    parseRaw(rawValue: any, propName: string, client: string): boolean | null {
         //TODO: warning if nullable is false but value is null
         if(rawValue === null)
             return null
@@ -254,7 +254,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    parseProperty(propertyvalue: boolean | null, propName: string, repository: EntityRepository<any>): any {
+    parseProperty(propertyvalue: boolean | null, propName: string, client: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -267,7 +267,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
                 `${quote(client, fieldName)}`,
                 ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, repository)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
             ].join(' ')
         ]
     }
@@ -418,17 +418,17 @@ export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeD
         return true
     }
                 
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>){
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string){
         if(columns === null){
             throw new Error('Only Dataset can be the type of \'ObjectOf\'')
         }
-        let jsonify =  `SELECT ${jsonObject(repository)}(${
-                columns.map(c => `'${c}', ${quote(c)}`).join(',')
-            }) AS ${quote(intoSingleColumn)} FROM (${query.toString()}) AS ${quote(makeid(5))}`
+        let jsonify =  `SELECT ${jsonObject(client)}(${
+                columns.map(c => `'${c}', ${quote(client, c)}`).join(',')
+            }) AS ${quote(client, intoSingleColumn)} FROM (${query.toString()}) AS ${quote(client, makeid(5))}`
         return jsonify
     }
     
-    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): E extends Parsable<infer D>? D: any {
+    parseRaw(rawValue: any, propName: string, client: string): E extends Parsable<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -441,17 +441,17 @@ export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeD
             throw new Error('It is not supported.')
         }
         // const entityClass = context.models[this.entityClassName] as unknown as E
-        return this.parsable.parseRaw(parsed, propName, repository, executionOptions)
+        return this.parsable.parseRaw(parsed, client)
     }
     
-    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, client: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
         // return propertyvalue
         // throw new Error('NYI')
-        return this.parsable.parseProperty(propertyvalue, propName, repository, executionOptions)
+        return this.parsable.parseEntity(propertyvalue, client)
     }
 }
 
@@ -481,7 +481,7 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         return this.type.transformFromMultipleRows
     }
 
-    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions) {
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string) {
 
         if(!intoSingleColumn){
             throw new Error('Unexpected Flow.')
@@ -491,21 +491,21 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         let objectify
 
         if(this.type instanceof ComputePropertyTypeDefinition && this.type.queryTransform){
-            objectify =  `(${this.type.queryTransform(query, columns, innerLevelColumnName, repository, executionOptions)})`
+            objectify =  `(${this.type.queryTransform(query, columns, innerLevelColumnName, client)})`
         } else {
             objectify =  `(${query})`
         }
 
         if( !this.type.transformIntoMultipleRows ){
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg(repository)}(${query}), ${emptyJsonArray(repository)}) AS ${quote(intoSingleColumn)}`
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${query}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)}`
             return jsonify
         } else {
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg(repository)}(${quote(innerLevelColumnName)}), ${emptyJsonArray(repository)}) AS ${quote(intoSingleColumn)} FROM ${objectify} AS ${quote(makeid(5))}`
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${quote(client, innerLevelColumnName)}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)} FROM ${objectify} AS ${quote(client, makeid(5))}`
             return jsonify
         }
     }
 
-    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): ReturnType<T["parseRaw"]>[] {
+    parseRaw(rawValue: any, propName: string, client: string): ReturnType<T["parseRaw"]>[] {
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -517,15 +517,14 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
             throw new Error('It is not supported.')
         }
         return parsed.map( raw => {
-            return this.type.parseRaw(raw, propName, repository, executionOptions)
+            return this.type.parseRaw(raw, propName, client)
         })
     }
-    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, repository: EntityRepository<any>, executionOptions: ExecutionOptions): any {
+    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, client: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
-        // //TODO:
-        return this.type.parseProperty(propertyvalue, propName, repository, executionOptions)
+        return this.type.parseProperty(propertyvalue, propName, client)
     }
 }
 

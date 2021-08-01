@@ -122,14 +122,14 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
         //@ts-ignore
         const map = new Proxy( datasource.schema ,{
             get: (oTarget: Schema, sKey: string) => {
-
+                const client = entityRepository.orm.client()
                 if(typeof sKey === 'string'){
                     let prop = oTarget.propertiesMap[sKey]
                     if(prop instanceof FieldProperty){
                         // let tableAlias = quote(tableAlias)
                         // let fieldName: string = 
                         let alias = metaFieldAlias(prop)
-                        let rawTxt = `${quote(datasource.sourceAlias)}.${quote(prop.fieldName)}`
+                        let rawTxt = `${quote(client, datasource.sourceAlias)}.${quote(client, prop.fieldName)}`
                         return makeColumn(alias, makeScalar(entityRepository, makeRaw(entityRepository, rawTxt), prop.definition ) )
                     }
                     if(prop instanceof ComputeProperty){
@@ -320,7 +320,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         , 
         SourceProps, SourcePropMap> {
         this.__selectItems = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
-
+            const client = repository.orm.client()
             let nameMap: { [key: string]: Scalar }
             if(named instanceof Function){
                 const map = Object.assign({}, selectorMap, this.sqlKeywords<any, any>()) as Y
@@ -343,10 +343,10 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
                         if(extractedColumnNames.length === 0){
                             throw new Error(`There is no selected column to be transformed as Computed Field '${alias}'. Please check your sql builder.`)
                         }
-                        finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1').toString()
+                        finalExpr = definition.queryTransform(castedExpression, extractedColumnNames, 'column1', client).toString()
                     
                     } else if(isScalar(expression)){
-                        finalExpr = definition.queryTransform(expression, null, 'column1').toString()
+                        finalExpr = definition.queryTransform(expression, null, 'column1', client).toString()
                     } else {
                         throw new Error('QueryBuilders which are not created through TaiChi are not supported.')
                     }
@@ -361,7 +361,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
                     text = `(${text})`
                 }
                 return {
-                    value: makeRaw(repository, `${text} AS ${quote(alias)}`),
+                    value: makeRaw(repository, `${text} AS ${quote(client, alias)}`),
                     actualAlias: alias
                 }
             }))
@@ -452,6 +452,10 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
+        throw new Error('NYI')
+    }
+
+    schema(): SelectProps & Schema{
         throw new Error('NYI')
     }
 

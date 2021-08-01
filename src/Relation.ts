@@ -58,7 +58,7 @@ export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Rel
 
 
 export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
-    (ctx: ExecutionContext, root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
+    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
 
     props?: ComputePropertyArgsMap<Root>,
     filter?: Expression< 
