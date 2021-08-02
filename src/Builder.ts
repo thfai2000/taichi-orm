@@ -404,7 +404,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
-        Dataset<S, 
+        Dataset<{}, 
             UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
         > {
@@ -494,7 +494,8 @@ export interface Scalar<T = any> extends Knex.Raw {
     toScalar(): Scalar<T>
     clone(): Scalar<T>
 
-    asColumn<Name extends string>(propName: Name): Column<Name, T> 
+    asColumn<Name extends string>(propName: Name): Column<Name, T>
+    named<Name extends string>(propName: Name): { [key in keyof Name & string as Name]: Scalar<T>}
 }
 
 // export interface FromClause<Props, PropMap> extends Knex.Raw {

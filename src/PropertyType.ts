@@ -71,13 +71,13 @@ export class PropertyTypeDefinition<I = any> {
     }
 }
 
-export class FieldPropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
+export class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
     create(propName: string, fieldName: string, client: string) : string[] {
         throw new Error('It is not allowed')
     }
 }
 
-export class ComputePropertyTypeDefinition<I = any> extends PropertyTypeDefinition<I> {
+export class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string): SQLString {
         throw new Error('It is not allowed')
     }
@@ -86,18 +86,22 @@ export class ComputePropertyTypeDefinition<I = any> extends PropertyTypeDefiniti
 
 export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
 
+    constructor(){
+        super()
+    }
+
     get nullable() {
         return false
     }
 
-    parseRaw(rawValue: any, propName: string): number {
+    parseRaw(rawValue: any, propName: string, client: string): number {
         if(rawValue === null){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return parseInt(rawValue)
     }
 
-    parseProperty(propertyvalue: any, propName: string): any {
+    parseProperty(propertyvalue: any, propName: string, client: string): number {
         if(propertyvalue === null){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }

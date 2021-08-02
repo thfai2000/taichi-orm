@@ -429,7 +429,7 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
     }
 
     async execute<S>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions) {
-        return this.getRepository().execute(dataset, executionOptions)
+        return this.getRepository().query(dataset, executionOptions)
     }
 }
 
@@ -539,15 +539,19 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         return result
     }
 
-    async execute<S, R extends {
+    async query<S, R extends {
         [key in keyof ExtractProps<S>]: 
-            S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D>>? D :
-                (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D>, any, any, any, any>? D: never)
-    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R>
+            S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
+                (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any, any>? D2: never)
+    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]>
      {
         let data = await this.executeStatement(dataset.toNativeBuilder(this), executionOptions)
-        let result = parseDataBySchema({}, data, dataset.schema(), this.orm.client() )
-        return result as R
+        if(Array.isArray(data)){
+            
+            let result = data.map(one => parseDataBySchema({}, one, dataset.schema(), this.orm.client() ) )
+            return result as R[]
+        }
+        return data
     }
 }
 
