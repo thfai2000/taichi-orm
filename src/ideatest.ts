@@ -73,7 +73,7 @@ import { belongsTo, hasMany } from "./Relation"
             )
             .fields(
                 // "product.id",
-                "shop.id",
+                // "shop.id",
                 "myShop.name"
             )
             // .props(
@@ -85,6 +85,7 @@ import { belongsTo, hasMany } from "./Relation"
             // )
             .props(
                 ({shop, product}) => Object.assign(
+                    shop.id.value(),
                     shop.hour.value(),
                     product.shopId.equals(5).named('nini'),
                     product.ddd.value()
