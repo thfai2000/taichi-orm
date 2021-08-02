@@ -3,7 +3,7 @@ import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { FieldPropertyTypeDefinition, NumberType, Parsable, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
-import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions} from './Builder'
+import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
@@ -297,7 +297,7 @@ export type HookInfo = {
     rootClassName: string
 }
 
-export type HookAction = <T>(context: ExecutionContext, rootValue: T, info: HookInfo) => T | Promise<T>
+export type HookAction = <T>(repository: EntityRepository<any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
 
 export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
 
@@ -791,7 +791,7 @@ export class Database{
                         }
                     }).withOptions(executionOptions)
 
-                    let b = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                    let b = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                     return b
                 } else if (repository.orm.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
@@ -807,7 +807,7 @@ export class Database{
                                 filter: ({root}) => root.uuid.equals(uuid)
                             }).withOptions(executionOptions)
 
-                            return await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                            return await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         }
                     } else {
                         return null
@@ -825,7 +825,7 @@ export class Database{
                         }
                     }).withOptions(executionOptions)
 
-                    return await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                    return await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
 
                 } else {
                     throw new Error('Unsupport client')
@@ -870,27 +870,27 @@ export class Database{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(executionOptions, record, {
+            record = await h.action(repository, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundProp.name,
                 propertyDefinition: foundProp.definition,
                 propertyValue: record[foundProp.name],
                 rootClassName: entityName
-            })
+            }, executionOptions)
             return record
         }, Promise.resolve(propValues) )
 
         propValues = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(executionOptions, record, {
+            record = await h.action(repository, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
                 propertyDefinition: null,
                 propertyValue: null,
                 rootClassName: entityName
-            })
+            }, executionOptions)
             return record
         }, Promise.resolve(propValues))
         
@@ -898,6 +898,7 @@ export class Database{
     }
 
     private static async afterMutation<T extends typeof Entity>(
+        repository: EntityRepository<any>,
         record: InstanceType<T>, 
         schema: TableSchema,
         actionName: MutationName,
@@ -926,27 +927,27 @@ export class Database{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(executionOptions, record, {
+            record = await h.action(repository, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundProp.name,
                 propertyDefinition: foundProp.definition,
                 propertyValue: record[foundProp.name] ?? inputProps[foundProp.name],
                 rootClassName: entityName
-            })
+            }, executionOptions)
             return record
         }, Promise.resolve(record) )
 
         record = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(executionOptions, record, {
+            record = await h.action(repository, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
                 propertyDefinition: null,
                 propertyValue: null,
                 rootClassName: entityName
-            })
+            }, executionOptions)
             return record
         }, Promise.resolve(record))
 
@@ -994,16 +995,16 @@ export class Database{
         // }else {
         //     options = applyFilter
         // }
-        let sqlString = new Dataset()
-            .props( resolveEntityProps(source, options?.props ) )
+        let dataset = new Dataset()
+            .props( await resolveEntityProps(source, applyOptions?.props ) )
             .from(source)
 
-        sqlString = applyOptions?.filter ? sqlString.filter(applyOptions?.filter) : sqlString
+        dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter) : dataset
 
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        let resultData = await repository.orm.executeStatement(sqlString, executionOptions)
+        let resultData = await repository.orm.executeStatement(dataset, executionOptions)
 
         let rowData: any[]
         if(repository.orm.client().startsWith('mysql')){
@@ -1098,7 +1099,7 @@ export class Database{
                 let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
                     let pkValue = row[ schemaPrimaryKeyFieldName ]
                     let record = await this.findOne(entityClass, repository, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                    let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                    let finalRecord = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                     if(isDelete){
                         await repository.orm.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                     }
@@ -1144,7 +1145,7 @@ export class Database{
                             } 
                         }
                         let record = await this.findOne(entityClass, repository, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                        let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                        let finalRecord = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         if(isDelete){
                             await repository.orm.executeStatement( new Dataset(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
@@ -1162,7 +1163,7 @@ export class Database{
                             }
                         }
                         let record = await this.findOne(entityClass, repository, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                        let finalRecord = await this.afterMutation<T>(record, schema, actionName, propValues, executionOptions)
+                        let finalRecord = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         if(isDelete){
                             await repository.orm.executeStatement( new Dataset(schema.datasource('root') ).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
@@ -1347,6 +1348,7 @@ function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyV
     }, entityInstance)
     return entityInstance
 }
+
 // it is a special Entity or table. Just like the Dual in SQL Server
 // export class Dual extends Entity {
 

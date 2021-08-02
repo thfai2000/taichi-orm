@@ -22,6 +22,7 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "prepare": "npm run build",
+    "dev-only": "npm install && rm -rf dist && rm -rf dist-test && tsc --project tsconfig.json --watch",
     "dev": "npm install && rm -rf dist && rm -rf dist-test && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
     "build": "rm -rf dist && tsc --project tsconfig.json",
     "test": "npm run test:sqlite",

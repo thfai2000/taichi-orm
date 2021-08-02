@@ -1,7 +1,8 @@
 import { Knex}  from "knex"
-import { TableSchema, SelectorMap, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty, ExecutionOptions, EntityRepository, ORM } from "."
+import { TableSchema, SelectorMap, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, ValueOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
+import { ComputePropertyArgsMap } from "./Relation"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -372,7 +373,9 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     sqlKeywords<X, Y>(){
         let sqlkeywords: SQLKeywords<X, Y> = {
-            
+            And: (...conditions: Expression<any, any>[]) => new AndOperator(conditions),
+            Or: (...conditions: Expression<any, any>[]) => new OrOperator(conditions),
+            Not: (condition: Expression<any, any>) => new NotOperator(condition)
         }
         return sqlkeywords
     }
@@ -704,7 +707,25 @@ export const makeExpressionResolver = function<Props, M>(repository: EntityRepos
     return resolver
 }
 
-
+export async function resolveEntityProps<T extends typeof Entity, D extends T["schema"]>(source: Datasource<D, "root">, 
+    props: ComputePropertyArgsMap<D> | undefined): Promise<{ [key: string]: Scalar<any> }> {
+    
+    let computedCols: { [key: string]: Scalar }[] = []
+    if(props){
+        computedCols = await Promise.all(Object.keys(props).map( async (propName) => {
+            //@ts-ignore
+            const args = props[propName]
+            let call = source.getAysncComputeProperty(propName)
+            
+            let col = await call(args) as Column<any, any>
+            return col.value()
+        }))
+    }
+    let fieldCols = source.schema.properties.filter(prop => prop.type === 'FieldProperty')
+        .map(prop => source.getFieldProperty<string, any>(prop.name).value() )
+    let r = Object.assign({}, ...fieldCols, ...computedCols)
+    return r as { [key: string]: Scalar<any> }
+}
 // export type EntityPropsResolver = <S extends Schema>() => RawFilter
 
 
