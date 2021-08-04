@@ -1,8 +1,7 @@
 import { Knex}  from "knex"
-import { TableSchema, SelectorMap, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, field, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, CompiledComputeFunctionPromise, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, ValueOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, NumberType, PropertyTypeDefinition } from "./PropertyType"
-import { ComputePropertyArgsMap } from "./Relation"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;

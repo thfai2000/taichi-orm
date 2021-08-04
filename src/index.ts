@@ -1,32 +1,84 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { FieldPropertyTypeDefinition, NumberType, Parsable, PropertyTypeDefinition } from './PropertyType'
+import { ArrayOfType, FieldPropertyTypeDefinition, NumberType, ObjectOfType, Parsable, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
-import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps} from './Builder'
+import {Dataset, makeRaw as raw, makeColumn, makeScalar, makeRaw, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { breakdownMetaFieldAlias, ExtractProps, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult } from './util'
-import { SingleSourceArg, SingleSourceFilter } from './Relation'
+import { breakdownMetaFieldAlias, ExtractComputeProps, ExtractProps, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+
+// import { SingleSourceArg, SingleSourceFilter } from './Relation'
 // import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
 // import { AST, Column, Parser } from 'node-sql-parser'
 
+export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
 
-export function field<D extends FieldPropertyTypeDefinition<any> >(definition: (new (...args: any[]) => D) | D  ) {
+export type SelectableProps<E> = {
+    [key in keyof E]: Scalar<any>
+} | SelectableProps<E>[]
 
-    if(definition instanceof FieldPropertyTypeDefinition){
-        return new FieldProperty<D>(definition)
-    }
-    return new FieldProperty<D>( new definition() )
+
+export type ComputePropertyArgsMap<E> = {
+    [key in keyof ExtractComputeProps<E> & string ]:
+            E[key] extends undefined?
+            never:
+            (
+                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg, infer R>? 
+                Arg: never
+            )
 }
 
-export function compute<D extends PropertyTypeDefinition, Root extends TableSchema, Arg extends any[], R>(definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, R>) : ComputeProperty<D, Root, 'root', Arg, R> {
 
-    if(definition instanceof PropertyTypeDefinition){
-        return new ComputeProperty<D, Root, 'root', Arg, R>(definition, compute)
-    }
-    return new ComputeProperty<D, Root, 'root', Arg, R>(new definition(), compute)
+export type SingleSourceArg<S extends TableSchema> = {
+    props?: ComputePropertyArgsMap<S>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S> }  >        
+                >
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
+}
+
+export type SingleSourceFilter<S extends TableSchema> = Expression<
+        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S> }  >        
+    >
+
+// export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
+//     props?: ComputePropertyArgsMap<S>,
+//     filter?: Expression<never>,
+//     limit?: number,
+//     offset?: number,
+//     orderBy?: QueryOrderBy
+// }
+
+export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
+
+    props?: ComputePropertyArgsMap<Root>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+                >
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
+}
+
+
+export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
+    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
+
+    props?: ComputePropertyArgsMap<Root>,
+    filter?: Expression< 
+        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+                >
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
 }
 
 
@@ -60,7 +112,7 @@ export type SelectorMap<E> = {
 }
 
 export type ComputeFunction<Root extends Schema, Name extends string, ARG extends any[], R = Scalarable | Promise<Scalarable>> 
-= (this: ComputeProperty<PropertyTypeDefinition, Root, Name, ARG, R>, source: Datasource<Root, Name>, ...args: ARG) => R
+= (source: Datasource<Root, Name>, ...args: ARG) => R
 
 export type CompiledComputeFunction<Name extends string, ARG extends any[], R> = (...args: ARG) => Column<Name, R>
 
@@ -180,15 +232,25 @@ export class Schema {
         | FieldProperty<PropertyTypeDefinition>)[] = []
     propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[], any> 
         | FieldProperty<PropertyTypeDefinition>)} = {}
-    hooks: Hook[] = []
-
+    
     // id: PropertyDefinition
     // uuid: PropertyDefinition | null
 
     constructor(){
     }
+}
+
+export abstract class TableSchema extends Schema {
+    abstract id: FieldProperty<PropertyTypeDefinition>
+    uuid?: FieldProperty<PropertyTypeDefinition> = undefined
+    hooks: Hook[] = []
+
+    constructor(){
+        super()
+    }
 
     register(entityClass: typeof Entity){
+        console.log('register TableSchema', entityClass)
         this.entityClass = entityClass
         if(!entityClass.entityName){
             throw new Error('Not yet registered.')
@@ -235,6 +297,7 @@ export class Schema {
     }
 
     createTableStmt(options?: TableOptions){
+        console.log('xxxx', this.entityClass)
         if(!this.entityClass || !this.entityClass.orm){
             throw new Error('Not register yet')
         }
@@ -255,15 +318,28 @@ export class Schema {
         return ''
     }
 
+
+    field<D extends FieldPropertyTypeDefinition<any> >(definition: (new (...args: any[]) => D) | D  ) {
+
+        if(definition instanceof FieldPropertyTypeDefinition){
+            return new FieldProperty<D>(definition)
+        }
+        return new FieldProperty<D>( new definition() )
+    }
+
+    compute<D extends PropertyTypeDefinition, Root extends TableSchema, Arg extends any[], R>(
+        this: Root,
+        definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, R>) : ComputeProperty<D, Root, 'root', Arg, R> {
+
+        if(definition instanceof PropertyTypeDefinition){
+            return new ComputeProperty<D, Root, 'root', Arg, R>(definition, compute)
+        }
+        return new ComputeProperty<D, Root, 'root', Arg, R>(new definition(), compute)
+    }
+
     hook(newHook: Hook){
         this.hooks.push(newHook)
     }
-}
-
-export abstract class TableSchema extends Schema {
-    abstract id: FieldProperty<PropertyTypeDefinition>
-    uuid?: FieldProperty<PropertyTypeDefinition> = undefined
-
     /**
      * Selector is used for locating the table name / field names / computed functions
      * field pointers
@@ -321,27 +397,31 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
     constructor(newConfig: Partial<ORMConfig<EntityClassMap>>){
         let newOrmConfig: ORMConfig<EntityClassMap> = Object.assign({}, this.defaultORMConfig, newConfig)
         // newOrmConfig.ormContext = Object.assign({}, defaultORMConfig.ormContext, newConfig.ormContext)
+        this.ormConfig = newOrmConfig
+        this.register()
+    }
 
+    register(){
         const registerEntity = (entityName: string, entityClass: typeof Entity) => {
+            entityClass.register(this, entityName)
             // @ts-ignore
             this.registeredModels[entityName] = entityClass
-            entityClass.register(this, entityName)
         }
         
         //register models 
-        if(newOrmConfig.models){
-            let models = newOrmConfig.models
+        if(this.ormConfig.models){
+            let models = this.ormConfig.models
             Object.keys(models).forEach(key => {
                 registerEntity(key, models[key]);
             })
         }
 
         //register models by path
-        if(newOrmConfig.modelsPath){
-            let files = fs.readdirSync(newOrmConfig.modelsPath)
+        if(this.ormConfig.modelsPath){
+            let files = fs.readdirSync(this.ormConfig.modelsPath)
             files.forEach( (file) => {
                 if(file.endsWith('.js')){
-                    let path = newOrmConfig.modelsPath + '/' + file
+                    let path = this.ormConfig.modelsPath + '/' + file
                     path = path.replace(/\.js$/,'')
                     // console.debug('load model file:', path)
                     let p = path.split('/')
@@ -351,7 +431,6 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
                 }
             })
         }
-        this.ormConfig = newOrmConfig
     }
 
     getRepository(config?: Partial<EntityRepositoryConfig>): EntityRepository<EntityClassMap> {
@@ -1230,8 +1309,14 @@ export class Entity{
 
     [key: string]: any
     static schema: TableSchema
-    // readonly _ctx: ExecutionContext
-    
+    // static init: () => TableSchema
+    // static get schema(): TableSchema {
+    //     if( !this._schema){
+    //         this._schema = this.init()
+    //     }
+    //     return this._schema
+    // }
+
     constructor(){
     }
 
@@ -1297,6 +1382,57 @@ export class Entity{
      */
     static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["schema"]>): DatabaseQueryRunner<InstanceType<I>[], I["schema"]>{
         return Database.find(this, null, applyFilter)
+    }
+
+    static hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
+        this: RootClass & (new (...args: any[]) => InstanceType<RootClass>),
+        relatedEntity: TypeClass, 
+        relatedBy: ((schema: TypeClass["schema"]) => FieldProperty<PropertyTypeDefinition>), 
+        rootKey?: ((schema: RootClass["schema"]) => FieldProperty<PropertyTypeDefinition>)
+        ) {
+        
+        let computeFn = (root: Datasource<RootClass["schema"], 'root'>, 
+            args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+
+            let dataset = new Dataset()
+
+            let relatedSource = relatedEntity.schema.datasource('related')
+            
+            let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
+        
+            let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
+
+            if(args?.props){
+                // dataset.props(args.props)
+            }
+            if(args?.filter){
+                newDataset = newDataset.filter(args.filter)
+            }
+
+            return newDataset
+        }
+
+        return this.schema.compute( new ObjectOfType(relatedEntity), computeFn )
+    }
+
+    static belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
+        this: RootClass & (new (...args: any[]) => InstanceType<RootClass>),
+        relatedEntity: TypeClass, 
+        relatedBy: ((schema: RootClass["schema"]) => FieldProperty<PropertyTypeDefinition>), 
+        rootKey?: ((schema: TypeClass["schema"]) => FieldProperty<PropertyTypeDefinition>)
+        ) {
+        
+        let computeFn = (root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+            
+            // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
+            //     return {
+            //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
+            //     }
+            // }).apply(args).toScalar(ArrayOf(schema))
+            throw new Error()
+        }
+
+        return this.schema.compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
     }
 
 }

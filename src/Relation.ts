@@ -1,74 +1,122 @@
-import { compute, ComputeProperty, Entity, field, FieldProperty, TableSchema, Schema, SelectorMap } from "."
+import { ComputeProperty, Entity, FieldProperty, TableSchema, Schema, SelectorMap, EntityRepository } from "."
 import { AddPrefix, Column, Dataset, Datasource, Expression, Scalar, Scalarable } from "./Builder"
 // import { And, AndOperator, ValueOperator } from "./Operator"
 import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
 
-export type SelectableProps<E> = {
-    [key in keyof E]: Scalar<any>
-} | SelectableProps<E>[]
+
+// export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
+// export type SelectableProps<E> = {
+//     [key in keyof E]: Scalar<any>
+// } | SelectableProps<E>[]
 
 
-export type ComputePropertyArgsMap<E> = {
-    [key in keyof ExtractComputeProps<E> & string ]:
-            E[key] extends undefined?
-            never:
-            (
-                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg, infer R>? 
-                Arg: never
-            )
-}
+// export type ComputePropertyArgsMap<E> = {
+//     [key in keyof ExtractComputeProps<E> & string ]:
+//             E[key] extends undefined?
+//             never:
+//             (
+//                 E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg, infer R>? 
+//                 Arg: never
+//             )
+// }
 
 
-export type SingleSourceArg<S extends TableSchema> = {
-    props?: ComputePropertyArgsMap<S>,
-    filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S> }  >        
-                >
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-}
-
-export type SingleSourceFilter<S extends TableSchema> = Expression<
-        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S> }  >        
-    >
-
-// export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
+// export type SingleSourceArg<S extends TableSchema> = {
 //     props?: ComputePropertyArgsMap<S>,
-//     filter?: Expression<never>,
+//     filter?: Expression< 
+//         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+//         UnionToIntersection< { 'root': SelectorMap< S> }  >        
+//                 >
 //     limit?: number,
 //     offset?: number,
 //     orderBy?: QueryOrderBy
 // }
 
-export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
+// export type SingleSourceFilter<S extends TableSchema> = Expression<
+//         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+//         UnionToIntersection< { 'root': SelectorMap< S> }  >        
+//     >
 
-    props?: ComputePropertyArgsMap<Root>,
-    filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
-        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
-                >
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-}
+// // export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
+// //     props?: ComputePropertyArgsMap<S>,
+// //     filter?: Expression<never>,
+// //     limit?: number,
+// //     offset?: number,
+// //     orderBy?: QueryOrderBy
+// // }
+
+// export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
+
+//     props?: ComputePropertyArgsMap<Root>,
+//     filter?: Expression< 
+//         UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+//         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+//                 >
+//     limit?: number,
+//     offset?: number,
+//     orderBy?: QueryOrderBy
+// }
 
 
-export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
-    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
+// export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
+//     (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
 
-    props?: ComputePropertyArgsMap<Root>,
-    filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
-        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
-                >
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-}
+//     props?: ComputePropertyArgsMap<Root>,
+//     filter?: Expression< 
+//         UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+//         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
+//                 >
+//     limit?: number,
+//     offset?: number,
+//     orderBy?: QueryOrderBy
+// }
+
+
+
+// export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
+//     relatedEntity: TypeClass, relatedBy: ((schema: TypeClass["schema"]) => FieldProperty<PropertyTypeDefinition>), rootKey?: FieldProperty<PropertyTypeDefinition>) {
+    
+//     let computeFn = (repository: EntityRepository<any>, root: Datasource<RootClass["schema"], 'root'>, 
+//         args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+
+//         let dataset = new Dataset()
+
+//         let relatedSource = relatedEntity.schema.datasource('related')
+        
+//         let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
+       
+//         let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
+
+//         if(args?.props){
+//             // dataset.props(args.props)
+//         }
+//         if(args?.filter){
+//             newDataset = newDataset.filter(args.filter)
+//         }
+
+//         return newDataset
+//     }
+
+//     return compute( new ObjectOfType(relatedEntity), computeFn )
+// }
+
+// export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
+//     relatedEntity: TypeClass, relatedBy: ((schema: RootClass["schema"]) => FieldProperty<PropertyTypeDefinition>), rootKey?: FieldProperty<PropertyTypeDefinition>) {
+    
+//     let computeFn = (repository: EntityRepository<any>, root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
+        
+//         // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
+//         //     return {
+//         //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
+//         //     }
+//         // }).apply(args).toScalar(ArrayOf(schema))
+//         throw new Error()
+//     }
+
+//     return compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
+// }
+
 
 
 
@@ -107,7 +155,7 @@ export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends 
 
 
 
-export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
+
 // export type QueryFilterResolver = (value: SingleSourceFilter) => Promise<Scalar> | Scalar
 
 
@@ -172,47 +220,6 @@ export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Colu
 
 //     return compute( new ArrayOfType( new ObjectOfType(rootEntity) ), computeFn )
 // }
-
-export function belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
-    
-    let computeFn = (root: Datasource<RootClass["schema"], 'root'>, 
-        args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
-
-        let dataset = new Dataset()
-
-        let relatedSource = relatedEntity.schema.datasource('related')
-        
-        let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
-       
-        let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
-
-        if(args?.props){
-            // dataset.props(args.props)
-        }
-        if(args?.filter){
-            newDataset = newDataset.filter(args.filter)
-        }
-
-        return newDataset
-    }
-
-    return compute( new ObjectOfType(relatedEntity), computeFn )
-}
-
-export function hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(rootEntity: RootClass, relatedEntity: TypeClass, relatedBy: FieldProperty<PropertyTypeDefinition>, rootKey?: FieldProperty<PropertyTypeDefinition>) {
-    
-    let computeFn = (root: Datasource<TypeClass["schema"], 'root'>, args?: TwoSourcesArg<RootClass["schema"], 'root', TypeClass["schema"], 'related'>): Scalarable => {
-        
-        // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
-        //     return {
-        //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
-        //     }
-        // }).apply(args).toScalar(ArrayOf(schema))
-        throw new Error()
-    }
-
-    return compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
-}
 
 
 // export type QueryObject<S extends Schema> = {

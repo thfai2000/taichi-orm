@@ -1,0 +1,36 @@
+{
+  "name": "taichi-orm-examples",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "npm install && nodemon",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thfai2000/lorm-examples.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/thfai2000/lorm-examples/issues"
+  },
+  "homepage": "https://github.com/thfai2000/lorm-examples#readme",
+  "description": "",
+  "engines": {
+    "node": ">= 14"
+  },
+  "dependencies": {
+    "knex": "^0.95.5",
+    "lodash": "^4.17.21",
+    "nodemon": "^2.0.12",
+    "sqlite3": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/knex": "^0.16.1",
+    "@types/lodash": "^4.14.169",
+    "@types/node": "^15.0.3",
+    "typescript": "^4.2.4"
+  }
+}
