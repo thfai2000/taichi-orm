@@ -20,7 +20,7 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
     abstract toScalar(resolver: ExpressionResolver<Props, SourcePropMap>): Scalar<BooleanType>
 }
 
-export abstract class AssertionOperator {
+export abstract class AssertionOperator implements Scalarable<any>{
     // abstract toRaw(leftOperand: Scalar ): Knex.Raw
     // abstract toScalar(leftOperand: Scalar ): Scalar
     // abstract toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
