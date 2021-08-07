@@ -74,8 +74,8 @@ export interface Datasource<E extends Schema, alias extends string> {
     schema: E
     selectorMap(): SelectorMap<E>
 
-    toRaw(repository: EntityRepository<any>): Knex.Raw
-    realSource(repository: EntityRepository<any>): SQLString
+    toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
+    realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
     
     getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
@@ -85,31 +85,16 @@ export interface Datasource<E extends Schema, alias extends string> {
     // }
 }
 
-// export class DerivedDatasource<E extends Schema, Name extends string> implements Datasource<E, Name> {
-//     sourceAlias: Name
-//     schema: E
-//     $: SelectorMap<E>
-//     realSource(): SQLString {
-//         throw new Error("Method not implemented.")
-//     }
-//     getFieldProperty: <Name extends string, T>(name: Name) => Column<Name, T>
-//     getComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunction<Name, ARG, R>
-//     getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
-//     tableAlias: {}
-// }
-
 export type TableOptions = {
     tablePrefix?: string
 }
 
-export class TableDatasource<E extends TableSchema, Name extends string> implements Datasource<E, Name> {
+abstract class DatasourceBase<E extends Schema, Name extends string> implements Datasource<E, Name> {
 
-    schema: E
-    sourceAlias: Name
-    options?: TableOptions
+    readonly schema: E
+    readonly sourceAlias: Name
 
-    constructor(schema: E, sourceAlias: Name, options?: TableOptions){
-
+    constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
             throw new Error('alias cannot start with Uppercase letter')
         }
@@ -118,11 +103,13 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
         this.sourceAlias = sourceAlias
     }
 
+    abstract realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
+
     selectorMap(): SelectorMap<E>{
         const datasource = this
         //@ts-ignore
-        const map = new Proxy( datasource ,{
-            get: (oTarget: TableDatasource<any, any>, sKey: string) => {
+        const map = new Proxy( datasource, {
+            get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     let prop = oTarget.schema.propertiesMap[sKey]
                     if(prop instanceof FieldProperty){
@@ -165,14 +152,22 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
             }
         }
     }
-    // getAysncComputeProperty<Name extends string, ARG extends any[], R>(name: string): CompiledComputeFunctionPromise<Name, ARG, R>{
-    //     //TODO
-    //     throw new Error('NYI')
-    // }
     
-    toRaw(repository: EntityRepository<any>){
+    async toRaw(repository: EntityRepository<any>){
         const client = repository.orm.client()
-        return makeRaw(repository, `${this.realSource(repository)} AS ${quote(client, this.sourceAlias)}`)
+        const sql = await this.realSource(repository)
+        return makeRaw(repository, `${sql} AS ${quote(client, this.sourceAlias)}`)
+    }
+
+}
+
+export class TableDatasource<E extends TableSchema, Name extends string> extends DatasourceBase<E, Name> {
+
+    readonly options?: TableOptions
+
+    constructor(schema: E, sourceAlias: Name, options?: TableOptions){
+        super(schema, sourceAlias)
+        this.options = options
     }
 
     realSource(repository: EntityRepository<any>){
@@ -183,6 +178,19 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
             throw new Error('Not yet registered')
         }
         return quote(repository.orm.client(), tableName)
+    }
+}
+
+export class DerivedDatasource<E extends Schema, Name extends string> extends DatasourceBase<E, Name> {
+
+    readonly dataset: Dataset<any, any, any>
+    constructor(dataset: Dataset<any, any, any>, sourceAlias: Name){
+        super(dataset.schema(), sourceAlias)
+        this.dataset = dataset
+    }
+
+    async realSource(repository: EntityRepository<any>){
+        return `(${(await this.dataset.toNativeBuilder(repository))})`
     }
 }
 
@@ -231,7 +239,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         let nativeQB = repository.orm.getKnexInstance().clearSelect()
         
         if(this.__fromItem){
-            const from = this.__fromItem.toRaw(repository)
+            const from = await this.__fromItem.toRaw(repository)
             nativeQB.from(from)
         }
 
@@ -246,11 +254,11 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
                 finalExpr = item.expression
             }
             if(item.type === 'inner'){
-                nativeQB.innerJoin(item.source.toRaw(repository), finalExpr)
+                nativeQB.innerJoin( await item.source.toRaw(repository), finalExpr)
             } else if(item.type === 'left'){
-                nativeQB.leftJoin(item.source.toRaw(repository), finalExpr)
+                nativeQB.leftJoin( await item.source.toRaw(repository), finalExpr)
             } else if(item.type === 'right'){
-                nativeQB.rightJoin(item.source.toRaw(repository), finalExpr)
+                nativeQB.rightJoin( await item.source.toRaw(repository), finalExpr)
             }
             return true
         }, Promise.resolve(true))
@@ -463,7 +471,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
-        throw new Error('NYI')
+        return new DerivedDatasource(this, name)
     }
 
     schema(): SelectProps & Schema{

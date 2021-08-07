@@ -161,14 +161,10 @@ export class Property<D extends PropertyTypeDefinition> {
         this.definition = definition
     }
     register(
-        name: string, schema: Schema){
+        name: string, schema: Schema, orm: ORM<any>){
             if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
             }
-            if(!schema?.entityClass?.orm){
-                throw new Error('Not registered')
-            }
-            let orm = schema.entityClass.orm
             this.schema = schema
             // this.repository = repository
             this._name = name
@@ -223,7 +219,7 @@ export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D>
 
 export class Schema {
 
-    entityClass?: typeof Entity
+
     overridedTableName?: string
     properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
         | FieldProperty<PropertyTypeDefinition>)[] = []
@@ -241,6 +237,7 @@ export abstract class TableSchema extends Schema {
     abstract id: FieldProperty<PropertyTypeDefinition>
     uuid?: FieldProperty<PropertyTypeDefinition> = undefined
     hooks: Hook[] = []
+    entityClass?: typeof Entity
 
     constructor(){
         super()
@@ -249,7 +246,7 @@ export abstract class TableSchema extends Schema {
     register(entityClass: typeof Entity){
         console.log('register TableSchema', entityClass)
         this.entityClass = entityClass
-        if(!entityClass.entityName){
+        if(!entityClass.entityName || !this.entityClass?.orm){
             throw new Error('Not yet registered.')
         }
         
@@ -259,7 +256,7 @@ export abstract class TableSchema extends Schema {
             if(typeof field === 'string'){
                 const actual = this[field]
                 if(actual instanceof FieldProperty || actual instanceof ComputeProperty) {
-                    actual.register(field, this)
+                    actual.register(field, this, this.entityClass.orm)
                     this.propertiesMap[field] = actual
                     fields.push(actual)
                 }
