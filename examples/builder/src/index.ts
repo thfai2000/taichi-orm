@@ -58,7 +58,7 @@ import Product from './Product'
                 ({shop, product}) => ({
                     // shop.id.value(),
                     ...shop.hour.value(),
-                    ...product.shopId.equals(5).named('nini'),
+                    ...product.shopId.equals(5).asColumn('nini').value(),
                     xxx: xxx!,
                     ...product.ddd.value()
                 })

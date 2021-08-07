@@ -1,8 +1,8 @@
-import { ComputeProperty, Entity, FieldProperty, TableSchema, Schema, SelectorMap, EntityRepository } from "."
-import { AddPrefix, Column, Dataset, Datasource, Expression, Scalar, Scalarable } from "./Builder"
-// import { And, AndOperator, ValueOperator } from "./Operator"
-import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
-import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
+// import { ComputeProperty, Entity, FieldProperty, TableSchema, Schema, SelectorMap, EntityRepository } from "."
+// import { AddPrefix, Column, Dataset, Datasource, Expression, Scalar, Scalarable } from "./Builder"
+// // import { And, AndOperator, ValueOperator } from "./Operator"
+// import { ArrayOfType, BooleanType, NumberType, ObjectOfType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "./PropertyType"
+// import { ExtractComputeProps, ExtractFieldProps, ExtractProps, ExtractSynComputeProps, UnionToIntersection } from "./util"
 
 
 // export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]

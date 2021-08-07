@@ -18,7 +18,7 @@ export type UnionToIntersection<T> =
 
 export type ExtractProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any>? key:
                     E[key] extends FieldProperty<any>? key:
                     never
 })[keyof E]> 
@@ -32,18 +32,18 @@ Pick<E, ({
 
 export type ExtractComputeProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any>? key:
                     never
 })[keyof E]> 
 
 
-export type ExtractSynComputeProps<E> = 
-Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, infer R>? (
-            Exclude<R, Promise<Scalarable> > extends Scalarable? key: key
-        ):
-        key
-})[keyof E]> 
+// export type ExtractSynComputeProps<E> = 
+// Pick<E, ({
+//     [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, infer R>? (
+//             Exclude<R, Promise<Scalarable> > extends Scalarable? key: key
+//         ):
+//         key
+// })[keyof E]> 
 
 
 export function thenResultArray<T, R>(

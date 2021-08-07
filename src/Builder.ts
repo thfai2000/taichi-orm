@@ -46,7 +46,7 @@ export type ExpressionFunc<O, M> = (map: M) => Expression<O, M>
 export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
     | AndOperator<O, M> 
     | OrOperator<O, M> 
-    | Scalar<any> | Promise<Scalar<any> > | Array<Expression<O, M> > | boolean | string | Date | number
+    | Scalar<any> | Array<Expression<O, M> > | boolean | string | Date | number
 
 export type Prefixed<Prefix extends string, MainName extends String, Content> = {
     type: 'Prefixed',
@@ -480,9 +480,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
 
 
     equals(rightOperand: any): Scalar<BooleanType> {
-        return new Scalar<BooleanType>( new BooleanType(),
-            (repository: EntityRepository<any>) => thenResult(this.expression(repository), left => new EqualOperator(left, rightOperand).toRaw(repository) )
-        )
+        return new EqualOperator(this, rightOperand).toScalar()
     }
 
 
@@ -569,10 +567,10 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
         // this.scalarable = scalarable
     }
 
-    value(): { [key in Name]: Scalar<T> | Promise<Scalar<T>> } {
+    value(): { [key in Name]: Scalar<T> } {
         const key = this.alias
         //@ts-ignore
-        return { [key]: thenResult(this.expression, value => value.toScalar()) }
+        return { [key]: this }
     }
 
     clone(): Column<Name, T> {
@@ -683,14 +681,14 @@ export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: 
 //     })
 // }
 
-export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar<any> | Promise<Scalar<any>>
+export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar<any>
 
 export const makeExpressionResolver = function<Props, M>(repository: EntityRepository<any>, fromSource: Datasource<any, any>, sources: Datasource<any, any>[], dictionary: M) {
 
-    const resolver: ExpressionResolver<Props, M> = async (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
+    const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
         let value
         if( expression instanceof Function) {
-            value = await expression(dictionary)
+            value = expression(dictionary)
         } else {
             value = expression
         }
@@ -741,7 +739,7 @@ export const makeExpressionResolver = function<Props, M>(repository: EntityRepos
                 const makeOperator = (leftOperatorEx: any, rightOperatorEx: any) => {
                     const leftOperator = resolver(leftOperatorEx)
 
-                    let operator: AssertionOperator<any, any>
+                    let operator: AssertionOperator
                     if(rightOperatorEx instanceof AssertionOperator){
                         operator = rightOperatorEx
                     }else if( Array.isArray(rightOperatorEx) ){
@@ -784,19 +782,17 @@ export async function resolveEntityProps<T extends typeof Entity, D extends T["s
     
     let computedCols: { [key: string]: Scalar<any> }[] = []
     if(props){
-        computedCols = await Promise.all(Object.keys(props).map( async (propName) => {
+        computedCols = Object.keys(props).map( (propName) => {
             //@ts-ignore
             const args = props[propName]
-            let call = source.getAysncComputeProperty(propName)
+            let call = source.getComputeProperty(propName)
             
-            let col = await call(args) as Column<any, any>
+            let col = call(args) as Column<any, any>
             let colDict = col.value()
 
-            Object.keys(colDict).map( key => {
-            
-            })
+            return colDict
 
-        }))
+        })
     }
     let fieldCols = source.schema.properties.filter(prop => prop.type === 'FieldProperty')
         .map(prop => source.getFieldProperty<string, any>(prop.name).value() )
