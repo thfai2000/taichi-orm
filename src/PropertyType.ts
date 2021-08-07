@@ -81,7 +81,6 @@ export class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> 
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string): SQLString {
         throw new Error('It is not allowed')
     }
-    
 }
 
 export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {

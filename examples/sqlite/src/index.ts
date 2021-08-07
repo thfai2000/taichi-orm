@@ -1,7 +1,6 @@
 import {configure, Entity, Schema, Types, models, builder, raw, Builtin} from '../../../dist/'
 import {snakeCase} from 'lodash'
 import { Like } from '../../../dist/Operator'
-import ah from '../../../dist/ah'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},

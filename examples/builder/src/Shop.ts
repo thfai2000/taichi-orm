@@ -3,7 +3,7 @@ import { BooleanType, NumberType, PrimaryKeyType, StringType } from "../../../di
 import Product from "./Product"
 
 export default class Shop extends Entity {
-    static get schema(){
+    static get initSchema(){
         return new (class ShopSchema extends TableSchema {
             id= this.field(PrimaryKeyType)
             name = this.field(StringType)

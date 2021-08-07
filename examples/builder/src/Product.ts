@@ -6,7 +6,7 @@ import { Dataset, Scalar, Scalarable } from "../../../dist/Builder"
 import Shop from "./Shop"
 
 export default class Product extends Entity{
-    static get schema(){
+    static get initSchema(){
         return new (class ProductSchema extends TableSchema {
             id = this.field(PrimaryKeyType)
             ddd = this.field(NumberType)

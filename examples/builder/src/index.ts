@@ -1,5 +1,6 @@
 import { Dataset, Scalar, Scalarable } from "../../../dist/Builder"
 import { BooleanType, NumberType, PrimaryKeyType, StringType } from "../../../dist/PropertyType"
+import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import Shop from './Shop'
 import Product from './Product'
@@ -8,11 +9,20 @@ import Product from './Product'
 (async() => {
 
     const orm = new ORM({
-        models: {Shop, Product}
+        models: {Shop, Product},
+        enableUuid: true,
+        entityNameToTableName: (className: string) => snakeCase(className),
+        propNameTofieldName: (propName: string) => snakeCase(propName),
+        knexConfig: {
+            client: 'sqlite3',
+            connection: {
+            filename: ':memory:'
+            }
+        }
     })
 
     let repository = orm.getRepository()
-    repository.outputSchema('/schema')
+    // repository.outputSchema('/schema')
     await repository.createModels()
     
     let s = repository.models.Shop.datasource('shop')
