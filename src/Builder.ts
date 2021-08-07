@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, DateTimeType, NumberType, PropertyTypeDefinition, StringType } from "./PropertyType"
-import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -78,7 +78,7 @@ export interface Datasource<E extends Schema, alias extends string> {
     realSource(repository: EntityRepository<any>): SQLString
     
     getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
-    getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: string) => CompiledComputeFunction<Name, ARG, R>
+    getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -121,31 +121,15 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
     selectorMap(): SelectorMap<E>{
         const datasource = this
         //@ts-ignore
-        const map = new Proxy( datasource.schema ,{
-            get: (oTarget: Schema, sKey: string) => {
-                
+        const map = new Proxy( datasource ,{
+            get: (oTarget: TableDatasource<any, any>, sKey: string) => {
                 if(typeof sKey === 'string'){
-                    let prop = oTarget.propertiesMap[sKey]
+                    let prop = oTarget.schema.propertiesMap[sKey]
                     if(prop instanceof FieldProperty){
-                        // let tableAlias = quote(tableAlias)
-                        // let fieldName: string = 
-                        let alias = metaFieldAlias(prop)
-                        
-                        return new Column(alias, prop.definition, (entityRepository) => {
-                            const client = entityRepository.orm.client()
-                            let rawTxt = `${quote(client, datasource.sourceAlias)}.${quote(client, prop.fieldName)}`
-                            return makeRaw(entityRepository, rawTxt)
-                        })
+                        return datasource.getFieldProperty(sKey)
                     }
                     if(prop instanceof ComputeProperty){
-                        const cProp = prop
-                        return (args?: any) => {
-                            let alias = metaFieldAlias(cProp)
-                            return new Column(alias, cProp.definition, (entityRepository) => {
-                                const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, datasource, args)
-                                return thenResult( subquery, scalarable => scalarable.toScalar().toRaw(entityRepository) )
-                            })
-                        }
+                        return datasource.getComputeProperty(sKey)
                     }
                 }
 
@@ -155,12 +139,31 @@ export class TableDatasource<E extends TableSchema, Name extends string> impleme
     }
 
     getFieldProperty<Name extends string>(name: Name) : Column<Name, any> {
-        //TODO
-        throw new Error('NYI')
+        let prop = this.schema.propertiesMap[name]
+        if( !(prop instanceof FieldProperty)){
+            throw new Error('Not field property')
+        } else {
+            return new Column(name, prop.definition, (entityRepository) => {
+                const client = entityRepository.orm.client()
+                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, prop.fieldName)}`
+                return makeRaw(entityRepository, rawTxt)
+            })
+        }
     }
-    getComputeProperty<Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: string): CompiledComputeFunction<Name, ARG, R>{
-        //TODO
-        throw new Error('NYI')
+
+    getComputeProperty<Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<Name, ARG, R>{
+        let prop = this.schema.propertiesMap[name]
+        if( !(prop instanceof ComputeProperty)){
+            throw new Error('Not field property')
+        }else{
+            const cProp = prop
+            return (...args: ARG) => {
+                return new Column(name, cProp.definition, (entityRepository) => {
+                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, ...args)
+                    return thenResult( subquery, scalarable => scalarable.toScalar().toRaw(entityRepository) )
+                })
+            }
+        }
     }
     // getAysncComputeProperty<Name extends string, ARG extends any[], R>(name: string): CompiledComputeFunctionPromise<Name, ARG, R>{
     //     //TODO
@@ -306,7 +309,20 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             >
         , 
         SourceProps, SourcePropMap>{
-            throw new Error('NYI')
+        this.__selectItems = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
+            const client = repository.orm.client()
+            let map = selectorMap as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
+            let fields = properties as string[]
+            let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, f:string) => {
+                let [source, field] = f.split('.') 
+                let col = map[source][field]
+                return col.value()
+            }, {})
+
+            let items = await this.resolveSelectItems(nameMap, repository)
+            return items
+        }
+        return this as any
     }
         
     props<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >>(named: S | 
@@ -327,7 +343,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         , 
         SourceProps, SourcePropMap> {
         this.__selectItems = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
-            const client = repository.orm.client()
+            
             let nameMap: { [key: string]: Scalar<any> }
             if(named instanceof Function){
                 const map = Object.assign({}, selectorMap, this.sqlKeywords<any, any>()) as Y
@@ -336,25 +352,31 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
                 nameMap = named
             }
 
-            let items = await Promise.all(Object.keys(nameMap).map( async(k) => {
-                let scalar = nameMap[k] 
-                let alias = k
-
-                let text = scalar.toRaw(repository).toString().trim()
-
-                if(text.includes(' ') && !( text.startsWith('(') && text.endsWith(')') ) ){
-                    text = `(${text})`
-                }
-                const raw = makeRaw(repository, `${text} AS ${quote(client, alias)}`)
-
-                return {
-                    value: raw,
-                    actualAlias: alias
-                }
-            }))
+            let items = await this.resolveSelectItems(nameMap, repository)
             return items
         }
         return this as any
+    }
+
+    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
+        const client = repository.orm.client()
+        
+        return await Promise.all(Object.keys(nameMap).map(async (k) => {
+            let scalar = nameMap[k]
+            let alias = k
+
+            let text = scalar.toRaw(repository).toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            const raw = makeRaw(repository, `${text} AS ${quote(client, alias)}`)
+
+            return {
+                value: raw,
+                actualAlias: alias
+            }
+        }))
     }
 
     sqlKeywords<X, Y>(){
@@ -445,20 +467,6 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     schema(): SelectProps & Schema{
-        throw new Error('NYI')
-    }
-
-    execute(): Promise<
-        {
-            [key in keyof SelectProps & string]: 
-                SelectProps[key] extends Scalar<infer D>?
-                    (
-                        D extends PropertyTypeDefinition?  ReturnType< D["parseRaw"]>: never
-                    )
-                    // boolean
-                : never
-        }
-    > {
         throw new Error('NYI')
     }
 }

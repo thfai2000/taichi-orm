@@ -91,10 +91,10 @@ export const quote = (client: string, name: string) => {
 
 
 export const META_FIELD_DELIMITER = '___'
-const map1 = new Map<Property<PropertyTypeDefinition>, string>()
-const map2 = new Map<string, Property<PropertyTypeDefinition>>()
+const map1 = new Map<PropertyTypeDefinition, string>()
+const map2 = new Map<string, PropertyTypeDefinition>()
 
-export const registerGlobalNamedProperty = function(d: Property<PropertyTypeDefinition>): string{
+export const registerGlobalPropertyTypeDefinition = function(d: PropertyTypeDefinition): string{
     let r = map1.get(d)
     if(!r){
         let key = makeid(5)
@@ -105,7 +105,7 @@ export const registerGlobalNamedProperty = function(d: Property<PropertyTypeDefi
     return r
 }
 
-export const findGlobalNamedProperty = function(propAlias: string): Property<PropertyTypeDefinition>{
+export const findGlobalPropertyTypeDefinition = function(propAlias: string): PropertyTypeDefinition {
     let r = map2.get(propAlias)
     if(!r){
         throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
@@ -113,25 +113,37 @@ export const findGlobalNamedProperty = function(propAlias: string): Property<Pro
     return r
 }
 
-export const metaTableAlias = function(schema: TableSchema, name: string): string{
-    return schema.entityClass?.entityName + META_FIELD_DELIMITER + name
-}
-
-export const metaFieldAlias = function(p: Property<PropertyTypeDefinition>): string{
-    let propAlias = registerGlobalNamedProperty(p)
-    return `${p.name}${META_FIELD_DELIMITER}${propAlias}`
+export const metaFieldAlias = function(name: string, p: PropertyTypeDefinition): string{
+    let propAlias = registerGlobalPropertyTypeDefinition(p)
+    return `${name}${META_FIELD_DELIMITER}${propAlias}`
 }
 
 export const breakdownMetaFieldAlias = function(metaAlias: string){
     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
     if(metaAlias.includes(META_FIELD_DELIMITER)){
         let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
-        let namedProperty = findGlobalNamedProperty(propAlias)
-        return {propName, namedProperty}
+        let propType = findGlobalPropertyTypeDefinition(propAlias)
+        return {propName, propType}
     } else {
-        return null
+        return {propName: metaAlias, propType: new PropertyTypeDefinition() }
     }
 }
+
+// const breakdownMetaTableAlias = function(metaAlias: string) {
+//     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
+    
+//     if(metaAlias.includes(META_FIELD_DELIMITER)){
+//         let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
+//         let found = schemas[entityName]
+//         return found
+//     } else {
+//         return null
+//     }
+// }
+
+// export const metaTableAlias = function(schema: TableSchema, name: string): string{
+//     return schema.entityClass?.entityName + META_FIELD_DELIMITER + name
+// }
 
 export function makeid(length: number) {
     var result           = [];

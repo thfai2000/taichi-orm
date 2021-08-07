@@ -7,7 +7,7 @@ import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableO
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { breakdownMetaFieldAlias, ExtractComputeProps, ExtractProps, makeid, metaFieldAlias, metaTableAlias, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { breakdownMetaFieldAlias, ExtractComputeProps, ExtractProps, makeid, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 
 // import { SingleSourceArg, SingleSourceFilter } from './Relation'
 // import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
@@ -508,20 +508,6 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
         return this.getRepository().query(dataset, executionOptions)
     }
 }
-
-
-// const breakdownMetaTableAlias = function(metaAlias: string) {
-//     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
-    
-//     if(metaAlias.includes(META_FIELD_DELIMITER)){
-//         let [entityName, randomNumber] = metaAlias.split(META_FIELD_DELIMITER)
-//         let found = schemas[entityName]
-//         return found
-//     } else {
-//         return null
-//     }
-// }
-
 
 export type EntityRepositoryConfig = {
 } & TableOptions
@@ -1442,45 +1428,22 @@ function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyV
     entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
         // let prop = this.compiledNamedPropertyMap.get(fieldName)
         let metaInfo = breakdownMetaFieldAlias(fieldName)
-        // let propName = null
-        let namedProperty: Property<PropertyTypeDefinition> | null = null
-        if (metaInfo) {
-            // propName = metaInfo.propName
-            namedProperty = metaInfo.namedProperty
+        
+        /**
+         * it can be boolean, string, number, Object, Array of Object (class)
+         * Depends on the props..
+         */
+        let propValue = metaInfo?.propType!.parseRaw(row[fieldName], metaInfo.propName, client)
 
-        } else {
+        Object.defineProperty(entityInstance, metaInfo.propName, {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: propValue
+        })
+        return entityInstance
 
-            let prop = schema.properties.find(p => {
-                return p.fieldName === fieldName
-            })
-
-            if (!prop) {
-                throw new Error(`Result contain property/column [${fieldName}] which is not found in schema.`)
-            } else {
-                namedProperty = prop
-            }
-        }
-
-        if (namedProperty !== null && (namedProperty instanceof ComputeProperty || namedProperty instanceof FieldProperty)) {
-
-            /**
-             * it can be boolean, string, number, Object, Array of Object (class)
-             * Depends on the props..
-             */
-            let propValue = namedProperty.definition!.parseRaw(row[fieldName], namedProperty.name, client)
-
-            Object.defineProperty(entityInstance, namedProperty?.name!, {
-                configurable: true,
-                enumerable: true,
-                writable: true,
-                value: propValue
-            })
-            return entityInstance
-
-        }
-
-        throw new Error('Unexpected type of Property.')
-
+    
     }, entityInstance)
     return entityInstance
 }
