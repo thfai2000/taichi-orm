@@ -153,7 +153,6 @@ export type ORMConfig<EntityClassMap extends {[key:string]: typeof Entity}> = {
 export class Property<D extends PropertyTypeDefinition> {
     // private repository?: EntityRepository<any>
     private _name?: string
-    private _fieldName?: string
     readonly definition: D
     // private schema?: Schema
 
@@ -176,7 +175,31 @@ export class Property<D extends PropertyTypeDefinition> {
         }
         return this._name
     }
-    
+
+}
+
+export class ComputeProperty<D extends PropertyTypeDefinition, Root extends Schema, Name extends string, Arg extends any[]> extends Property<D> {
+
+    // type: 'ComputeProperty' = 'ComputeProperty'
+    compute: ComputeFunction<Root, Name, Arg, D>
+
+    constructor(
+        definition: D,
+        compute:  ComputeFunction<Root, Name, Arg, D>){
+            super(definition)
+            this.compute = compute
+        }
+}
+export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D> {
+
+    // type: 'FieldProperty' = 'FieldProperty'
+    private _fieldName?: string
+
+    constructor(
+        definition: D){
+            super(definition)
+        }
+
     convertFieldName(propName: string, orm: ORM<any>){
         const c = orm.ormConfig.propNameTofieldName
         return c? c(propName) : propName
@@ -198,34 +221,12 @@ export class Property<D extends PropertyTypeDefinition> {
     }
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition, Root extends Schema, Name extends string, Arg extends any[]> extends Property<D> {
-
-    type: 'ComputeProperty' = 'ComputeProperty'
-    compute: ComputeFunction<Root, Name, Arg, D>
-
-    constructor(
-        definition: D,
-        compute:  ComputeFunction<Root, Name, Arg, D>){
-            super(definition)
-            this.compute = compute
-        }
-}
-export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D> {
-
-    type: 'FieldProperty' = 'FieldProperty'
-
-    constructor(
-        definition: D){
-            super(definition)
-        }
-}
-
 export class Schema {
 
     properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
-        | FieldProperty<PropertyTypeDefinition>)[] = []
+        | FieldProperty<PropertyTypeDefinition> | Property<PropertyTypeDefinition>)[] = []
     propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
-        | FieldProperty<PropertyTypeDefinition>)} = {}
+        | FieldProperty<PropertyTypeDefinition> | Property<PropertyTypeDefinition>)} = {}
     
     // id: PropertyDefinition
     // uuid: PropertyDefinition | null
@@ -262,7 +263,7 @@ export abstract class TableSchema extends Schema {
     }
 
     initAndRegister(entityClass: typeof Entity){
-        console.log('register TableSchema', entityClass)
+        // console.log('register TableSchema', entityClass)
         this.entityClass = entityClass
         super.init()
         // if(!entityClass.entityName || !this.entityClass?.orm){

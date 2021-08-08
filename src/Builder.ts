@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator } from "./Operator"
 import { BooleanType, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
@@ -77,6 +77,7 @@ export interface Datasource<E extends Schema, alias extends string> {
     toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
     
+    getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
@@ -102,7 +103,6 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         this.schema = schema
         this.sourceAlias = sourceAlias
     }
-
     abstract realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
 
     selectorMap(): SelectorMap<E>{
@@ -118,6 +118,9 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
                     if(prop instanceof ComputeProperty){
                         return datasource.getComputeProperty(sKey)
                     }
+                    if(prop instanceof Property){
+                        return datasource.getProperty(sKey)
+                    }
                 }
 
             }
@@ -125,19 +128,37 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         return map
     }
 
-    getFieldProperty<Name extends string>(name: Name) : Column<Name, any> {
+    getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
         let prop = this.schema.propertiesMap[name]
-        if( !(prop instanceof FieldProperty)){
-            throw new Error('Not field property')
+        if( !(prop instanceof Property)){
+            throw new Error('it is not property')
         } else {
-            return new Column(name, prop.definition, (entityRepository) => {
+            const derivedProp = prop
+            return new Column(name, derivedProp.definition, (entityRepository) => {
                 const orm = entityRepository.orm
                 const client = orm.client()
-                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, prop.fieldName(orm))}`
+                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, derivedProp.name)}`
                 return makeRaw(entityRepository, rawTxt)
             })
         }
     }
+
+
+    getFieldProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name): Column<Name, T> {
+        let prop = this.schema.propertiesMap[name]
+        if( !(prop instanceof FieldProperty)){
+            throw new Error('it is not field property')
+        } else {
+            const fieldProp = prop
+            return new Column(name, fieldProp.definition, (entityRepository) => {
+                const orm = entityRepository.orm
+                const client = orm.client()
+                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, fieldProp.fieldName(orm))}`
+                return makeRaw(entityRepository, rawTxt)
+            })
+        }
+    }
+
 
     getComputeProperty<Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<Name, ARG, R>{
         let prop = this.schema.propertiesMap[name]
@@ -240,7 +261,9 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     async toNativeBuilder(repository: EntityRepository<any>, needFieldMetaAlias: boolean = true): Promise<Knex.QueryBuilder> {
         let nativeQB = repository.orm.getKnexInstance().clearSelect()
-        
+        //@ts-ignore
+        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+
         if(this.__fromItem){
             const from = await this.__fromItem.toRaw(repository)
             nativeQB.from(from)
@@ -265,16 +288,20 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             }
             return true
         }, Promise.resolve(true))
+        
         if(this.__whereRawItem){
-            const where = await this.__whereRawItem(repository, finalSelectorMap )
-            nativeQB.where( where.toRaw(repository) )
+            const where = this.__whereRawItem(repository, finalSelectorMap )
+            nativeQB.where( await where.toRaw(repository) )
         }
         if(this.__selectItems){
-            nativeQB.select( await this.resolveSelectItems(this.__selectItems, repository, needFieldMetaAlias) )
+            const selectItems = await this.resolveSelectItems(this.__selectItems, repository, needFieldMetaAlias)
+            // console.log('aaaaaa', selectItems)
+            nativeQB.select( selectItems )
         }
         await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
             await callback(nativeQB)
         }))
+        
         return nativeQB
     }
 
@@ -360,16 +387,16 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             nameMap = named
         }
 
-        // this.resolveSelectItems(nameMap, repository)
-
         this.__selectItems = nameMap
         return this as any
     }
 
     private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>, needMetaFieldAlias: boolean) {
-        const client = repository.orm.client()
+        // const client = repository.orm.client()
         
-        return await Promise.all(Object.keys(nameMap).map(async (k) => {
+        return await Object.keys(nameMap).reduce(async (accP, k) => {
+
+            let acc = await accP
             let scalar = nameMap[k]
             let alias = needMetaFieldAlias? metaFieldAlias(k, scalar.definition): k
             const raw: Knex.Raw = await scalar.toRaw(repository)
@@ -378,13 +405,11 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(repository, `${text} AS ${quote(client, alias)}`)
+            const newRaw = makeRaw(repository, `${text}`)
 
-            return {
-                value: newRaw,
-                actualAlias: alias
-            }
-        }))
+            return Object.assign(acc, {[alias]: newRaw})
+
+        }, Promise.resolve({}) )
     }
 
     sqlKeywords<X, Y>(){
@@ -557,7 +582,7 @@ export class DatasetScalar<T extends PropertyTypeDefinition<any> > extends Scala
 
     constructor(definition: PropertyTypeDefinition, dataset: Dataset<any, any, any>){
         super(definition, (repository: EntityRepository<any>) => {
-            return dataset.toNativeBuilder(repository)
+            return dataset.toNativeBuilder(repository, false)
         })
         this.dataset = dataset
     }
@@ -816,7 +841,7 @@ export async function resolveEntityProps<T extends typeof Entity, D extends T["s
 
         })
     }
-    let fieldCols = source.schema.properties.filter(prop => prop.type === 'FieldProperty')
+    let fieldCols = source.schema.properties.filter(prop => !(prop instanceof ComputeProperty) )
         .map(prop => source.getFieldProperty<string, any>(prop.name).value() )
     let r = Object.assign({}, ...fieldCols, ...computedCols)
     return r as { [key: string]: Scalar<any> }

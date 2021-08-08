@@ -4,6 +4,7 @@ import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import Shop from './Shop'
 import Product from './Product'
+import { Knex } from "knex"
 
 
 (async() => {
@@ -31,11 +32,10 @@ import Product from './Product'
     
     let myShopDS = new Dataset().from(s).fields("shop.id", "shop.name")
     
-    console.log('xxxxxxxx', await myShopDS.toNativeBuilder(repository) )
+    const builder = await myShopDS.toNativeBuilder(repository)
+    console.log('xxxxxxxaax', builder.toString() )
 
     let myShop = myShopDS.datasource("myShop")
-    
-    // type A = ExtractSynComputeProps<ProductSchema>
     
     let xxx: Scalar<BooleanType>
     
@@ -69,7 +69,7 @@ import Product from './Product'
             )
     
     let result = await orm.getRepository().query(dd)
-    // console.log('xxx', result)
+    console.log('xxx', result)
 })()
 
 
