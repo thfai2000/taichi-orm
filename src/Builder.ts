@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator } from "./Operator"
-import { BooleanType, ComputePropertyTypeDefinition, DateTimeType, NumberType, PropertyTypeDefinition, StringType } from "./PropertyType"
-import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { BooleanType, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType } from "./PropertyType"
+import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -131,8 +131,9 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             throw new Error('Not field property')
         } else {
             return new Column(name, prop.definition, (entityRepository) => {
-                const client = entityRepository.orm.client()
-                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, prop.fieldName)}`
+                const orm = entityRepository.orm
+                const client = orm.client()
+                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, prop.fieldName(orm))}`
                 return makeRaw(entityRepository, rawTxt)
             })
         }
@@ -190,14 +191,14 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
     }
 
     async realSource(repository: EntityRepository<any>){
-        return `(${(await this.dataset.toNativeBuilder(repository))})`
+        return `(${(await this.dataset.toNativeBuilder(repository, false))})`
     }
 }
 
 export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalarable<any> {
     __type: 'Dataset' = 'Dataset'
-    __whereRawItem: null |  ( (repository: EntityRepository<any>, selectorMap: SourcePropMap) => Promise<Scalar<BooleanType>> ) = null
-    __selectItems: null | ( (repository: EntityRepository<any>, selectorMap: SourcePropMap) => Promise<SelectItem[]>) = null
+    __whereRawItem: null |  ( (repository: EntityRepository<any>, selectorMap: SourcePropMap & SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap > ) => Scalar<BooleanType> ) = null
+    __selectItems: { [key: string]: Scalar<any> } = {}
     __fromItem?: null | Datasource<Schema, string> = null
     __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> }> = []
     
@@ -226,16 +227,18 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         return sourcePropMap as unknown as SourcePropMap
     }
 
-    async selectedPropNames(repository: EntityRepository<any>): Promise<string[]>{
-        if(!this.__selectItems){
-            return []
-        }
-        return (await this.__selectItems(repository, this.getSelectorMap() ) ).map(item => {
-            return item.actualAlias
-        })
+    selectedPropNames(): string[]{
+        // if(!this.__selectItems){
+        //     return []
+        // }
+        // return (await this.__selectItems(repository, this.getSelectorMap() ) ).map(item => {
+        //     return item.actualAlias
+        // })
+
+        return Object.keys(this.__selectItems)
     }
 
-    async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repository: EntityRepository<any>, needFieldMetaAlias: boolean = true): Promise<Knex.QueryBuilder> {
         let nativeQB = repository.orm.getKnexInstance().clearSelect()
         
         if(this.__fromItem){
@@ -243,7 +246,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             nativeQB.from(from)
         }
 
-        let finalSelectorMap = this.getSelectorMap()
+        let finalSelectorMap = Object.assign({}, this.getSelectorMap(), this.sqlKeywords() )
 
         await this.__joinItems.reduce( async(acc, item) => {
             await acc
@@ -267,7 +270,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             nativeQB.where( where.toRaw(repository) )
         }
         if(this.__selectItems){
-            nativeQB.select( await this.__selectItems(repository, finalSelectorMap ) )
+            nativeQB.select( await this.resolveSelectItems(this.__selectItems, repository, needFieldMetaAlias) )
         }
         await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
             await callback(nativeQB)
@@ -317,24 +320,22 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             >
         , 
         SourceProps, SourcePropMap>{
-        this.__selectItems = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
-            const client = repository.orm.client()
-            let map = selectorMap as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
-            let fields = properties as string[]
-            let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, f:string) => {
-                let [source, field] = f.split('.') 
-                let col = map[source][field]
-                return col.value()
-            }, {})
+       
+        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
+        let fields = properties as string[]
+        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, f:string) => {
+            let [source, field] = f.split('.') 
+            let col = map[source][field]
+            acc = Object.assign({}, acc, col.value() )
+            return acc
+        }, {})
 
-            let items = await this.resolveSelectItems(nameMap, repository)
-            return items
-        }
+        this.__selectItems = nameMap
         return this as any
     }
         
     props<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >>(named: S | 
-        ((map: Y ) => (Promise<S> | S) ) ): 
+        ((map: Y ) => S ) ):
         Dataset<
             UnionToIntersection<
             SelectProps
@@ -350,38 +351,37 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             >
         , 
         SourceProps, SourcePropMap> {
-        this.__selectItems = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
-            
-            let nameMap: { [key: string]: Scalar<any> }
-            if(named instanceof Function){
-                const map = Object.assign({}, selectorMap, this.sqlKeywords<any, any>()) as Y
-                nameMap = await named(map)
-            }else {
-                nameMap = named
-            }
 
-            let items = await this.resolveSelectItems(nameMap, repository)
-            return items
+        let nameMap: { [key: string]: Scalar<any> }
+        if(named instanceof Function){
+            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>()) as Y
+            nameMap = named(map)
+        }else {
+            nameMap = named
         }
+
+        // this.resolveSelectItems(nameMap, repository)
+
+        this.__selectItems = nameMap
         return this as any
     }
 
-    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
+    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>, needMetaFieldAlias: boolean) {
         const client = repository.orm.client()
         
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
             let scalar = nameMap[k]
-            let alias = k
-
-            let text = scalar.toRaw(repository).toString().trim()
+            let alias = needMetaFieldAlias? metaFieldAlias(k, scalar.definition): k
+            const raw: Knex.Raw = await scalar.toRaw(repository)
+            let text = raw.toString().trim()
 
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const raw = makeRaw(repository, `${text} AS ${quote(client, alias)}`)
+            const newRaw = makeRaw(repository, `${text} AS ${quote(client, alias)}`)
 
             return {
-                value: raw,
+                value: newRaw,
                 actualAlias: alias
             }
         }))
@@ -407,16 +407,16 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     filter<X extends ExtractFieldProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
-        this.__whereRawItem = async (repository: EntityRepository<any>, selectorMap: SourcePropMap) => {
+        //@ts-ignore
+        this.__whereRawItem = (repository: EntityRepository<any>, map: Y) => {
             let sources = this.__joinItems.map(item => item.source)
             if(!this.__fromItem){
                 throw new Error('There must be a FROM before using filter.')
             }
-            
-            let map = Object.assign({}, selectorMap, this.sqlKeywords<X, SourcePropMap>() ) as Y
+
             let resolver = makeExpressionResolver<X, Y>(repository, this.__fromItem, sources, map)
             
-            let boolScalar = await resolver(expression)
+            let boolScalar = resolver(expression)
             return boolScalar
         }
         return this
@@ -475,7 +475,20 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     schema(): SelectProps & Schema{
-        throw new Error('NYI')
+        const propertyMap =  Object.keys(this.__selectItems).reduce((acc, key) => {
+            const d = this.__selectItems[key].definition
+            if(d instanceof FieldPropertyTypeDefinition){
+                //@ts-ignore
+                acc[key] = new FieldProperty(d).setFieldName(key)
+            } else {
+                //@ts-ignore
+                acc[key] = new FieldProperty( new FieldPropertyTypeDefinition() ).setFieldName(key)
+            }
+            return acc
+        }, {} as SelectProps & {[key:string]: FieldPropertyTypeDefinition<any>}) 
+        let schema =  Object.assign(new Schema(), propertyMap)
+        schema.init()
+        return schema
     }
 }
 
@@ -520,11 +533,9 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
         return raw
     }
 
-
     asColumn<Name extends string>(propName: Name): Column<Name, T> {
         return new Column(propName, this.definition, this.expression)
     }
-
 
     // toScalar(): Scalar<T>
     // clone(): Scalar<T>
@@ -551,21 +562,16 @@ export class DatasetScalar<T extends PropertyTypeDefinition<any> > extends Scala
         this.dataset = dataset
     }
 
-    postTransform(repository: EntityRepository<any>, raw: Knex.Raw): Knex.Raw | Promise<Knex.Raw>{
+    postTransform(repository: EntityRepository<any>, raw: Knex.Raw): Knex.Raw {
         if(this.definition instanceof ComputePropertyTypeDefinition && this.definition.queryTransform){
             const client = repository.orm.client()
 
             const definition = this.definition
             const oldRaw = raw
-            const newRaw: Knex.Raw | Promise<Knex.Raw> = thenResult( this.dataset.selectedPropNames(repository), (extractedColumnNames) => {
-                if(extractedColumnNames.length === 0){
-                    throw new Error(`There is no selected column to be transformed as Computed Field. Please check your sql builder.`)
-                }
-    
-                const sql = definition.queryTransform(oldRaw, extractedColumnNames, 'column1', client)
-                const newRaw = makeRaw(repository, sql)
-                return newRaw
-            })
+            
+            const sql = definition.queryTransform(oldRaw, this.dataset.selectedPropNames(), 'column1', client)
+            const newRaw = makeRaw(repository, sql)
+           
             return newRaw
         }
         return raw

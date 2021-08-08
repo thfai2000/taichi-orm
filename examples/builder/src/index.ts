@@ -29,7 +29,11 @@ import Product from './Product'
     
     let p = repository.models.Product.datasource('product')
     
-    let myShop = new Dataset().from(s).fields("shop.id", "shop.name").datasource("myShop")
+    let myShopDS = new Dataset().from(s).fields("shop.id", "shop.name")
+    
+    console.log('xxxxxxxx', await myShopDS.toNativeBuilder(repository) )
+
+    let myShop = myShopDS.datasource("myShop")
     
     // type A = ExtractSynComputeProps<ProductSchema>
     
@@ -65,7 +69,7 @@ import Product from './Product'
             )
     
     let result = await orm.getRepository().query(dd)
-    console.log('xxx', result)
+    // console.log('xxx', result)
 })()
 
 

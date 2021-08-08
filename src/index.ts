@@ -155,20 +155,20 @@ export class Property<D extends PropertyTypeDefinition> {
     private _name?: string
     private _fieldName?: string
     readonly definition: D
-    private schema?: Schema
+    // private schema?: Schema
 
     constructor(definition: D){
         this.definition = definition
     }
     register(
-        name: string, schema: Schema, orm: ORM<any>){
+        name: string){
             if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
             }
-            this.schema = schema
+            // this.schema = schema
             // this.repository = repository
             this._name = name
-            this._fieldName = this._fieldName ?? this.convertFieldName(this.name, orm)
+            
         }
     get name(){
         if(!this._name){
@@ -182,11 +182,14 @@ export class Property<D extends PropertyTypeDefinition> {
         return c? c(propName) : propName
     }
 
-    get fieldName(){
-        if(!this._fieldName){
-            throw new Error('Property not yet registered')
+    fieldName(orm: ORM<any>){
+        // if(!this._fieldName){
+        //     throw new Error('Property not yet registered')
+        // }
+        if(this._fieldName){
+            return this._fieldName
         }
-        return this._fieldName
+        return this.convertFieldName(this.name, orm)
     }
 
     setFieldName(value: string){
@@ -219,8 +222,6 @@ export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D>
 
 export class Schema {
 
-
-    overridedTableName?: string
     properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
         | FieldProperty<PropertyTypeDefinition>)[] = []
     propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
@@ -231,6 +232,22 @@ export class Schema {
 
     constructor(){
     }
+
+    init() {
+        let fields: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> |
+            FieldProperty<PropertyTypeDefinition>)[] = []
+        for (let field in this) {
+            if (typeof field === 'string') {
+                const actual = this[field]
+                if (actual instanceof FieldProperty || actual instanceof ComputeProperty) {
+                    actual.register(field)
+                    this.propertiesMap[field] = actual
+                    fields.push(actual)
+                }
+            }
+        }
+        this.properties = fields
+    }
 }
 
 export abstract class TableSchema extends Schema {
@@ -238,31 +255,20 @@ export abstract class TableSchema extends Schema {
     uuid?: FieldProperty<PropertyTypeDefinition> = undefined
     hooks: Hook[] = []
     entityClass?: typeof Entity
+    overridedTableName?: string
 
     constructor(){
         super()
     }
 
-    register(entityClass: typeof Entity){
+    initAndRegister(entityClass: typeof Entity){
         console.log('register TableSchema', entityClass)
         this.entityClass = entityClass
-        if(!entityClass.entityName || !this.entityClass?.orm){
-            throw new Error('Not yet registered.')
-        }
-        
-        let fields : (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
-        | FieldProperty<PropertyTypeDefinition>)[] = []
-        for(let field in this){
-            if(typeof field === 'string'){
-                const actual = this[field]
-                if(actual instanceof FieldProperty || actual instanceof ComputeProperty) {
-                    actual.register(field, this, this.entityClass.orm)
-                    this.propertiesMap[field] = actual
-                    fields.push(actual)
-                }
-            }
-        }
-        this.properties = fields
+        super.init()
+        // if(!entityClass.entityName || !this.entityClass?.orm){
+        //     throw new Error('Not yet registered.')
+        // }
+        // const orm = this.entityClass.orm
     }
 
     tableName(options?: TableOptions){
@@ -291,11 +297,12 @@ export abstract class TableSchema extends Schema {
     }
 
     createTableStmt(options?: TableOptions){
-        console.log('xxxx', this.entityClass)
+        // console.log('xxxx', this.entityClass)
         if(!this.entityClass || !this.entityClass.orm){
             throw new Error('Not register yet')
         }
-        const client = this.entityClass.orm.client()
+        const orm = this.entityClass.orm
+        const client = orm.client()
         const tableName = this.tableName(options)
         if(tableName.length > 0){
             let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<PropertyTypeDefinition>[]
@@ -304,7 +311,7 @@ export abstract class TableSchema extends Schema {
                 props.map( prop => {
                     let f = prop.definition
                     if(f instanceof FieldPropertyTypeDefinition){
-                        return `${f.create(prop.name, prop.fieldName, client)}`  
+                        return `${f.create(prop.name, prop.fieldName(orm), client)}`  
                     }
                     return ``
                 }).flat().join(',\n')}\n)`;
@@ -803,7 +810,7 @@ export class Database{
             }
         }
         
-        const schemaPrimaryKeyFieldName = schema.id.fieldName
+        const schemaPrimaryKeyFieldName = schema.id.fieldName(repository.orm)
         const schemaPrimaryKeyPropName = schema.id.name
         const schemaUUIDPropName = schema.uuid?.name
         
@@ -821,7 +828,7 @@ export class Database{
                     propValues[schemaUUIDPropName] = newUuid
                 }
                 
-                let stmt = repository.orm.getKnexInstance()( schema.tableName({tablePrefix: repository.tablePrefix}) ).insert( this.extractRealField(schema, propValues) )
+                let stmt = repository.orm.getKnexInstance()( schema.tableName({tablePrefix: repository.tablePrefix}) ).insert( this.extractRealField(repository, schema, propValues) )
         
                 if ( repository.orm.client().startsWith('pg')) {
                     stmt = stmt.returning( schemaPrimaryKeyFieldName )
@@ -1122,7 +1129,7 @@ export class Database{
         //     deleteMode = existingContext.isSoftDeleteMode ? 'soft': 'real'
         // }
 
-        const realFieldValues = this.extractRealField(schema, propValues)
+        const realFieldValues = this.extractRealField(repository, schema, propValues)
         const input = {
             updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? 
                             (applyFilter? new Dataset()
@@ -1136,7 +1143,7 @@ export class Database{
             entityData: data
         }
 
-        const schemaPrimaryKeyFieldName = schema.id.fieldName
+        const schemaPrimaryKeyFieldName = schema.id.fieldName(repository.orm)
         const schemaPrimaryKeyPropName = schema.id.name
 
         let fns = await repository.orm.startTransaction(async (trx) => {
@@ -1267,14 +1274,14 @@ export class Database{
         return parseDataBySchema( instance, row, schema, client)
     }
 
-    static extractRealField(schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
+    static extractRealField(repository: EntityRepository<any>, schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
         return Object.keys(fieldValues).reduce( (acc, key) => {
             let prop = schema.properties.find(p => p.name === key)
             if(!prop){
                 throw new Error('Unexpected')
             }
             if(prop instanceof FieldProperty){
-                acc[prop.fieldName] = fieldValues[key]
+                acc[prop.fieldName(repository.orm)] = fieldValues[key]
             }
             return acc
         }, {} as MutationEntityPropertyKeyValues)        
@@ -1308,7 +1315,7 @@ export class Entity{
             throw new Error(`There is no schema for Entity ${entityName}`)
         }
         let s = this.initSchema
-        s.register(this)
+        s.initAndRegister(this)
         this.schema = s 
     }
 
