@@ -16,10 +16,10 @@ export default class Product extends Entity{
             get shop(){
                 return Shop.hasMany(Product, schema => schema.shopId)
             }
-            myABC = this.compute(StringType, (root, args: number): Scalarable<any> => {
-                console.log('xxx', this, root)
-                throw new Error()
-            })
+            // myABC = this.compute(StringType, (root, args: number): Scalarable<any> => {
+            //     console.log('xxx', this, root)
+            //     throw new Error()
+            // })
     })}
     
     myName: number  = 5

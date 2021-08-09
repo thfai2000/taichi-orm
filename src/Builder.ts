@@ -77,7 +77,7 @@ export interface Datasource<E extends Schema, alias extends string> {
     toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
     
-    getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
+    // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
     getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
@@ -118,9 +118,9 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
                     if(prop instanceof ComputeProperty){
                         return datasource.getComputeProperty(sKey)
                     }
-                    if(prop instanceof Property){
-                        return datasource.getProperty(sKey)
-                    }
+                    // if(prop instanceof Property){
+                    //     return datasource.getProperty(sKey)
+                    // }
                 }
 
             }
@@ -128,20 +128,20 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         return map
     }
 
-    getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
-        let prop = this.schema.propertiesMap[name]
-        if( !(prop instanceof Property)){
-            throw new Error('it is not property')
-        } else {
-            const derivedProp = prop
-            return new Column(name, derivedProp.definition, (entityRepository) => {
-                const orm = entityRepository.orm
-                const client = orm.client()
-                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, derivedProp.name)}`
-                return makeRaw(entityRepository, rawTxt)
-            })
-        }
-    }
+    // getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
+    //     let prop = this.schema.propertiesMap[name]
+    //     if( !(prop instanceof Property)){
+    //         throw new Error('it is not property')
+    //     } else {
+    //         const derivedProp = prop
+    //         return new Column(name, derivedProp.definition, (entityRepository) => {
+    //             const orm = entityRepository.orm
+    //             const client = orm.client()
+    //             let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, derivedProp.name)}`
+    //             return makeRaw(entityRepository, rawTxt)
+    //         })
+    //     }
+    // }
 
 
     getFieldProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name): Column<Name, T> {
@@ -212,20 +212,20 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
     }
 
     async realSource(repository: EntityRepository<any>){
-        return `(${(await this.dataset.toNativeBuilder(repository, false))})`
+        return `(${(await this.dataset.toNativeBuilder(repository))})`
     }
 }
 
 export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalarable<any> {
     __type: 'Dataset' = 'Dataset'
-    __whereRawItem: null |  ( (repository: EntityRepository<any>, selectorMap: SourcePropMap & SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap > ) => Scalar<BooleanType> ) = null
+    __whereRawItem: null |  Expression<any, any> = null
     __selectItems: { [key: string]: Scalar<any> } = {}
-    __fromItem?: null | Datasource<Schema, string> = null
+    __fromItem: null | Datasource<Schema, string> = null
     __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> }> = []
     
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
-    constructor(fromSource?: Datasource<Schema, string> | null){
+    constructor(fromSource: Datasource<Schema, string> | null = null){
         this.__fromItem = fromSource
     }
 
@@ -259,7 +259,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         return Object.keys(this.__selectItems)
     }
 
-    async toNativeBuilder(repository: EntityRepository<any>, needFieldMetaAlias: boolean = true): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
         let nativeQB = repository.orm.getKnexInstance().clearSelect()
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
@@ -271,14 +271,12 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
         let finalSelectorMap = Object.assign({}, this.getSelectorMap(), this.sqlKeywords() )
 
+        let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), finalSelectorMap)
+        
         await this.__joinItems.reduce( async(acc, item) => {
             await acc
-            let finalExpr
-            if(item.expression instanceof Function){
-                finalExpr = await item.expression(finalSelectorMap)
-            }else{
-                finalExpr = item.expression
-            }
+            let finalExpr = await resolver(item.expression).toRaw(repository)
+
             if(item.type === 'inner'){
                 nativeQB.innerJoin( await item.source.toRaw(repository), finalExpr)
             } else if(item.type === 'left'){
@@ -290,11 +288,10 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         }, Promise.resolve(true))
         
         if(this.__whereRawItem){
-            const where = this.__whereRawItem(repository, finalSelectorMap )
-            nativeQB.where( await where.toRaw(repository) )
+            nativeQB.where( await resolver(this.__whereRawItem).toRaw(repository) )
         }
         if(this.__selectItems){
-            const selectItems = await this.resolveSelectItems(this.__selectItems, repository, needFieldMetaAlias)
+            const selectItems = await this.resolveSelectItems(this.__selectItems, repository)
             // console.log('aaaaaa', selectItems)
             nativeQB.select( selectItems )
         }
@@ -391,32 +388,38 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         return this as any
     }
 
-    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>, needMetaFieldAlias: boolean) {
+    private selectItemAlias(name: string, scalar: Scalar<any>){
+
+        return metaFieldAlias(name, scalar.definition)
+
+    }
+
+
+    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
         // const client = repository.orm.client()
         
-        return await Object.keys(nameMap).reduce(async (accP, k) => {
+        return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
-            let acc = await accP
+            // let acc = await accP
             let scalar = nameMap[k]
-            let alias = needMetaFieldAlias? metaFieldAlias(k, scalar.definition): k
             const raw: Knex.Raw = await scalar.toRaw(repository)
             let text = raw.toString().trim()
 
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(repository, `${text}`)
+            const newRaw = makeRaw(repository, `${text} AS ${this.selectItemAlias(k, scalar)}`)
 
-            return Object.assign(acc, {[alias]: newRaw})
+            return newRaw
 
-        }, Promise.resolve({}) )
+        }))
     }
 
     sqlKeywords<X, Y>(){
         let sqlkeywords: SQLKeywords<X, Y> = {
-            And: (...conditions: Expression<any, any>[]) => new AndOperator(conditions),
-            Or: (...conditions: Expression<any, any>[]) => new OrOperator(conditions),
-            Not: (condition: Expression<any, any>) => new NotOperator(condition)
+            And: (...conditions: Expression<X, Y>[]) => new AndOperator(conditions),
+            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(conditions),
+            Not: (condition: Expression<X, Y>) => new NotOperator(condition)
         }
         return sqlkeywords
     }
@@ -433,17 +436,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     filter<X extends ExtractFieldProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
         //@ts-ignore
-        this.__whereRawItem = (repository: EntityRepository<any>, map: Y) => {
-            let sources = this.__joinItems.map(item => item.source)
-            if(!this.__fromItem){
-                throw new Error('There must be a FROM before using filter.')
-            }
-
-            let resolver = makeExpressionResolver<X, Y>(repository, this.__fromItem, sources, map)
-            
-            let boolScalar = resolver(expression)
-            return boolScalar
-        }
+        this.__whereRawItem = expression
         return this
     }
 
@@ -458,9 +451,9 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     innerJoin<S extends Schema, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        expression: Expression<X, Y> | ExpressionFunc<X, UnionToIntersection< Y | SQLKeywords<X, Y> > >): Dataset<SelectProps,X,Y>{
         this.__joinItems.push( {
             type: "inner",
             source,
@@ -501,16 +494,21 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     schema(): SelectProps & Schema{
         const propertyMap =  Object.keys(this.__selectItems).reduce((acc, key) => {
+
             const d = this.__selectItems[key].definition
+            let referName = this.selectItemAlias(key, this.__selectItems[key])
+
             if(d instanceof FieldPropertyTypeDefinition){
                 //@ts-ignore
-                acc[key] = new FieldProperty(d).setFieldName(key)
+                acc[key] = new FieldProperty(d).setFieldName(referName)
             } else {
                 //@ts-ignore
-                acc[key] = new FieldProperty( new FieldPropertyTypeDefinition() ).setFieldName(key)
+                acc[key] = new FieldProperty( new FieldPropertyTypeDefinition() ).setFieldName(referName)
             }
+
             return acc
         }, {} as SelectProps & {[key:string]: FieldPropertyTypeDefinition<any>}) 
+
         let schema =  Object.assign(new Schema(), propertyMap)
         schema.init()
         return schema
@@ -582,7 +580,7 @@ export class DatasetScalar<T extends PropertyTypeDefinition<any> > extends Scala
 
     constructor(definition: PropertyTypeDefinition, dataset: Dataset<any, any, any>){
         super(definition, (repository: EntityRepository<any>) => {
-            return dataset.toNativeBuilder(repository, false)
+            return dataset.toNativeBuilder(repository)
         })
         this.dataset = dataset
     }
@@ -730,7 +728,7 @@ export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: 
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar<any>
 
-export const makeExpressionResolver = function<Props, M>(repository: EntityRepository<any>, fromSource: Datasource<any, any>, sources: Datasource<any, any>[], dictionary: M) {
+export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any> | null, sources: Datasource<any, any>[], dictionary: M) {
 
     const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
         let value
@@ -763,17 +761,21 @@ export const makeExpressionResolver = function<Props, M>(repository: EntityRepos
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            throw new Error('Unsupport')
+            return value.toScalar(new PropertyTypeDefinition() )
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
+                    if(!fromSource){
+                        throw new Error(`There must be a FROM before using in 'filter'.`)
+                    }
+
                     propName = sourceName
                     sourceName = fromSource.sourceAlias//Object.keys(fromSource.tableAlias)[0]
                 }
-                let source = sources.find(s => fromSource.sourceAlias === sourceName)
+                let source = sources.find(s => s.sourceAlias === sourceName)
                 if(!source){
                     throw new Error(`cannot found source (${source})`)
                 }
@@ -794,6 +796,10 @@ export const makeExpressionResolver = function<Props, M>(repository: EntityRepos
                     } else if(rightOperatorEx === null){
                         operator = new IsNullOperator(leftOperator)
                     } else {
+
+                        console.log('aaaaaa', rightOperatorEx, resolver(rightOperatorEx))
+
+
                         operator = new EqualOperator(leftOperator, resolver(rightOperatorEx))
                     }
                     return operator

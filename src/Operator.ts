@@ -263,6 +263,8 @@ export class EqualOperator extends AssertionOperator{
 
         return new Scalar(new BooleanType(), (repository) => {
 
+            console.log('xxxx', this.rightOperand)
+
             return thenResult(this.rightOperand.toRaw(repository), right => {
 
                 return thenResult(this.leftOperand.toRaw(repository), left => {
