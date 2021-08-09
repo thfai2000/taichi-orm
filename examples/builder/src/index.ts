@@ -41,12 +41,12 @@ import { Knex } from "knex"
     
     let dd = new Dataset()
             .from(s)
-            // .innerJoin(p, ({product}) => product.id.equals(6) )
             .innerJoin(p, ({And}) => And({"product.id": 5}) )
-            // .innerJoin(
-            //     myShop,
-            //     ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
-            // )
+            .innerJoin(p, ({product}) => product.id.equals(6) )
+            .innerJoin(
+                myShop,
+                ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
+            )
             .filter(
                 ({And, product, shop}) => And({
                     "shop.id": 5,

@@ -1,7 +1,7 @@
 import { Entity, EntityRepository, ORM, TableSchema } from "../../../dist"
 import { BooleanType, NumberType, PrimaryKeyType, StringType } from "../../../dist/PropertyType"
 // import { belongsTo, hasMany } from "../../../dist/Relation"
-import { Dataset, Scalar, Scalarable } from "../../../dist/Builder"
+import { Dataset, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 // import { Shop } from "./orm"
 import Shop from "./Shop"
 
@@ -16,10 +16,13 @@ export default class Product extends Entity{
             get shop(){
                 return Shop.hasMany(Product, schema => schema.shopId)
             }
-            // myABC = this.compute(StringType, (root, args: number): Scalarable<any> => {
-            //     console.log('xxx', this, root)
-            //     throw new Error()
-            // })
+            myABC = this.compute(NumberType, (root, args: number): Scalarable<any> => {
+                return {
+                    toScalar(d?){
+                        return new Scalar(d, (r) => makeRaw(r,`5`))
+                    }
+                }
+            })
     })}
     
     myName: number  = 5
