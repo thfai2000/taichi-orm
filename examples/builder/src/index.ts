@@ -33,15 +33,15 @@ import { Knex } from "knex"
     let myShopDS = new Dataset().from(s).fields("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(repository)
-    console.log('xxxxxxxaax', builder.toString() )
+    // console.log('xxxxxxxaax', builder.toString() )
 
     let myShop = myShopDS.datasource("myShop")
     
-    let xxx: Scalar<BooleanType>
+    // let xxx: Scalar<BooleanType>
     
     let dd = new Dataset()
             .from(s)
-            .innerJoin(p, ({And}) => And({"product.id": 5}) )
+            // .innerJoin(p, ({And}) => And({"product.id": 5}) )
             .innerJoin(p, ({product}) => product.id.equals(6) )
             .innerJoin(
                 myShop,
@@ -63,7 +63,7 @@ import { Knex } from "knex"
                     // shop.id.value(),
                     ...shop.hour.value(),
                     ...product.shopId.equals(10).asColumn('nini').value(),
-                    xxx: xxx!,
+                    // xxx: xxx!,
                     ...product.ddd.value()
                 })
             )

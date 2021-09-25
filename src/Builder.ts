@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator } from "./Operator"
-import { BooleanType, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType } from "./PropertyType"
+import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType, StringTypeNotNull } from "./PropertyType"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -41,7 +41,7 @@ export type SQLKeywords<Props, PropMap> = {
     Not: (condition: Expression<Props, PropMap>) => NotOperator<Props, PropMap>
 }
 
-export type ExpressionFunc<O, M> = (map: M) => Expression<O, M>
+export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
 
 export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
     | AndOperator<O, M> 
@@ -269,9 +269,12 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             nativeQB.from(from)
         }
 
-        let finalSelectorMap = Object.assign({}, this.getSelectorMap(), this.sqlKeywords() )
 
-        let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), finalSelectorMap)
+        let selectorMap = this.getSelectorMap()
+
+        let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), selectorMap)
+        
+        Object.assign(selectorMap, this.sqlKeywords(resolver) )
         
         await this.__joinItems.reduce( async(acc, item) => {
             await acc
@@ -378,7 +381,14 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
         let nameMap: { [key: string]: Scalar<any> }
         if(named instanceof Function){
-            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>()) as Y
+
+            let selectorMap = this.getSelectorMap()
+
+            let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), selectorMap)
+            
+            Object.assign(selectorMap, this.sqlKeywords(resolver) )
+            
+            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
             nameMap = named(map)
         }else {
             nameMap = named
@@ -402,6 +412,9 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
             // let acc = await accP
             let scalar = nameMap[k]
+            if(!scalar){
+                throw new Error(`cannot resolve field ${k}`)
+            }
             const raw: Knex.Raw = await scalar.toRaw(repository)
             let text = raw.toString().trim()
 
@@ -415,11 +428,11 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         }))
     }
 
-    sqlKeywords<X, Y>(){
+    sqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>){
         let sqlkeywords: SQLKeywords<X, Y> = {
-            And: (...conditions: Expression<X, Y>[]) => new AndOperator(conditions),
-            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(conditions),
-            Not: (condition: Expression<X, Y>) => new NotOperator(condition)
+            And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
+            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
+            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition)
         }
         return sqlkeywords
     }
@@ -453,7 +466,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, UnionToIntersection< Y | SQLKeywords<X, Y> > >): Dataset<SelectProps,X,Y>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectProps,X,Y>{
         this.__joinItems.push( {
             type: "inner",
             source,
@@ -464,7 +477,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
      
     leftJoin<S extends Schema, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
         this.__joinItems.push( {
@@ -477,7 +490,7 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
 
     rightJoin<S extends Schema, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> } | SQLKeywords<SourceProps, SourcePropMap> >
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
         this.__joinItems.push( {
@@ -525,13 +538,21 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
     readonly definition: PropertyTypeDefinition
     protected expression: RawExpression
 
-    constructor(definition: PropertyTypeDefinition, expression: RawExpression){
+    constructor(definition: PropertyTypeDefinition , expression: RawExpression){
         this.definition = definition
         this.expression = expression
     }
 
+    // producePropertyTypeDe(value: any): FieldPropertyTypeDefinition<any> {
+    //     if(typeof value === 'string'){
+    //         const s = value
+    //         return new StringTypeNotNull()
+    //     }
+    //     throw new Error('Cannot resolve value')
+    // }
 
-    equals(rightOperand: any): Scalar<BooleanType> {
+
+    equals(rightOperand: any): Scalar<BooleanTypeNotNull> {
         return new EqualOperator(this, rightOperand).toScalar()
     }
 
@@ -728,7 +749,7 @@ export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: 
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar<any>
 
-export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any> | null, sources: Datasource<any, any>[], dictionary: M) {
+export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any> | null, sources: Datasource<any, any>[], dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >) {
 
     const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
         let value
@@ -738,7 +759,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             value = expression
         }
         if( value === null){
-            return new Scalar(new BooleanType(), repository => makeRaw(repository, '?', [null]) )
+            return new Scalar(new PropertyTypeDefinition(), repository => makeRaw(repository, '?', [null]) )
         } else if (typeof value === 'boolean') {
             const boolValue = value
             return new Scalar(new BooleanType(), repository => makeRaw(repository, '?', [boolValue]) )
@@ -754,9 +775,9 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             //TODO
             return new Scalar(new DateTimeType(), repository => makeRaw(repository, '?', [dateValue]) )
         } else if(value instanceof ConditionOperator){
-            return value.toScalar(resolver)
+            return value.toScalar()
         } else if(Array.isArray(value)){
-            const expr = new OrOperator<Props, M>(...value )
+            const expr = new OrOperator<Props, M>(resolver, ...value)
             return resolver( expr )
         } else if(value instanceof Scalar){
             return value
@@ -775,14 +796,15 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     propName = sourceName
                     sourceName = fromSource.sourceAlias//Object.keys(fromSource.tableAlias)[0]
                 }
-                let source = sources.find(s => s.sourceAlias === sourceName)
+                let source = [fromSource, ...sources].find(s => s && s.sourceAlias === sourceName)
                 if(!source){
-                    throw new Error(`cannot found source (${source})`)
+                    console.log('sources', sources, sourceName)
+                    throw new Error(`cannot found source (${sourceName})`)
                 }
 
                 let prop = source.schema.propertiesMap[propName]
                 if(!prop){
-                    throw new Error(`cannot found source (${source})`)
+                    throw new Error(`cannot found prop (${propName})`)
                 }
                 
                 const makeOperator = (leftOperatorEx: any, rightOperatorEx: any) => {
@@ -796,10 +818,6 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     } else if(rightOperatorEx === null){
                         operator = new IsNullOperator(leftOperator)
                     } else {
-
-                        console.log('aaaaaa', rightOperatorEx, resolver(rightOperatorEx))
-
-
                         operator = new EqualOperator(leftOperator, resolver(rightOperatorEx))
                     }
                     return operator
@@ -818,9 +836,9 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
     
                 return scalars
     
-            }, [] as Scalar<BooleanType>[] )
+            }, [] as Scalar<BooleanTypeNotNull>[] )
 
-            let arr = new AndOperator<Props, M>(...scalars)
+            let arr = new AndOperator<Props, M>(resolver, ...scalars)
             return resolver(arr)
         } else {
             throw new Error('Unsupport Where clause')
@@ -829,6 +847,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
 
     return resolver
 }
+
 
 export async function resolveEntityProps<T extends typeof Entity, D extends T["schema"]>(source: Datasource<D, "root">, 
     props: ComputePropertyArgsMap<D> | undefined): Promise<{ [key: string]: Scalar<any> }> {

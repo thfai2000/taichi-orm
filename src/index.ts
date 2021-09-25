@@ -612,7 +612,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
                 (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
     }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]>
      {
-        let data = await this.executeStatement(dataset.toNativeBuilder(this), executionOptions)
+        let data = await this.executeStatement(await dataset.toNativeBuilder(this), executionOptions)
         if(Array.isArray(data)){
             
             let result = data.map(one => parseDataBySchema({}, one, dataset.schema(), this.orm.client() ) )
@@ -1066,7 +1066,7 @@ export class Database{
             .props( await resolveEntityProps(source, applyOptions?.props ) )
             .from(source)
 
-        dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter) : dataset
+        dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter as Expression<any,any>) : dataset
 
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
@@ -1397,7 +1397,7 @@ export class Entity{
                 // dataset.props(args.props)
             }
             if(args?.filter){
-                newDataset = newDataset.filter(args.filter)
+                newDataset = newDataset.filter(args.filter as Expression<any, any> )
             }
 
             return newDataset

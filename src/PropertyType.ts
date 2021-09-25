@@ -171,25 +171,43 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
     }
 }
 
-export class NumberTypeNotNull extends NumberType {
-
+export class NumberTypeNotNull extends FieldPropertyTypeDefinition<number> {
+    protected options: NumberTypeOptions
+    
     constructor(options: Partial<NumberTypeOptions> ={}){
         super(options)
+        this.options = options
     }
+
     get nullable() {
         return false
     }
-
-    override parseRaw(rawValue: any, propName: string, client: string): number {
-        let r = super.parseRaw(rawValue, propName, client)
-        if(r === null){
-            throw new Error('Unexpected')
+        
+    parseRaw(rawValue: any, prop: string, client: string): number {
+        if(rawValue === null)
+            throw new Error('Cannot null')
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue)
         }
-        return r
+        throw new Error('Cannot parse Raw into Boolean')
+    }
+    parseProperty(propertyvalue: number, propName: string, client: string) {
+        if(propertyvalue === null && !this.options){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue
+    }
+    create(propName: string, fieldName: string, client: string){
+        return [
+            [
+                `${quote(client, fieldName)}`, 
+                'INTEGER', 
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+            ].join(' ')
+        ]
     }
 }
-
-
 
 type DecimalTypeOptions = { default?: number, precision?: number, scale?: number }
 export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
@@ -276,6 +294,50 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
     }
 }
 
+export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
+    protected options: BooleanTypeOptions
+
+    constructor(options: Partial<BooleanTypeOptions> = {}){
+        super()
+        this.options = { ...options}
+    }
+
+    get nullable() {
+        return true
+    }
+
+    parseRaw(rawValue: any, propName: string, client: string): boolean {
+        //TODO: warning if nullable is false but value is null
+        if(rawValue === null)
+            throw new Error('Cannot null')
+        else if(rawValue === true)
+            return true
+        else if(rawValue === false)
+            return false
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue) > 0
+        }
+        throw new Error('Cannot parse Raw into Boolean')
+    }
+    parseProperty(propertyvalue: boolean, propName: string, client: string): any {
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue === null? null: (propertyvalue? '1': '0')
+    }
+
+    create(propName: string, fieldName: string, client: string){
+        return [
+            [
+                `${quote(client, fieldName)}`,
+                ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+            ].join(' ')
+        ]
+    }
+}
+
 type StringTypeOptions = {default?: string, length?: number }
 export class StringType extends FieldPropertyTypeDefinition<string | null> {
     protected options: StringTypeOptions
@@ -314,22 +376,44 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
     }
 }
 
-export class StringTypeNotNull extends StringType {
+export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
+    protected options: StringTypeOptions
 
+    constructor(options: Partial<StringTypeOptions> = {}){
+        super()
+        this.options = { ...options}
+    }
 
     get nullable() {
         return false
     }
 
-    override parseRaw(rawValue: any): string {
-        let r = super.parseRaw(rawValue)
-        if(r === null){
-            throw new Error('Unexpected')
+    parseRaw(rawValue: any): string {
+        if(rawValue === null && !this.nullable){
+            throw new Error(`The Property '${rawValue}' cannot be null.`)
         }
-        return r
+        return `${rawValue}`
+    }
+
+    parseProperty(propertyvalue: string | null, propName: string): any{
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue
+    }
+
+    create(propName: string, fieldName: string, client: string){
+        let c = [this.options.length].filter(v => v).join(',')
+        return [
+            [
+                `${quote(client, fieldName)}`,
+                `VARCHAR${c.length > 0?`(${c})`:''}`,
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+            ].join(' ')
+        ]
     }
 }
-
 
 type DateTypeOptions = { default?: Date }
 export class DateType extends FieldPropertyTypeDefinition<Date | null> {
@@ -544,6 +628,7 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
 //     ObjectOf: (...args: ConstructorParameters<typeof ObjectOfType>) => new FieldProperty( new ObjectOfType(...args) ),
 //     ArrayOf: (...args: ConstructorParameters<typeof ArrayOfType>) => new FieldProperty( new ArrayOfType(...args) )
 // }
+
 
 
 
