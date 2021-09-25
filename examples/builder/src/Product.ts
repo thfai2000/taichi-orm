@@ -10,7 +10,7 @@ export default class Product extends Entity{
         return new (class ProductSchema extends TableSchema {
             id = this.field(PrimaryKeyType)
             ddd = this.field(NumberType)
-            // uuid = field(StringType)
+            uuid = this.field(StringType)
             name = this.field(StringType)
             shopId = this.field(NumberType)
             get shop(){

@@ -1,4 +1,4 @@
-import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Scalarable} from './Builder'
+import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Scalarable, Dataset} from './Builder'
 import {Knex} from 'knex'
 import { BooleanType, BooleanTypeNotNull } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
@@ -106,6 +106,30 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
             return thenResult(this.resolver(this.arg), scalar => raw(repository, 
                 `NOT (${scalar.toRaw(repository)})`) 
+            )
+        })
+    }
+}
+
+export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
+    arg: Dataset<any, any, any>
+    constructor(resolver: ExpressionResolver<Props, PropMap>, arg: Dataset<any, any, any> ){
+        super(resolver)
+        this.arg = arg
+    }
+
+    // toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+    //     return thenResult(this.arg, arg => raw(repository, `NOT (${resolver(arg).toString()})`) )
+    //     // return raw( `NOT (${resolver(this.arg).toString()})`)
+    // }
+    
+    toScalar(): Scalar<BooleanTypeNotNull> {
+        // const p = this.toRaw(repository, resolver)
+        // return thenResult(p, r => new Scalar(repository, r, new BooleanType()))
+        // return makeScalar(p, new BooleanType())
+        return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
+            return thenResult(this.arg.toNativeBuilder(repository), scalar => raw(repository, 
+                `EXISTS (${scalar.toString()})`) 
             )
         })
     }

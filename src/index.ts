@@ -3,7 +3,7 @@ import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { ArrayOfType, FieldPropertyTypeDefinition, ObjectOfType, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
-import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix} from './Builder'
+import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
@@ -36,7 +36,10 @@ export type SingleSourceArg<S extends TableSchema> = {
     filter?: Expression< 
         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
-                >
+                > | ExpressionFunc<
+        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S> }  >         
+        >
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
@@ -593,13 +596,17 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         if(executionOptions?.onSqlRun) {
             executionOptions.onSqlRun(sql)
         }
+        console.log('sql....', sql)
         let KnexStmt = this.orm.getKnexInstance().raw(sql)
         if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
+        console.log('sql 2....')
         let result = null
         try{
+            console.log('sql 3....')
             result = await KnexStmt
+            console.log('sql 4....')
         }catch(error){
             throw error
         }
@@ -816,10 +823,13 @@ export class Database{
         const schemaUUIDPropName = schema.uuid?.name
         
         let fns = await repository.orm.startTransaction(async (trx) => {
+
+            //replace the trx
+            executionOptions = {...executionOptions, trx: trx}
+
             let allResults = await Promise.all(values.map(async (value) => {
 
                 let propValues = await Database._prepareNewData(repository, value, schema, actionName, {trx})
-                
                 let newUuid = null
                 if(useUuid){
                     if(!schemaUUIDPropName){
@@ -828,13 +838,11 @@ export class Database{
                     newUuid = uuidv4()
                     propValues[schemaUUIDPropName] = newUuid
                 }
-                
                 let stmt = repository.orm.getKnexInstance()( schema.tableName({tablePrefix: repository.tablePrefix}) ).insert( this.extractRealField(repository, schema, propValues) )
         
                 if ( repository.orm.client().startsWith('pg')) {
                     stmt = stmt.returning( schemaPrimaryKeyFieldName )
                 }
-        
                 let input = {
                     sqlString: stmt,
                     uuid: newUuid
@@ -862,14 +870,15 @@ export class Database{
                     return b
                 } else if (repository.orm.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
+                    console.log('insert statement', insertStmt)
                     const r = await repository.orm.executeStatement(insertStmt, executionOptions)
-                    
+                    console.log('result', r)
                     if(repository.orm.ormConfig.enableUuid && schema.uuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
                         } else {
                             let uuid = input.uuid
-                            let record = await Database.findOne<T, typeof schema>(entityClass, {
+                            let record = await this.findOne<T, typeof schema>(entityClass, repository, {
                                 //@ts-ignore
                                 filter: ({root}) => root.uuid.equals(uuid)
                             }).withOptions(executionOptions)
@@ -1067,22 +1076,23 @@ export class Database{
             .from(source)
 
         dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter as Expression<any,any>) : dataset
-
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        let resultData = await repository.orm.executeStatement(dataset, executionOptions)
+        let resultData = await repository.orm.executeStatement(await dataset.toNativeBuilder(repository), executionOptions)
 
         let rowData: any[]
         if(repository.orm.client().startsWith('mysql')){
             rowData = resultData[0][0]
         } else if(repository.orm.client().startsWith('sqlite')){
-            rowData = resultData[0]
+            rowData = resultData
         } else if(repository.orm.client().startsWith('pg')){
             rowData = resultData.rows[0]
         } else {
             throw new Error('Unsupport client.')
         }
+
+        console.log('return from database', rowData)
 
         let dualInstance = rowData.map( row => this.parseRaw(entityClass, row, repository.orm.client()) )
         // let str = "data" as keyof Dual

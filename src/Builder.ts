@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
-import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator } from "./Operator"
+import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType, StringTypeNotNull } from "./PropertyType"
 import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
@@ -39,6 +39,7 @@ export type SQLKeywords<Props, PropMap> = {
     And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
     Or: (...condition: Array<Expression<Props, PropMap> > ) => OrOperator<Props, PropMap>,
     Not: (condition: Expression<Props, PropMap>) => NotOperator<Props, PropMap>
+    // Exists: (dataset: Dataset<any, any, any>) => ExistsOperator<Props, PropMap>
 }
 
 export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
@@ -46,6 +47,8 @@ export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O,
 export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
     | AndOperator<O, M> 
     | OrOperator<O, M> 
+    | NotOperator<O, M>
+    // | ExistsOperator<O, M>
     | Scalar<any> | Array<Expression<O, M> > | boolean | string | Date | number
 
 export type Prefixed<Prefix extends string, MainName extends String, Content> = {
@@ -432,7 +435,8 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         let sqlkeywords: SQLKeywords<X, Y> = {
             And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
             Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
-            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition)
+            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition),
+            // Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset)
         }
         return sqlkeywords
     }

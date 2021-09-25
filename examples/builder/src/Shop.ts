@@ -6,6 +6,7 @@ export default class Shop extends Entity {
     static get initSchema(){
         return new (class ShopSchema extends TableSchema {
             id= this.field(PrimaryKeyType)
+            uuid = this.field(StringType)
             name = this.field(StringType)
             hour= this.field(NumberType)
             get products(){
