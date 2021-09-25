@@ -100,13 +100,16 @@ import Product from './Product'
     })
     console.log('aaa', allShops)
 
-    // let allShopsX = await repository.models.Shop.find({
-    //     filter: ({root, Exists}) => Exists(
-    //         new Dataset().from(
-    //             repository.models.Product.datasource('product')
-    //         ).filter( ({product}) => root.id.equals(product.shopId) )
-    //     )
-    // })
+    let allShopsX = await repository.models.Shop.find({
+        props: { 
+            products: {}
+        },
+        filter: ({root, Exists}) => Exists(
+            new Dataset().from(
+                repository.models.Product.datasource('product')
+            ).filter( ({product}) => root.id.equals(product.shopId) )
+        )
+    })
     // console.log('aaa', allShopsX)
 })()
 
