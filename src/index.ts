@@ -110,11 +110,11 @@ export type SelectorMap<E> = {
 }
 
 export type ComputeFunction<
-    Root extends Schema, Name extends string, ARG extends any[], 
+    Root extends Schema, Name extends string, ARG extends any, 
     R extends PropertyTypeDefinition<any>
-> = (source: Datasource<Root, Name>, ...args: ARG) => Scalarable<R> | Promise<Scalarable<R>>
+> = (source: Datasource<Root, Name>, arg?: ARG) => Scalarable<R> | Promise<Scalarable<R>>
 
-export type CompiledComputeFunction<Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any> > = (...args: ARG) => Column<Name, R>
+export type CompiledComputeFunction<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
 // export type CompiledComputeFunctionPromise<Name extends string, ARG extends any[], R> = (...args: ARG) => Promise<Column<Name, R> > | Column<Name, R>
 
@@ -181,7 +181,7 @@ export class Property<D extends PropertyTypeDefinition> {
 
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition, Root extends Schema, Name extends string, Arg extends any[]> extends Property<D> {
+export class ComputeProperty<D extends PropertyTypeDefinition, Root extends Schema, Name extends string, Arg extends any | undefined> extends Property<D> {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: ComputeFunction<Root, Name, Arg, D>
@@ -226,9 +226,9 @@ export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D>
 
 export class Schema {
 
-    properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
+    properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any> 
         | FieldProperty<PropertyTypeDefinition> | Property<PropertyTypeDefinition>)[] = []
-    propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> 
+    propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition, Schema, string, any> 
         | FieldProperty<PropertyTypeDefinition> | Property<PropertyTypeDefinition>)} = {}
     
     // id: PropertyDefinition
@@ -238,23 +238,36 @@ export class Schema {
     }
 
     init() {
-        let fields: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> |
-            FieldProperty<PropertyTypeDefinition>)[] = []
+        // let fields: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> |
+        //     FieldProperty<PropertyTypeDefinition>)[] = []
         for (let field in this) {
-            if (typeof field === 'string') {
-                const actual = this[field]
-                if (actual instanceof FieldProperty || actual instanceof ComputeProperty) {
-                    actual.register(field)
-                    this.propertiesMap[field] = actual
-                    fields.push(actual)
-                }
-            }
+            this.addField(field)
         }
-        this.properties = fields
+    }
+
+    initPostAction() {
+        //@ts-ignore
+        let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
+        // for(let x in z){console.log('=>', x)}
+        for (let field in z) {
+            this.addField(field)
+        }
+    }
+
+    addField(field: string){
+        // if (typeof field === 'string') {
+        //@ts-ignore
+        const actual = this[field]
+        if (actual instanceof FieldProperty || actual instanceof ComputeProperty) {
+            actual.register(field)
+            this.propertiesMap[field] = actual
+            this.properties.push(actual)
+        }
     }
 }
 
 export abstract class TableSchema extends Schema {
+
     abstract id: FieldProperty<PropertyTypeDefinition>
     uuid?: FieldProperty<PropertyTypeDefinition> = undefined
     hooks: Hook[] = []
@@ -273,6 +286,10 @@ export abstract class TableSchema extends Schema {
         //     throw new Error('Not yet registered.')
         // }
         // const orm = this.entityClass.orm
+    }
+
+    registerPostAction() {
+        super.initPostAction()
     }
 
     tableName(options?: TableOptions){
@@ -332,7 +349,7 @@ export abstract class TableSchema extends Schema {
         return new FieldProperty<D>( new definition() )
     }
 
-    compute<D extends PropertyTypeDefinition, Root extends TableSchema, Arg extends any[], R>(
+    compute<D extends PropertyTypeDefinition, Root extends TableSchema, Arg extends any, R>(
         this: Root,
         definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, D>) : ComputeProperty<D, Root, 'root', Arg> {
 
@@ -436,6 +453,10 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
                 }
             })
         }
+
+        Object.keys(this.registeredModels).forEach(k => {
+            this.registeredModels[k].registerPostAction()
+        })
     }
 
     getRepository(config?: Partial<EntityRepositoryConfig>): EntityRepository<EntityClassMap> {
@@ -596,17 +617,14 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         if(executionOptions?.onSqlRun) {
             executionOptions.onSqlRun(sql)
         }
-        console.log('sql....', sql)
+        console.log('sql', sql)
         let KnexStmt = this.orm.getKnexInstance().raw(sql)
         if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
-        console.log('sql 2....')
         let result = null
         try{
-            console.log('sql 3....')
             result = await KnexStmt
-            console.log('sql 4....')
         }catch(error){
             throw error
         }
@@ -870,9 +888,7 @@ export class Database{
                     return b
                 } else if (repository.orm.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
-                    console.log('insert statement', insertStmt)
                     const r = await repository.orm.executeStatement(insertStmt, executionOptions)
-                    console.log('result', r)
                     if(repository.orm.ormConfig.enableUuid && schema.uuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
@@ -1330,6 +1346,10 @@ export class Entity{
         this.schema = s 
     }
 
+    static registerPostAction() {
+        this.schema.registerPostAction()
+    }
+
     static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name, options?: TableOptions): Datasource<I["initSchema"], Name> {
         return this.schema.datasource(name, options)
     }
@@ -1398,10 +1418,11 @@ export class Entity{
             let dataset = new Dataset()
 
             let relatedSource = relatedEntity.schema.datasource('related')
-            
-            let relatedRootColumn = (rootKey? root.getFieldProperty(rootKey.name): undefined ) ?? root.getFieldProperty("id")
+
+            let relatedRootColumn = (rootKey? root.getFieldProperty( rootKey(root.schema).name  ): undefined ) ?? root.getFieldProperty("id")
+            let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
         
-            let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedSource.getFieldProperty(relatedBy.name) ) )
+            let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedByColumn ) )
 
             if(args?.props){
                 // dataset.props(args.props)
@@ -1413,7 +1434,7 @@ export class Entity{
             return newDataset
         }
 
-        return this.schema.compute( new ObjectOfType(relatedEntity), computeFn )
+        return this.schema.compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
     }
 
     static belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
@@ -1425,15 +1446,10 @@ export class Entity{
         
         let computeFn = (root: Datasource<TypeClass["initSchema"], 'root'>, args?: TwoSourcesArg<RootClass["initSchema"], 'root', TypeClass["initSchema"], 'related'>): Scalarable<any> => {
             
-            // return schema.dataset().apply( (ctx: Context, source: Datasource) => {
-            //     return {
-            //         source: source.innerJoin(root, (rootKey? root._[rootKey]: root.pk ).equals(source._[relatedBy]) )
-            //     }
-            // }).apply(args).toScalar(ArrayOf(schema))
-            throw new Error()
+            throw new Error('NYI.')
         }
 
-        return this.schema.compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
+        return this.schema.compute( new ObjectOfType(relatedEntity), computeFn )
     }
 
 }
