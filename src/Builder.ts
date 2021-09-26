@@ -81,8 +81,9 @@ export interface Datasource<E extends Schema, alias extends string> {
     realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
+    getAllFieldProperty: <T extends PropertyTypeDefinition<any>>()  => Column<string, T>[]
     getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
-    getComputeProperty: <Name extends string, ARG extends any[], R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
+    getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -146,6 +147,11 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
     //     }
     // }
 
+    getAllFieldProperty<T extends PropertyTypeDefinition<any>>(): Column<string, T>[] {
+        return Object.keys(this.schema.propertiesMap)
+        .map(key => (this.schema.propertiesMap[key] instanceof FieldProperty)? this.getFieldProperty(key) :null )
+        .filter(notEmpty)
+    }
 
     getFieldProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name): Column<Name, T> {
         let prop = this.schema.propertiesMap[name]
@@ -251,15 +257,8 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
         return sourcePropMap as unknown as SourcePropMap
     }
 
-    selectedPropNames(): string[]{
-        // if(!this.__selectItems){
-        //     return []
-        // }
-        // return (await this.__selectItems(repository, this.getSelectorMap() ) ).map(item => {
-        //     return item.actualAlias
-        // })
-
-        return Object.keys(this.__selectItems)
+    selectItemsAlias(): string[]{
+        return Object.keys(this.__selectItems).map(key => this.selectItemAlias(key, this.__selectItems[key]) )
     }
 
     async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
@@ -320,7 +319,6 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
     }
 
     toScalar<T extends PropertyTypeDefinition>(t: PropertyTypeDefinition): Scalar<T>{
-        console.log('become a scalar')
         return new Scalar(t, this)
     }
     
@@ -419,7 +417,6 @@ export class Dataset<SelectProps, SourceProps, SourcePropMap> implements Scalara
             if(!scalar){
                 throw new Error(`cannot resolve field ${k}`)
             }
-            console.log('=>', scalar)
             const raw: Knex.Raw = await scalar.toRaw(repository)
             let text = raw.toString().trim()
 
@@ -599,7 +596,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
                 if(dataset){
                     const definition = this.definition
                     return thenResult(raw.toRaw(repository), oldSql => {
-                        const sql = definition.queryTransform(oldSql, dataset.selectedPropNames(), 'column1', client)
+                        const sql = definition.queryTransform(oldSql, dataset.selectItemsAlias(), 'column1', client)
                         const newRaw = makeRaw(repository, sql)
                         return newRaw
                     })
@@ -851,7 +848,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
 
 
 export async function resolveEntityProps<T extends typeof Entity, D extends T["schema"]>(source: Datasource<D, "root">, 
-    props: ComputePropertyArgsMap<D> | undefined): Promise<{ [key: string]: Scalar<any> }> {
+    props: Partial<ComputePropertyArgsMap<D>> | undefined): Promise<{ [key: string]: Scalar<any> }> {
     
     let computedCols: { [key: string]: Scalar<any> }[] = []
     if(props){
@@ -872,334 +869,4 @@ export async function resolveEntityProps<T extends typeof Entity, D extends T["s
     let r = Object.assign({}, ...fieldCols, ...computedCols)
     return r as { [key: string]: Scalar<any> }
 }
-// export type EntityPropsResolver = <S extends Schema>() => RawFilter
-
-
-// export function makePropsResolver<AcceptableSourceProps>(): EntityPropsResolver {
-
-
-//     const resolver = (selector: Datasource<any>, querySelect: QuerySelect, row: Dataset) {
-//         // let selector = getSelectorFunc()[0]
-//         let stmtOrPromise: Knex.QueryBuilder | Promise<Knex.QueryBuilder> = row.toQueryBuilder()
-//         let allColumns: Array<Column | Promise<Column>> = []
-//         if(querySelect && !Array.isArray(querySelect)){
-//             let select = querySelect
-//             if (select && Object.keys(select).length > 0) {
-
-//                 let removeNormalPropNames = Object.keys(select).map((key: string) => {
-//                     const item = select[key]
-//                     if (item === false) {
-//                         let prop = selector.schema.fieldProperties.find(p => p.name === key)
-//                         if (!prop) {
-//                             throw new Error(`The property ${key} cannot be found in schema '${selector.entityClass.name}'`)
-//                         } else {
-//                             if (!prop.definition.computeFunc) {
-//                                 return prop.name
-//                             }
-//                         }
-//                     }
-//                     return null
-//                 }).filter(notEmpty)
-
-//                 if (removeNormalPropNames.length > 0) {
-//                     const shouldIncludes = selector.schema.fieldProperties.filter(p => !removeNormalPropNames.includes(p.name))
-//                     stmtOrPromise = thenResult(stmtOrPromise, s => s.clearSelect().select(...shouldIncludes))
-//                 }
-
-//                 //(the lifecycle) must separate into 2 steps ... register all computeProp first, then compile all
-//                 let executedProps = Object.keys(select).map((key: string) => {
-//                     const item = select[key]
-//                     if (item === true) {
-//                         let prop = selector.schema.fieldProperties.find(p => p.name === key)
-//                         if (!prop) {
-//                             throw new Error(`The property ${key} cannot be found in datasource '${selector}'`)
-//                         }
-//                         if (prop.definition.computeFunc) {
-//                             return selector.$[prop.name]()
-//                         }
-//                     } else if (item instanceof SimpleObjectClass) {
-//                         let options = item as QueryOptions
-
-//                         let prop = selector.schema.fieldProperties.find(p => p.name === key && p.definition.computeFunc)
-
-//                         if (!prop) {
-//                             // if (options instanceof PropertyDefinition) {
-//                             //     selector.registerProp(new NamedProperty(key, options))
-//                             //     return selector.$$[key]()
-//                             // } else {
-//                             //     throw new Error('Temp Property must be propertyDefinition')
-//                             // }
-//                             throw new Error(`Cannot find Property ${key}`)
-//                         } else {
-//                             if (!prop.definition.computeFunc) {
-//                                 throw new Error('Only COmputeProperty allows QueryOptions')
-//                             }
-//                             return selector.$$[key](options)
-//                         }
-//                     } else if (isScalar(item)){
-//                         let scalar = item as Scalar
-//                         return scalar.asColumn(key)
-//                     }
-//                     return null
-//                 }).filter(notEmpty)
-//                 allColumns.push(...executedProps)
-//             }
-//         } else if (querySelect && querySelect instanceof Array) {
-//             let select = querySelect
-
-//             let props = select.map(s => {
-//                 if( isColumn(s)) {
-//                     return s  as Column
-//                 } else if( typeof s === 'string'){
-//                     let prop = selector.schema.fieldProperties.find(p => p.name === s)
-//                     if (!prop) {
-//                         throw new Error(`The property ${s} cannot be found in schema '${selector.entityClass.name}'`)
-//                     }
-//                     if (prop.definition.computeFunc) {
-//                         return selector.$$[prop.name]()
-//                     } else {
-//                         return selector._[prop.name]
-//                     }
-//                 }
-//                 throw new Error('Unexpected type')
-//             })
-
-//             allColumns.push(...props)
-//         }
-
-//         // !important: must use a constant to reference the object before it is re-assigned
-//         const prevStmt = stmtOrPromise
-//         let stmtOrPromiseNext = thenResultArray(allColumns, columns => {
-//             return columns.reduce((stmt, column) => {
-//                 return thenResult(stmt, stmt => stmt.select(column))
-//             }, prevStmt)
-//         })
-
-//         return thenResult(stmtOrPromiseNext, stmt => stmt.toRow())
-//     }
-// }
-
-
-// function makeSelectItem(selector: Selector, prop: NamedProperty): SelectItem {
-//     let tableAlias = quote(selector.tableAlias)
-//     let fieldName: string = quote(prop.fieldName)
-//     let a = metaFieldAlias(prop)
-//     let raw = `${tableAlias}.${fieldName} AS ${quote(a)}`
-//     return {
-//         raw: makeRaw(raw),
-//         actualAlias: a
-//     }
-// }
-
-
-// const wrap = (col: Column | Promise<Column>) => {
-
-//     let w = {}
-//     w.count = () => {
-//         // if(!expression){
-//         //     throw new Error('only computedProp can use count()')
-//         // }
-//         // if(prop === '*'){
-//         //     throw new Error('only computedProp can use count()')
-//         // }
-
-//         let p = (col: Column) => makeColumn(null, new NamedProperty(`${prop.name}`, Types.Number, null), 
-//             makeBuilder().count().from(makeRaw(expression)) )
-
-//         if(col instanceof Promise){
-//             return new Promise( (resolve, reject) => {
-//                 col.then(column => {
-//                     resolve(p(column))
-//                 })
-//             })
-//         }else{
-//             return p(col)
-//         }
-        
-        
-//     }
-
-//     return w
-// }
-
-    
-
-// const extractColumnName = () => {
-
-//     let columnsToBeTransformed: string[] = []
-//     if( ast.type === 'select'){
-//         let selectAst = ast
-//         let columns = ast.columns
-        
-//         // then handle select items... expand columns
-
-//         const handleColumns = (from: any[] | null, columns: any[] | Column[] | '*'): any[] | Column[] => {
-//             if(columns === '*'){
-//                 columns = [{
-//                     expr: {
-//                         type: 'column_ref',
-//                         table: null,
-//                         column: '*'
-//                     },
-//                     as: null
-//                 }]
-//             }
-
-//             return columns.flatMap( (col: Column) => {
-//                 if(col.expr.type === 'column_ref' && ( col.expr.column.includes('*') || col.expr.column.includes('$star') ) ){
-//                     // if it is *... expand the columns..
-//                     let moreColumns = Database._resolveStar(col, from)
-//                     return moreColumns
-//                     // @ts-ignore
-//                 } else if(!col.as && col.expr.type === 'select' && col.expr.columns.length === 1){
-//                     // @ts-ignore
-//                     col.as = col.expr.columns[0].as
-//                     if(!col.as){
-//                         throw new Error('Unexpected Flow.')
-//                     }
-//                     return col
-//                 } else {
-
-//                     if(!col.as){
-//                         col.as = makeid(5)
-//                     }
-//                     return col
-//                 }
-//             })
-            
-//         }
-
-//         let processedColumns = handleColumns(selectAst.from, columns) as Column[]
-
-//         //eliminate duplicated columns
-
-//         processedColumns = processedColumns.reduce( (acc: any[], item: SimpleObject) => {
-//             if( !acc.find( (x:any) => item.as === x.as ) ){
-//                 acc.push(item)
-//             }
-//             return acc
-//         },[] as any[])
-
-//         columnsToBeTransformed = processedColumns.flatMap( (col: any) => {
-//             return Database._extractColumnAlias(col) 
-//         }) as string[]
-    
-//         ast.columns = processedColumns
-//         subqueryString = getSqlParser().sqlify(ast)
-//     } else {
-//         throw new Error('Computed property must be started with Select')
-//     }
-
-
-// }
-
-// export type QueryBuilderAccessableField = string | CompiledNamedPropertyGetter | CompiledNamedProperty | CompiledNamedPropertyWithSubQuery
-
-// const resolveItem = (a: any, withoutAs: boolean = false) => {
-//     if(a instanceof CompiledNamedPropertyWithSubQuery){
-//         // it should be computedProp
-//         let compiledNamedProperty = a.compiledNamedProperty
-//         let derivedContent = a.subquery
-
-//         if(withoutAs){
-//             return `${derivedContent}`
-//         } else {
-//             return `${derivedContent} AS ${compiledNamedProperty.fieldAlias}`
-//         }
-//     } else if (a instanceof CompiledNamedPropertyGetter){
-//         // it should be normal field prop
-//         let compiledNamedProperty = a.get() as CompiledNamedProperty
-//         return `${compiledNamedProperty.tableAlias}.${compiledNamedProperty.fieldName}`
-
-//     } else if (a instanceof CompiledNamedProperty){
-//         return `${a.tableAlias}.${a.fieldName}`
-//     } else {
-//         return a
-//     }
-// }
-
-// export class QueryBuilder {
-
-//     selectItems: Array<string> = new Array<string>()
-//     fromItems: Array<string> = new Array<string>()
-//     whereItems: Array<string> = new Array<string>()
-//     limitValue: number | null = null
-//     offsetValue: number | null = null
-
-//     constructor(){
-//     }
-
-//     select(...args: Array<QueryBuilderAccessableField>){
-//         let selectItems = args.map(a => {
-//             let resolved = resolveItem(a)
-//             if (typeof resolved === 'string'){
-//                 //typeof a === 'boolean' || typeof a === 'number' || a instanceof Date
-//                 return resolved
-//             } else {
-//                 throw new Error('Not supported Select Item.')
-//             }
-//         })
-//         this.selectItems = selectItems
-//         return this
-//     }
-
-//     from(...args: string[]){
-//         this.fromItems = args
-//         return this
-//     }
-
-//     whereRaw(rawSql: string, args: any[]){
-//         let r = getKnexInstance().raw(rawSql, args.map(a => resolveItem(a, true)))
-//         this.whereItems = this.whereItems.concat([r.toString()])
-//         return this
-//     }
-
-//     where(...args: any[]){
-//         args = args.map(a => resolveItem(a, true))
-//         if(args.length === 1 && args[0] instanceof Object){
-//             let map = args[0] as {[key:string]:any}
-//             let items = Object.keys(map).map( (key) => `?? = ?`)
-//             let values = Object.keys(map).reduce( (params, key) => {
-//                 let arr = [key, map[key]]
-//                 return params.concat(arr)
-//             }, [] as any[])
-
-//             let raw = getKnexInstance().raw( items.join(' AND '), values)
-
-//             this.whereItems = this.whereItems.concat([raw.toString()])
-
-//         } else if(args.length === 1 && typeof args[0] === 'string'){
-//             this.whereItems = this.whereItems.concat([args[0]])
-//         } else {
-//             this.whereItems = this.whereItems.concat([args.join(' ')])
-//         }
-//         return this
-//     }
-
-//     limit(value: number){
-//         this.limitValue = value
-//         return this
-//     }
-
-//     offset(value: number){
-//         this.offsetValue = value
-//         return this
-//     }
-
-//     toString(): string{
-//         let selectItem = this.selectItems
-//         if(this.fromItems.length > 0 && selectItem.length === 0){
-//             selectItem = selectItem.concat('*')
-//         }
-//         // throw new Error('NYI')
-//         return `SELECT ${selectItem.join(', ')}${
-//             this.fromItems.length > 0?' FROM ':''}${
-//             this.fromItems.join(', ')}${
-//             this.whereItems.length > 0?' WHERE ':''}${
-//             this.whereItems.join(', ')}${
-//             this.offsetValue === null?'':` OFFSET ${this.offsetValue} `}${
-//             this.limitValue === null?'':` LIMIT ${this.limitValue} `
-//         }`
-//     }
-// }
 

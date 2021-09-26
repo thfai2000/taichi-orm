@@ -32,7 +32,7 @@ export type ComputePropertyArgsMap<E> = {
 
 
 export type SingleSourceArg<S extends TableSchema> = {
-    props?: ComputePropertyArgsMap<S>,
+    props?: Partial<ComputePropertyArgsMap<S>>,
     filter?: Expression< 
         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
@@ -60,7 +60,7 @@ export type SingleSourceFilter<S extends TableSchema> = Expression<
 
 export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
 
-    props?: ComputePropertyArgsMap<Root>,
+    props?: Partial<ComputePropertyArgsMap<Related>>,
     filter?: Expression< 
         UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
@@ -1424,8 +1424,18 @@ export class Entity{
         
             let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedByColumn ) )
 
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
             if(args?.props){
-                // dataset.props(args.props)
+                let computed = args.props
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.props(Object.assign(props, computedValues))
+            }else {
+                dataset.props(props)
             }
             if(args?.filter){
                 newDataset = newDataset.filter(args.filter as Expression<any, any> )

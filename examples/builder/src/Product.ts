@@ -14,10 +14,10 @@ export class ProductSchema extends TableSchema {
     get shop(){
         return Product.belongsTo(Shop, schema => schema.shopId)
     }
-    myABC = this.compute(NumberType, (root, args?: number): Scalarable<any> => {
+    myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
         return {
             toScalar(d?){
-                return new Scalar(d, (r) => makeRaw(r,`5`))
+                return new Scalar(d, (r) => makeRaw(r, `${5 + (arg ?? 0)}`) )
             }
         }
     })

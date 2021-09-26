@@ -102,7 +102,16 @@ import Product from './Product'
 
     let allShopsX = await repository.models.Shop.find({
         props: { 
-            products: {}
+            products: {
+                props: {
+                    myABC: 5,
+                    shop: {
+                        props: {
+                            products : {}
+                        }
+                    }
+                }
+            }
         },
         filter: ({root, Exists}) => Exists(
             new Dataset().from(
@@ -110,7 +119,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    // console.log('aaa', allShopsX)
+    console.log('aaa', allShopsX[0].products)
 })()
 
 

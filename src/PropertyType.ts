@@ -582,14 +582,14 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         } else {
             objectify =  `(${query})`
         }
+        
+        let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${quote(client, innerLevelColumnName)}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)} FROM ${objectify} AS ${quote(client, makeid(5))}`
+        return jsonify
 
-        if( !this.type.transformIntoMultipleRows ){
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${query}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)}`
-            return jsonify
-        } else {
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${quote(client, innerLevelColumnName)}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)} FROM ${objectify} AS ${quote(client, makeid(5))}`
-            return jsonify
-        }
+        // if( !this.type.transformFromMultipleRows ){
+        //     let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${query}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)}`
+        //     return jsonify
+        // }
     }
 
     parseRaw(rawValue: any, propName: string, client: string): ReturnType<T["parseRaw"]>[] {
