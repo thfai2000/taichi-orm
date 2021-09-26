@@ -1422,7 +1422,7 @@ export class Entity{
             let relatedRootColumn = (rootKey? root.getFieldProperty( rootKey(root.schema).name  ): undefined ) ?? root.getFieldProperty("id")
             let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
         
-            let newDataset = dataset.from(relatedSource).innerJoin(root, relatedRootColumn.equals( relatedByColumn ) )
+            let newDataset = dataset.from(relatedSource)
 
             let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
             if(args?.props){
@@ -1437,9 +1437,11 @@ export class Entity{
             }else {
                 dataset.props(props)
             }
+            let filters = [relatedRootColumn.equals( relatedByColumn )]
             if(args?.filter){
-                newDataset = newDataset.filter(args.filter as Expression<any, any> )
+               filters.push( args.filter as any )
             }
+            newDataset.filter( ({And}) => And(...filters) )
 
             return newDataset
         }
@@ -1450,13 +1452,41 @@ export class Entity{
     static belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
         this: RootClass & (new (...args: any[]) => InstanceType<RootClass>),
         relatedEntity: TypeClass, 
-        relatedBy: ((schema: RootClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>), 
-        rootKey?: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>)
+        rootKey: ((schema: RootClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>),
+        relatedBy?: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>) 
         ) {
         
         let computeFn = (root: Datasource<TypeClass["initSchema"], 'root'>, args?: TwoSourcesArg<RootClass["initSchema"], 'root', TypeClass["initSchema"], 'related'>): Scalarable<any> => {
             
-            throw new Error('NYI.')
+            let dataset = new Dataset()
+
+            let relatedSource = relatedEntity.schema.datasource('related')
+
+            let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
+            let relatedRootColumn = root.getFieldProperty( rootKey(root.schema).name  )
+        
+            let newDataset = dataset.from(relatedSource)
+
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+            if(args?.props){
+                let computed = args.props
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.props(Object.assign(props, computedValues))
+            }else {
+                dataset.props(props)
+            }
+            let filters = [relatedRootColumn.equals( relatedByColumn )]
+            if(args?.filter){
+               filters.push( args.filter as any )
+            }
+            newDataset.filter( ({And}) => And(...filters) )
+
+            return newDataset
         }
 
         return this.schema.compute( new ObjectOfType(relatedEntity), computeFn )

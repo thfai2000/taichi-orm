@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, PropertyTypeDefinition, StringType, StringTypeNotNull } from "./PropertyType"
-import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, makeid, metaFieldAlias, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -98,6 +98,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
 
     readonly schema: E
     readonly sourceAlias: Name
+    readonly sourceAliasAndSalt: string
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -106,6 +107,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
 
         this.schema = schema
         this.sourceAlias = sourceAlias
+        this.sourceAliasAndSalt = this.sourceAlias + '___' + makeid(5)
     }
     abstract realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
 
@@ -162,7 +164,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             return new Column(name, fieldProp.definition, (entityRepository) => {
                 const orm = entityRepository.orm
                 const client = orm.client()
-                let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, fieldProp.fieldName(orm))}`
+                let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
                 return makeRaw(entityRepository, rawTxt)
             })
         }
@@ -187,7 +189,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
     async toRaw(repository: EntityRepository<any>){
         const client = repository.orm.client()
         const sql = await this.realSource(repository)
-        return makeRaw(repository, `${sql} AS ${quote(client, this.sourceAlias)}`)
+        return makeRaw(repository, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
     }
 
 }
