@@ -97,7 +97,7 @@ const map2 = new Map<string, PropertyTypeDefinition>()
 export const registerGlobalPropertyTypeDefinition = function(d: PropertyTypeDefinition): string{
     let r = map1.get(d)
     if(!r){
-        let key = makeid(5)
+        let key = makeid(3)
         map1.set(d, key)
         map2.set(key, d)
         r = key

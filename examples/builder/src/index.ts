@@ -102,16 +102,17 @@ import Product from './Product'
 
     let allShopsX = await repository.models.Shop.find({
         props: { 
-            products: {
+            products: (P) => ({
                 props: {
                     myABC: 5,
                     shop: {
                         props: {
                             products : {}
-                        }
+                        },
+                        filter: ({root}) => root.name.equals(P.name)
                     }
                 }
-            }
+            })
         },
         filter: ({root, Exists}) => Exists(
             new Dataset().from(

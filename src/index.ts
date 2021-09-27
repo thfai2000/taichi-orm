@@ -50,6 +50,9 @@ export type SingleSourceFilter<S extends TableSchema> = Expression<
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
+export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
+
+
 // export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {
 //     props?: ComputePropertyArgsMap<S>,
 //     filter?: Expression<never>,
@@ -64,18 +67,8 @@ export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Rel
     filter?: Expression< 
         UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
-                >
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-}
-
-
-export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
-    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => {
-
-    props?: ComputePropertyArgsMap<Root>,
-    filter?: Expression< 
+                > | 
+                ExpressionFunc< 
         UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 >
@@ -83,6 +76,10 @@ export type TwoSourcesFilterFunction<Root extends TableSchema, RootName extends 
     offset?: number,
     orderBy?: QueryOrderBy
 }
+
+
+export type TwoSourcesArgFunction<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> =
+    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => TwoSourcesArg<Root, RootName, Related, RelatedName>
 
 
 // type Col<D> = { key: Scalar<D> }
@@ -1405,28 +1402,42 @@ export class Entity{
         return Database.find(this, null, applyFilter)
     }
 
-    static hasMany<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
-        this: RootClass & (new (...args: any[]) => InstanceType<RootClass>),
+    static hasMany<ParentClass extends typeof Entity, TypeClass extends typeof Entity>(
+        this: ParentClass & (new (...args: any[]) => InstanceType<ParentClass>),
         relatedEntity: TypeClass, 
         relatedBy: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>), 
-        rootKey?: ((schema: RootClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>)
+        parentKey?: ((schema: ParentClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>)
         ) {
         
-        let computeFn = (root: Datasource<RootClass["initSchema"], 'root'>, 
-            args?: TwoSourcesArg<RootClass["initSchema"], 'root', TypeClass["initSchema"], 'related'>): Scalarable<any> => {
+        let computeFn = (parent: Datasource<ParentClass["initSchema"], any>, 
+            args?: SingleSourceArg<TypeClass["initSchema"]> | 
+                SingleSourceArgFunction<TypeClass["initSchema"]>
+            ): Scalarable<any> => {
 
             let dataset = new Dataset()
 
-            let relatedSource = relatedEntity.schema.datasource('related')
+            let relatedSource = relatedEntity.schema.datasource('root')
 
-            let relatedRootColumn = (rootKey? root.getFieldProperty( rootKey(root.schema).name  ): undefined ) ?? root.getFieldProperty("id")
+            let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema).name  ): undefined ) ?? parent.getFieldProperty("id")
             let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
         
             let newDataset = dataset.from(relatedSource)
 
             let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
-            if(args?.props){
-                let computed = args.props
+
+            let resolvedArgs: SingleSourceArg<TypeClass["initSchema"]> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
+
+            if(resolvedArgs?.props){
+                let computed = resolvedArgs.props
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
@@ -1437,9 +1448,9 @@ export class Entity{
             }else {
                 dataset.props(props)
             }
-            let filters = [relatedRootColumn.equals( relatedByColumn )]
-            if(args?.filter){
-               filters.push( args.filter as any )
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.filter){
+               filters.push( resolvedArgs.filter as any )
             }
             newDataset.filter( ({And}) => And(...filters) )
 
@@ -1449,27 +1460,39 @@ export class Entity{
         return this.schema.compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
     }
 
-    static belongsTo<RootClass extends typeof Entity, TypeClass extends typeof Entity>(
-        this: RootClass & (new (...args: any[]) => InstanceType<RootClass>),
+    static belongsTo<ParentClass extends typeof Entity, TypeClass extends typeof Entity>(
+        this: ParentClass & (new (...args: any[]) => InstanceType<ParentClass>),
         relatedEntity: TypeClass, 
-        rootKey: ((schema: RootClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>),
+        parentKey: ((schema: ParentClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>),
         relatedBy?: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>) 
         ) {
         
-        let computeFn = (root: Datasource<TypeClass["initSchema"], 'root'>, args?: TwoSourcesArg<RootClass["initSchema"], 'root', TypeClass["initSchema"], 'related'>): Scalarable<any> => {
+        let computeFn = (parent: Datasource<TypeClass["initSchema"], 'root'>, 
+            args?: SingleSourceArg<TypeClass["initSchema"]> | SingleSourceArgFunction<TypeClass["initSchema"]>
+            ): Scalarable<any> => {
             
             let dataset = new Dataset()
 
-            let relatedSource = relatedEntity.schema.datasource('related')
+            let relatedSource = relatedEntity.schema.datasource('root')
 
             let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
-            let relatedRootColumn = root.getFieldProperty( rootKey(root.schema).name  )
+            let parentColumn = parent.getFieldProperty( parentKey(parent.schema).name  )
         
             let newDataset = dataset.from(relatedSource)
 
+            let resolvedArgs: SingleSourceArg<TypeClass["initSchema"]> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
             let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
-            if(args?.props){
-                let computed = args.props
+            if(resolvedArgs?.props){
+                let computed = resolvedArgs.props
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
@@ -1480,9 +1503,9 @@ export class Entity{
             }else {
                 dataset.props(props)
             }
-            let filters = [relatedRootColumn.equals( relatedByColumn )]
-            if(args?.filter){
-               filters.push( args.filter as any )
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.filter){
+               filters.push( resolvedArgs.filter as any )
             }
             newDataset.filter( ({And}) => And(...filters) )
 

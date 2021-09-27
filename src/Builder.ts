@@ -787,6 +787,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
+                let source: Datasource<any, any> | null | undefined = null
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
                     if(!fromSource){
@@ -794,9 +795,10 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     }
 
                     propName = sourceName
-                    sourceName = fromSource.sourceAlias//Object.keys(fromSource.tableAlias)[0]
+                    source = fromSource
+                } else{
+                    source = [fromSource, ...sources].find(s => s && s.sourceAlias === sourceName)
                 }
-                let source = [fromSource, ...sources].find(s => s && s.sourceAlias === sourceName)
                 if(!source){
                     console.log('sources', sources, sourceName)
                     throw new Error(`cannot found source (${sourceName})`)
