@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayOfType, FieldPropertyTypeDefinition, ObjectOfType, PropertyTypeDefinition } from './PropertyType'
+import { ArrayOfEntity, FieldPropertyTypeDefinition, ObjectOfEntity, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc} from './Builder'
 // export const Builtin = { ComputeFn }
@@ -614,14 +614,16 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         if(executionOptions?.onSqlRun) {
             executionOptions.onSqlRun(sql)
         }
-        console.log('sql', sql)
+        // console.log('sql', sql)
         let KnexStmt = this.orm.getKnexInstance().raw(sql)
         if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
         let result = null
         try{
+            console.time('execute-stmt')
             result = await KnexStmt
+            console.timeEnd('execute-stmt')
         }catch(error){
             throw error
         }
@@ -1105,9 +1107,10 @@ export class Database{
             throw new Error('Unsupport client.')
         }
 
-        console.log('return from database', rowData)
-
+        // console.log('return from database', rowData)
+        console.time('parsing')
         let dualInstance = rowData.map( row => this.parseRaw(entityClass, row, repository.orm.client()) )
+        console.timeEnd('parsing')
         // let str = "data" as keyof Dual
         let rows = dualInstance as Array<InstanceType<T>>
         return rows
@@ -1457,7 +1460,7 @@ export class Entity{
             return newDataset
         }
 
-        return this.schema.compute( new ArrayOfType( new ObjectOfType(relatedEntity) ), computeFn )
+        return this.schema.compute( new ArrayOfEntity(relatedEntity), computeFn )
     }
 
     static belongsTo<ParentClass extends typeof Entity, TypeClass extends typeof Entity>(
@@ -1512,7 +1515,7 @@ export class Entity{
             return newDataset
         }
 
-        return this.schema.compute( new ObjectOfType(relatedEntity), computeFn )
+        return this.schema.compute( new ObjectOfEntity(relatedEntity), computeFn )
     }
 
 }

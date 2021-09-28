@@ -39,17 +39,19 @@ import Product from './Product'
 
 
     let shop1 = await repository.models.Shop.createOne({
-        name: 'helloShop',
+        name: 'hello',
         hour: 10
     })
 
     console.log('finished-1')
     
-    let product1 = await repository.models.Product.createOne({
-        ddd: 5,
-        name: 'hello',
-        shopId: shop1.id
-    })
+    for (let i = 0; i < 1000; i++) {      
+        await repository.models.Product.createOne({
+            ddd: 5,
+            name: 'hello',
+            shopId: shop1.id
+        })
+    }
 
     console.log('finished')
 
@@ -102,17 +104,17 @@ import Product from './Product'
         filter: ({root}) => root.name.equals('helloShopx')
     })
     console.log('aaa', allShops)
-
+    console.time('simple')
     let allShopsX = await repository.models.Shop.find({
         props: { 
             products: (P) => ({
                 props: {
                     myABC: 5,
                     shop: {
-                        props: {
-                            products: {}
-                        },
-                        filter: ({root}) => root.name.equals(P.name)
+                        // props: {
+                        //     products: {}
+                        // },
+                        // filter: ({root}) => root.name.equals(P.name)
                     }
                 }
             })
@@ -123,7 +125,8 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaa', allShopsX[0].products)
+    console.log('aaa', allShopsX[0].products.length)
+    console.timeEnd('simple')
 })()
 
 

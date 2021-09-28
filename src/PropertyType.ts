@@ -27,14 +27,17 @@ const jsonObject = (client: string) => {
         throw new Error('NYI')   
 }
 
-const emptyJsonArray = (client: string) => {
-    if( client.startsWith('sqlite') )
-        return 'JSON_ARRAY()'
-    else if (client.startsWith('mysql'))    
-        return 'JSON_ARRAY()'
-    else if (client.startsWith('pg'))
-        return "'[]'::json"
-    else
+const jsonArray = (client: string, arrayOfColNames: Array<any> = []) => {
+
+    // const items = isFieldName? arrayOfColNames.map(col =>  quote(client, col)) : arrayOfColNames.map(col => `'${col}'`)
+
+    if( client.startsWith('sqlite') ){
+        return `JSON_ARRAY(${arrayOfColNames.join(',')})`
+    } else if (client.startsWith('mysql')){
+        return `JSON_ARRAY(${arrayOfColNames.join(',')})`
+    } else if (client.startsWith('pg')) {
+        return `JSON_BUILD_ARRAY(${arrayOfColNames.join(',')})`
+    } else
         throw new Error('NYI')
 }
 
@@ -491,7 +494,7 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
 }
 
 // type ObjectOfTypeOptions = { }
-export class ObjectOfType<E extends Parsable<any> > extends ComputePropertyTypeDefinition<E | null>{
+export class ObjectOfEntity<E extends Parsable<any> > extends ComputePropertyTypeDefinition<E | null>{
     // protected options: ObjectOfTypeOptions
 
     constructor(private parsable: E
@@ -583,11 +586,11 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
             objectify =  `(${query})`
         }
         
-        let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${quote(client, innerLevelColumnName)}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)} FROM ${objectify} AS ${quote(client, makeid(5))}`
+        let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${quote(client, innerLevelColumnName)}), ${jsonArray(client)}) AS ${quote(client, intoSingleColumn)} FROM ${objectify} AS ${quote(client, makeid(5))}`
         return jsonify
 
         // if( !this.type.transformFromMultipleRows ){
-        //     let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${query}), ${emptyJsonArray(client)}) AS ${quote(client, intoSingleColumn)}`
+        //     let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${query}), ${jsonArray(client)}) AS ${quote(client, intoSingleColumn)}`
         //     return jsonify
         // }
     }
@@ -612,6 +615,69 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         return this.type.parseProperty(propertyvalue, propName, client)
+    }
+}
+
+export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyTypeDefinition<E | null>{
+    
+    constructor(private parsable: E
+    // options: Partial<ObjectOfTypeOptions> = {}
+    ) {
+        super(parsable)
+        // this.options = { ...options}
+    }
+
+    get nullable() {
+        return true
+    }
+
+    queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string) {
+
+        if(!intoSingleColumn || !columns){
+            throw new Error('Unexpected Flow.')
+        }
+        let jsonify =  `SELECT ${jsonArray(client, [`${jsonArray(client, columns.map(col => `'${col}'`))}`, `coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)})` ])} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
+        return jsonify
+
+    }
+
+    parseRaw(rawValue: any, propName: string, client: string): E extends Parsable<infer D>? D: any {
+        let parsed: SimpleObject
+        if( rawValue === null){
+            //TODO: warning if nullable is false but value is null
+            return rawValue
+        } else {
+            let parsed = null
+            if(typeof rawValue === 'string'){
+                parsed = JSON.parse(rawValue)
+            } else if(Array.isArray(rawValue)){
+                parsed = rawValue
+            } 
+            if(parsed){
+                const [header, data] = parsed
+                // console.log('header', header, data)
+                let result = (data as Array<Array<any>>).map(row => {
+                    let agg = (header as string[]).reduce( (acc, propName, index) => {
+                        acc[propName] = row[index]
+                        return acc
+                    }, {} as {[key: string]: any})
+                    return this.parsable.parseRaw(agg, client)
+                })
+
+                return result as any
+            }
+        }
+        throw new Error('It is not supported.')
+    }
+    
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, client: string): any {
+        // if(!prop.definition.computeFunc){
+        //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
+        // }
+        // //TODO:
+        // return propertyvalue
+        // throw new Error('NYI')
+        return this.parsable.parseEntity(propertyvalue, client)
     }
 }
 
