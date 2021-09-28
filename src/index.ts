@@ -1094,7 +1094,10 @@ export class Database{
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        let resultData = await repository.orm.executeStatement(await dataset.toNativeBuilder(repository), executionOptions)
+        console.time('construct-sql')
+        const nativeSql = await dataset.toNativeBuilder(repository)
+        console.timeEnd('construct-sql')
+        let resultData = await repository.orm.executeStatement(nativeSql, executionOptions)
 
         let rowData: any[]
         if(repository.orm.client().startsWith('mysql')){
@@ -1109,7 +1112,11 @@ export class Database{
 
         // console.log('return from database', rowData)
         console.time('parsing')
-        let dualInstance = rowData.map( row => this.parseRaw(entityClass, row, repository.orm.client()) )
+        const len = rowData.length
+        let dualInstance = new Array(len)
+        for(let i=0; i <len;i++){
+            dualInstance[i] = this.parseRaw(entityClass, rowData[i], repository.orm.client())
+        }
         console.timeEnd('parsing')
         // let str = "data" as keyof Dual
         let rows = dualInstance as Array<InstanceType<T>>

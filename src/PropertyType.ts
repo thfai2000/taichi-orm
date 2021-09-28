@@ -654,17 +654,27 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
                 parsed = rawValue
             } 
             if(parsed){
-                const [header, data] = parsed
-                // console.log('header', header, data)
-                let result = (data as Array<Array<any>>).map(row => {
-                    let agg = (header as string[]).reduce( (acc, propName, index) => {
-                        acc[propName] = row[index]
-                        return acc
-                    }, {} as {[key: string]: any})
-                    return this.parsable.parseRaw(agg, client)
-                })
+                const [header, rowData] : [string[], Array<Array<any>>] = parsed
+                // let result = (data as ).map(row => {
+                //     let agg = (header as string[]).reduce( (acc, propName, index) => {
+                //         acc[propName] = row[index]
+                //         return acc
+                //     }, {} as {[key: string]: any})
+                //     return this.parsable.parseRaw(agg, client)
+                // })
+                
+                const numCols = header.length
+                const len = rowData.length
+                let records = new Array(len)
+                for(let i=0; i <len;i++){
+                    let record = {} as {[key:string]: any}
+                    for(let j=0; j<numCols; j++){
+                        record[header[j]] = rowData[i][j] 
+                    }
+                    records[i] = this.parsable.parseRaw(record, client)
+                }
 
-                return result as any
+                return records as any
             }
         }
         throw new Error('It is not supported.')

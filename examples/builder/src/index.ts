@@ -125,7 +125,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaa', allShopsX[0].products.length)
+    console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')
 })()
 
