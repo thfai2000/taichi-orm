@@ -44,7 +44,7 @@ import Product from './Product'
     })
 
     console.log('finished-1')
-
+    
     let product1 = await repository.models.Product.createOne({
         ddd: 5,
         name: 'hello',
@@ -55,7 +55,9 @@ import Product from './Product'
 
     let myShop = myShopDS.datasource("myShop")
     
-    // let xxx: Scalar<BooleanType>    
+
+
+
     let dd = new Dataset()
             .from(s)
             .innerJoin(p, ({product, shop}) => product.id.equals(shop.id))
@@ -95,6 +97,7 @@ import Product from './Product'
     let result = await orm.getRepository().query(dd)
     console.log('xxx', result)
 
+
     let allShops = await repository.models.Shop.find({
         filter: ({root}) => root.name.equals('helloShopx')
     })
@@ -107,7 +110,7 @@ import Product from './Product'
                     myABC: 5,
                     shop: {
                         props: {
-                            products : {}
+                            products: {}
                         },
                         filter: ({root}) => root.name.equals(P.name)
                     }
