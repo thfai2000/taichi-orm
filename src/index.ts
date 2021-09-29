@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayOfEntity, FieldPropertyTypeDefinition, ObjectOfEntity, PropertyTypeDefinition } from './PropertyType'
+import { ArrayOfEntity, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectOfEntity, ParsableFieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc} from './Builder'
 // export const Builtin = { ComputeFn }
@@ -627,6 +627,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         }catch(error){
             throw error
         }
+        
         return result
     }
 
@@ -636,13 +637,37 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
                 (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
     }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]>
      {
-        let data = await this.executeStatement(await dataset.toNativeBuilder(this), executionOptions)
-        if(Array.isArray(data)){
-            
-            let result = data.map(one => parseDataBySchema({}, one, dataset.schema(), this.orm.client() ) )
-            return result as R[]
+        console.time('construct-sql')
+        const nativeSql = await dataset.toNativeBuilder(this)
+        console.timeEnd('construct-sql')
+        let data = await this.executeStatement(nativeSql, executionOptions)
+        let rows: any[]
+        if(this.orm.client().startsWith('mysql')){
+            rows = data[0][0]
+        } else if(this.orm.client().startsWith('sqlite')){
+            rows = data
+        } else if(this.orm.client().startsWith('pg')){
+            rows = data.rows[0]
+        } else {
+            throw new Error('Unsupport client.')
         }
-        return data
+        
+        if(Array.isArray(rows)){
+
+            console.time('parsing')
+            const client = this.orm.client()
+            const len = rows.length
+            let parsedRows = new Array(len) as R[]
+            const schema = dataset.schema()
+         
+            for(let i=0; i <len;i++){
+                parsedRows[i] = parseDataBySchema<R>({} as R, rows[i], schema, client )
+            }
+        
+            console.timeEnd('parsing')
+            return parsedRows 
+        }
+        return rows
     }
 }
 
@@ -945,7 +970,12 @@ export class Database{
                 throw new Error(`The Property [${propName}] doesn't exist in ${schema.entityClass?.entityName}`)
             }
             const prop = foundProp
-            const propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository.orm.client())
+            let propertyValue = data[prop.name]
+            if(prop.definition instanceof ParsableFieldPropertyTypeDefinition ||
+                prop.definition instanceof ComputePropertyTypeDefinition){
+                propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository.orm.client())
+            }
+
             propValues[prop.name] = propertyValue
             return propValues
         }, {} as MutationEntityPropertyKeyValues)
@@ -1089,37 +1119,25 @@ export class Database{
         let dataset = new Dataset()
             .props( await resolveEntityProps(source, applyOptions?.props ) )
             .from(source)
+            // .type(new ArrayOfEntity(entityClass))
 
         dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter as Expression<any,any>) : dataset
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
-        console.time('construct-sql')
-        const nativeSql = await dataset.toNativeBuilder(repository)
-        console.timeEnd('construct-sql')
-        let resultData = await repository.orm.executeStatement(nativeSql, executionOptions)
 
-        let rowData: any[]
-        if(repository.orm.client().startsWith('mysql')){
-            rowData = resultData[0][0]
-        } else if(repository.orm.client().startsWith('sqlite')){
-            rowData = resultData
-        } else if(repository.orm.client().startsWith('pg')){
-            rowData = resultData.rows[0]
-        } else {
-            throw new Error('Unsupport client.')
-        }
+        // console.log('xxxxxxx', dataset.toScalar(new ArrayOfEntity(entityClass)))
+
+        let wrappedDataset = new Dataset().props({
+            root: dataset.toScalar(new ArrayOfEntity(entityClass))
+        })
+
+        let resultData = await repository.query(wrappedDataset, executionOptions)
 
         // console.log('return from database', rowData)
-        console.time('parsing')
-        const len = rowData.length
-        let dualInstance = new Array(len)
-        for(let i=0; i <len;i++){
-            dualInstance[i] = this.parseRaw(entityClass, rowData[i], repository.orm.client())
-        }
-        console.timeEnd('parsing')
+
         // let str = "data" as keyof Dual
-        let rows = dualInstance as Array<InstanceType<T>>
+        let rows = resultData[0].root as Array<InstanceType<T>>
         return rows
     }
 
@@ -1529,15 +1547,29 @@ export class Entity{
 
 
 function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyValues, schema: Schema, client: string): T {
-    entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
-        // let prop = this.compiledNamedPropertyMap.get(fieldName)
+    
+    for (const fieldName in row) {
         let metaInfo = breakdownMetaFieldAlias(fieldName)
         
         /**
          * it can be boolean, string, number, Object, Array of Object (class)
          * Depends on the props..
          */
-        let propValue = metaInfo?.propType!.parseRaw(row[fieldName], metaInfo.propName, client)
+        let start = null
+        if(metaInfo.propName === 'products'){
+            start = new Date()
+        }
+        let propValue = row[fieldName]
+        if(metaInfo?.propType instanceof ParsableFieldPropertyTypeDefinition ||
+            metaInfo?.propType instanceof ComputePropertyTypeDefinition
+            ){
+            propValue = metaInfo.propType.parseRaw(row[fieldName], metaInfo.propName, client) ?? row[fieldName]
+        }
+
+        if(metaInfo.propName === 'products'){
+            //@ts-ignore
+            console.log('parseDataBySchema',  new Date() - start )
+        }
 
         Object.defineProperty(entityInstance, metaInfo.propName, {
             configurable: true,
@@ -1545,10 +1577,12 @@ function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyV
             writable: true,
             value: propValue
         })
-        return entityInstance
+    }
 
+    // entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
+        // let prop = this.compiledNamedPropertyMap.get(fieldName)
+    // }, entityInstance)
     
-    }, entityInstance)
     return entityInstance
 }
 

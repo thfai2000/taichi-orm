@@ -45,7 +45,7 @@ import Product from './Product'
 
     console.log('finished-1')
     
-    for (let i = 0; i < 1000; i++) {      
+    for (let i = 0; i < 2; i++) {      
         await repository.models.Product.createOne({
             ddd: 5,
             name: 'hello',
@@ -125,7 +125,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaaa', allShopsX[0].products.length)
+    console.log('aaaa', allShopsX)
     console.timeEnd('simple')
 })()
 

@@ -41,6 +41,10 @@ const jsonArray = (client: string, arrayOfColNames: Array<any> = []) => {
         throw new Error('NYI')
 }
 
+export interface ParsableTrait<I> {
+    parseRaw(rawValue: any, prop: string, client: string): I 
+    parseProperty(propertyvalue: I, prop: string, client: string): any
+}
 
 export type Parsable<D> = {
     new (): D
@@ -54,24 +58,20 @@ export class PropertyTypeDefinition<I = any> {
     get nullable() {
         return true
     }
-    get transformFromMultipleRows(): boolean {
-        return false
-    }
-    get transformIntoMultipleRows(): boolean{
-        return false
-    }
-    get propertyValueIsArray(): boolean{
-        return false
-    }
+
+    // get transformFromMultipleRows(): boolean {
+    //     return false
+    // }
+    // get transformIntoMultipleRows(): boolean{
+    //     return false
+    // }
+    // get propertyValueIsArray(): boolean{
+    //     return false
+    // }
     constructor(options?: any){
         this.options = this.options ??options
     }
-    parseRaw(rawValue: any, prop: string, client: string): I {
-        return rawValue
-    }
-    parseProperty(propertyvalue: I, prop: string, client: string): any {
-        return propertyvalue
-    }
+
 }
 
 export class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
@@ -80,9 +80,26 @@ export class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
     }
 }
 
-export class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+export class ParsableFieldPropertyTypeDefinition<I> extends FieldPropertyTypeDefinition<I> implements ParsableTrait<I>{
+    parseRaw(rawValue: any, prop: string, client: string): I {
+        return rawValue
+    }
+    parseProperty(propertyvalue: I, prop: string, client: string): any {
+        return propertyvalue
+    }
+}
+
+
+
+export class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> implements ParsableTrait<I>{
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string): SQLString {
         throw new Error('It is not allowed')
+    }
+    parseRaw(rawValue: any, prop: string, client: string): I {
+        return rawValue
+    }
+    parseProperty(propertyvalue: I, prop: string, client: string): any {
+        return propertyvalue
     }
 }
 
@@ -96,19 +113,19 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
         return false
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): number {
-        if(rawValue === null){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return parseInt(rawValue)
-    }
+    // parseRaw(rawValue: any, propName: string, client: string): number {
+    //     if(rawValue === null){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return parseInt(rawValue)
+    // }
 
-    parseProperty(propertyvalue: any, propName: string, client: string): number {
-        if(propertyvalue === null){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseProperty(propertyvalue: any, propName: string, client: string): number {
+    //     if(propertyvalue === null){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
 
     create(propName: string, fieldName: string, client: string): string[]{
 
@@ -148,27 +165,27 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
         return true
     }
         
-    parseRaw(rawValue: any, prop: string, client: string): number | null {
-        if(rawValue === null)
-            return null
-        else if(Number.isInteger(rawValue)){
-            return parseInt(rawValue)
-        }
-        throw new Error('Cannot parse Raw into Boolean')
-    }
-    parseProperty(propertyvalue: number | null, propName: string, client: string) {
-        if(propertyvalue === null && !this.options){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseRaw(rawValue: any, prop: string, client: string): number | null {
+    //     if(rawValue === null)
+    //         return null
+    //     else if(Number.isInteger(rawValue)){
+    //         return parseInt(rawValue)
+    //     }
+    //     throw new Error('Cannot parse Raw into Boolean')
+    // }
+    // parseProperty(propertyvalue: number | null, propName: string, client: string) {
+    //     if(propertyvalue === null && !this.options){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
     create(propName: string, fieldName: string, client: string){
         return [
             [
                 `${quote(client, fieldName)}`, 
                 'INTEGER', 
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
     }
@@ -186,27 +203,27 @@ export class NumberTypeNotNull extends FieldPropertyTypeDefinition<number> {
         return false
     }
         
-    parseRaw(rawValue: any, prop: string, client: string): number {
-        if(rawValue === null)
-            throw new Error('Cannot null')
-        else if(Number.isInteger(rawValue)){
-            return parseInt(rawValue)
-        }
-        throw new Error('Cannot parse Raw into Boolean')
-    }
-    parseProperty(propertyvalue: number, propName: string, client: string) {
-        if(propertyvalue === null && !this.options){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseRaw(rawValue: any, prop: string, client: string): number {
+    //     if(rawValue === null)
+    //         throw new Error('Cannot null')
+    //     else if(Number.isInteger(rawValue)){
+    //         return parseInt(rawValue)
+    //     }
+    //     throw new Error('Cannot parse Raw into Boolean')
+    // }
+    // parseProperty(propertyvalue: number, propName: string, client: string) {
+    //     if(propertyvalue === null && !this.options){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
     create(propName: string, fieldName: string, client: string){
         return [
             [
                 `${quote(client, fieldName)}`, 
                 'INTEGER', 
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
     }
@@ -226,16 +243,16 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
         return true
     }
 
-    parseRaw(rawValue: any): number | null{
-            return rawValue === null? null: parseFloat(rawValue)
-    }
+    // parseRaw(rawValue: any): number | null{
+    //         return rawValue === null? null: parseFloat(rawValue)
+    // }
 
-    parseProperty(propertyvalue: number | null, propName: string): any {
-        if(propertyvalue === null && !this.nullable){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseProperty(propertyvalue: number | null, propName: string): any {
+    //     if(propertyvalue === null && !this.nullable){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
 
     create(propName: string, fieldName: string, client: string){
 
@@ -246,7 +263,7 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
                 `${quote(client, fieldName)}`, 
                 `DECIMAL${c.length > 0?`(${c})`:''}`,
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
     }
@@ -265,25 +282,25 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         return true
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): boolean | null {
-        //TODO: warning if nullable is false but value is null
-        if(rawValue === null)
-            return null
-        else if(rawValue === true)
-            return true
-        else if(rawValue === false)
-            return false
-        else if(Number.isInteger(rawValue)){
-            return parseInt(rawValue) > 0
-        }
-        throw new Error('Cannot parse Raw into Boolean')
-    }
-    parseProperty(propertyvalue: boolean | null, propName: string, client: string): any {
-        if(propertyvalue === null && !this.nullable){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue === null? null: (propertyvalue? '1': '0')
-    }
+    // parseRaw(rawValue: any, propName: string, client: string): boolean | null {
+    //     //TODO: warning if nullable is false but value is null
+    //     if(rawValue === null)
+    //         return null
+    //     else if(rawValue === true)
+    //         return true
+    //     else if(rawValue === false)
+    //         return false
+    //     else if(Number.isInteger(rawValue)){
+    //         return parseInt(rawValue) > 0
+    //     }
+    //     throw new Error('Cannot parse Raw into Boolean')
+    // }
+    // parseProperty(propertyvalue: boolean | null, propName: string, client: string): any {
+    //     if(propertyvalue === null && !this.nullable){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue === null? null: (propertyvalue? '1': '0')
+    // }
 
     create(propName: string, fieldName: string, client: string){
         return [
@@ -291,7 +308,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
                 `${quote(client, fieldName)}`,
                 ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
     }
@@ -309,25 +326,25 @@ export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
         return true
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): boolean {
-        //TODO: warning if nullable is false but value is null
-        if(rawValue === null)
-            throw new Error('Cannot null')
-        else if(rawValue === true)
-            return true
-        else if(rawValue === false)
-            return false
-        else if(Number.isInteger(rawValue)){
-            return parseInt(rawValue) > 0
-        }
-        throw new Error('Cannot parse Raw into Boolean')
-    }
-    parseProperty(propertyvalue: boolean, propName: string, client: string): any {
-        if(propertyvalue === null && !this.nullable){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue === null? null: (propertyvalue? '1': '0')
-    }
+    // parseRaw(rawValue: any, propName: string, client: string): boolean {
+    //     //TODO: warning if nullable is false but value is null
+    //     if(rawValue === null)
+    //         throw new Error('Cannot null')
+    //     else if(rawValue === true)
+    //         return true
+    //     else if(rawValue === false)
+    //         return false
+    //     else if(Number.isInteger(rawValue)){
+    //         return parseInt(rawValue) > 0
+    //     }
+    //     throw new Error('Cannot parse Raw into Boolean')
+    // }
+    // parseProperty(propertyvalue: boolean, propName: string, client: string): any {
+    //     if(propertyvalue === null && !this.nullable){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue === null? null: (propertyvalue? '1': '0')
+    // }
 
     create(propName: string, fieldName: string, client: string){
         return [
@@ -335,7 +352,7 @@ export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
                 `${quote(client, fieldName)}`,
                 ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName, client)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'')
             ].join(' ')
         ]
     }
@@ -354,17 +371,17 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
         return true
     }
 
-    parseRaw(rawValue: any): string | null {
-        //TODO: warning if nullable is false but value is null
-        return rawValue === null? null: `${rawValue}`
-    }
+    // parseRaw(rawValue: any): string | null {
+    //     //TODO: warning if nullable is false but value is null
+    //     return rawValue === null? null: `${rawValue}`
+    // }
 
-    parseProperty(propertyvalue: string | null, propName: string): any{
-        if(propertyvalue === null && !this.nullable){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseProperty(propertyvalue: string | null, propName: string): any{
+    //     if(propertyvalue === null && !this.nullable){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
 
     create(propName: string, fieldName: string, client: string){
         let c = [this.options.length].filter(v => v).join(',')
@@ -373,7 +390,7 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
                 `${quote(client, fieldName)}`,
                 `VARCHAR${c.length > 0?`(${c})`:''}`,
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'')
             ].join(' ')
         ]
     }
@@ -391,19 +408,19 @@ export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
         return false
     }
 
-    parseRaw(rawValue: any): string {
-        if(rawValue === null && !this.nullable){
-            throw new Error(`The Property '${rawValue}' cannot be null.`)
-        }
-        return `${rawValue}`
-    }
+    // parseRaw(rawValue: any): string {
+    //     if(rawValue === null && !this.nullable){
+    //         throw new Error(`The Property '${rawValue}' cannot be null.`)
+    //     }
+    //     return `${rawValue}`
+    // }
 
-    parseProperty(propertyvalue: string | null, propName: string): any{
-        if(propertyvalue === null && !this.nullable){
-            throw new Error(`The Property '${propName}' cannot be null.`)
-        }
-        return propertyvalue
-    }
+    // parseProperty(propertyvalue: string | null, propName: string): any{
+    //     if(propertyvalue === null && !this.nullable){
+    //         throw new Error(`The Property '${propName}' cannot be null.`)
+    //     }
+    //     return propertyvalue
+    // }
 
     create(propName: string, fieldName: string, client: string){
         let c = [this.options.length].filter(v => v).join(',')
@@ -412,14 +429,14 @@ export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
                 `${quote(client, fieldName)}`,
                 `VARCHAR${c.length > 0?`(${c})`:''}`,
                 nullableText(this.nullable), 
-                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, propName)}`:'') 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
     }
 }
 
 type DateTypeOptions = { default?: Date }
-export class DateType extends FieldPropertyTypeDefinition<Date | null> {
+export class DateType extends ParsableFieldPropertyTypeDefinition<Date | null> {
     protected options: DateTypeOptions
 
     constructor(options: Partial<DateTypeOptions> = {}){
@@ -456,7 +473,7 @@ export class DateType extends FieldPropertyTypeDefinition<Date | null> {
 }
 
 type DateTimeTypeOptions = {default?: Date, precision?: number }
-export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
+export class DateTimeType extends ParsableFieldPropertyTypeDefinition<Date | null> {
     protected options: DateTimeTypeOptions
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
@@ -563,13 +580,13 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         return true
     }
 
-    get transformIntoMultipleRows(){
-        return false
-    }
+    // get transformIntoMultipleRows(){
+    //     return false
+    // }
 
-    get transformFromMultipleRows(){
-        return this.type.transformFromMultipleRows
-    }
+    // get transformFromMultipleRows(){
+    //     return this.type.transformFromMultipleRows
+    // }
 
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string) {
 
@@ -595,7 +612,7 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         // }
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): ReturnType<T["parseRaw"]>[] {
+    parseRaw(rawValue: any, propName: string, client: string): any[] {
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -606,15 +623,29 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         } else {
             throw new Error('It is not supported.')
         }
-        return parsed.map( raw => {
-            return this.type.parseRaw(raw, propName, client)
-        })
+
+        if( this.type instanceof ParsableFieldPropertyTypeDefinition ||
+            this.type instanceof ComputePropertyTypeDefinition){
+            const d = this.type
+            return parsed.map(raw => {
+                return d.parseRaw(raw, propName, client)
+            })
+        } else {
+            return parsed as any[]
+        }
     }
-    parseProperty(propertyvalue: Array<Parameters<T["parseProperty"]>[0]>, propName: string, client: string): any {
+    parseProperty(propertyvalue: any[], propName: string, client: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
-        return this.type.parseProperty(propertyvalue, propName, client)
+        if( this.type instanceof ParsableFieldPropertyTypeDefinition){
+            const d = this.type
+            return propertyvalue.map(v => {
+                return d.parseRaw(v, propName, client)
+            })
+        } else {
+            return propertyvalue as any
+        }
     }
 }
 
@@ -634,6 +665,7 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string) {
 
         if(!intoSingleColumn || !columns){
+            console.log('sssss', query.toString())
             throw new Error('Unexpected Flow.')
         }
         let jsonify =  `SELECT ${jsonArray(client, [`${jsonArray(client, columns.map(col => `'${col}'`))}`, `coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)})` ])} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
@@ -665,13 +697,14 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
                 
                 const numCols = header.length
                 const len = rowData.length
+                const parsableEntity = this.parsable
                 let records = new Array(len)
                 for(let i=0; i <len;i++){
                     let record = {} as {[key:string]: any}
                     for(let j=0; j<numCols; j++){
                         record[header[j]] = rowData[i][j] 
                     }
-                    records[i] = this.parsable.parseRaw(record, client)
+                    records[i] = parsableEntity.parseRaw(record, client)
                 }
 
                 return records as any

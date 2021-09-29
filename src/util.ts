@@ -125,7 +125,7 @@ export const breakdownMetaFieldAlias = function(metaAlias: string){
         let propType = findGlobalPropertyTypeDefinition(propAlias)
         return {propName, propType}
     } else {
-        return {propName: metaAlias, propType: new PropertyTypeDefinition() }
+        return {propName: metaAlias, propType: null }
     }
 }
 
