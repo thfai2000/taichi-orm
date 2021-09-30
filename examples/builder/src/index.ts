@@ -43,9 +43,9 @@ import Product from './Product'
         hour: 10
     })
 
-    console.log('finished-1')
+    console.log('finished-1', shop1)
     
-    for (let i = 0; i < 2; i++) {      
+    for (let i = 0; i < 5; i++) {      
         await repository.models.Product.createOne({
             ddd: 5,
             name: 'hello',
@@ -125,7 +125,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaaa', allShopsX)
+    console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')
 })()
 

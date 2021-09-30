@@ -107,7 +107,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
 
         this.schema = schema
         this.sourceAlias = sourceAlias
-        this.sourceAliasAndSalt = this.sourceAlias + '___' + makeid(5)
+        this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
     }
     abstract realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
 
@@ -412,15 +412,12 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     }
 
     private selectItemAlias(name: string, scalar: Scalar<any>){
-
-        return metaFieldAlias(name, scalar.definition)
-
+        return name
     }
 
 
     private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
-        // const client = repository.orm.client()
-        
+        const client = repository.orm.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
             // let acc = await accP
@@ -428,14 +425,13 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             if(!scalar){
                 throw new Error(`cannot resolve field ${k}`)
             }
-            console.log('431 try to resolve', k, scalar.definition)
             const raw: Knex.Raw = await scalar.toRaw(repository)
             let text = raw.toString().trim()
 
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(repository, `${text} AS ${this.selectItemAlias(k, scalar)}`)
+            const newRaw = makeRaw(repository, `${text} AS ${quote(client, this.selectItemAlias(k, scalar))}`)
 
             return newRaw
 
@@ -526,16 +522,16 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             const d = this.__selectItems[key].definition
             let referName = this.selectItemAlias(key, this.__selectItems[key])
 
-            if(d instanceof FieldPropertyTypeDefinition){
+            if(d instanceof PropertyTypeDefinition){
                 //@ts-ignore
                 acc[key] = new FieldProperty(d).setFieldName(referName)
             } else {
                 //@ts-ignore
-                acc[key] = new FieldProperty( new FieldPropertyTypeDefinition() ).setFieldName(referName)
+                acc[key] = new FieldProperty( new PropertyTypeDefinition() ).setFieldName(referName)
             }
 
             return acc
-        }, {} as SelectProps & {[key:string]: FieldPropertyTypeDefinition<any>}) 
+        }, {} as SelectProps & {[key:string]: PropertyTypeDefinition<any>}) 
 
         let schema =  Object.assign(new Schema(), propertyMap)
         schema.init()
@@ -618,7 +614,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
                     // console.log('resolve', ex.toString())
                     return resolveIntoRawOrDataset(ex(repository))
                 }
-                console.log('here 3')
+                // console.log('here 3')
                 return ex
             })
         }

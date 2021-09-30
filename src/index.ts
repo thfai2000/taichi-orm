@@ -1,13 +1,13 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayOfEntity, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectOfEntity, ParsableFieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
+import { ArrayOfEntity, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectOfEntity, Parsable, ParsableFieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc} from './Builder'
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { breakdownMetaFieldAlias, ExtractComputeProps, ExtractProps, makeid, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { ExtractComputeProps, ExtractProps, makeid, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 
 // import { SingleSourceArg, SingleSourceFilter } from './Relation'
 // import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
@@ -640,7 +640,9 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         console.time('construct-sql')
         const nativeSql = await dataset.toNativeBuilder(this)
         console.timeEnd('construct-sql')
+        // console.log('nativeSql', nativeSql.toString())
         let data = await this.executeStatement(nativeSql, executionOptions)
+        // console.log('data', data)
         let rows: any[]
         if(this.orm.client().startsWith('mysql')){
             rows = data[0][0]
@@ -655,16 +657,17 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         if(Array.isArray(rows)){
 
             console.time('parsing')
-            const client = this.orm.client()
+            const repository = this
             const len = rows.length
             let parsedRows = new Array(len) as R[]
             const schema = dataset.schema()
-         
+            
             for(let i=0; i <len;i++){
-                parsedRows[i] = parseDataBySchema<R>({} as R, rows[i], schema, client )
+                parsedRows[i] = parseDataBySchema<R>({} as R, repository ,rows[i], schema)
             }
         
             console.timeEnd('parsing')
+            console.log('parsed', parsedRows)
             return parsedRows 
         }
         return rows
@@ -901,7 +904,7 @@ export class Database{
                     const r = await repository.orm.executeStatement(insertStmt, executionOptions)
                     insertedId = r[0][0].insertId
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
-
+                    
                     let record = await this.findOne<T, typeof schema>(entityClass, repository, {
                         filter: {
                             id: insertedId
@@ -922,6 +925,8 @@ export class Database{
                                 //@ts-ignore
                                 filter: ({root}) => root.uuid.equals(uuid)
                             }).withOptions(executionOptions)
+
+                            // console.log('create findOne', record)
 
                             return await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         }
@@ -973,7 +978,7 @@ export class Database{
             let propertyValue = data[prop.name]
             if(prop.definition instanceof ParsableFieldPropertyTypeDefinition ||
                 prop.definition instanceof ComputePropertyTypeDefinition){
-                propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository.orm.client())
+                propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository)
             }
 
             propValues[prop.name] = propertyValue
@@ -1316,14 +1321,15 @@ export class Database{
         )
     }
 
-    static parseEntity<T extends typeof Entity>(entityInstance: InstanceType<T>, client: string): any {
+    static parseEntity<T extends typeof Entity>(entityInstance: InstanceType<T>, repository: EntityRepository<any> | null): any {
         return entityInstance
     }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, row: MutationEntityPropertyKeyValues, client: string): InstanceType<T>{
+    static parseRaw<T extends typeof Entity>(entityClass: T, repository: EntityRepository<any>, row: MutationEntityPropertyKeyValues): InstanceType<T>{
+        
         const schema = entityClass.schema
         const instance = new entityClass() as InstanceType<T>
-        return parseDataBySchema( instance, row, schema, client)
+        return parseDataBySchema( instance, repository, row, schema)
     }
 
     static extractRealField(repository: EntityRepository<any>, schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
@@ -1340,7 +1346,7 @@ export class Database{
     }
 }
 
-export class Entity{
+export class Entity {
 
     // static repository: EntityRepository<any> | null = null;
     static orm?: ORM<any>
@@ -1359,6 +1365,7 @@ export class Entity{
 
     constructor(){
     }
+   
 
     static register(orm: ORM<any>, entityName: string) {
         this.orm = orm
@@ -1379,13 +1386,12 @@ export class Entity{
         return this.schema.datasource(name, options)
     }
 
-    static parseRaw(row: MutationEntityPropertyKeyValues, client: string): Entity{
-        return Database.parseRaw(this, row, client)
-    }
-
-    static parseEntity(entityInstance: Entity, client: string): any{
-        let r = Database.parseEntity(entityInstance, client)
+    static parseEntity(entityInstance: Entity, repository: EntityRepository<any>) {
+        let r = Database.parseEntity(entityInstance, repository)
         return r
+    }
+    static parseRaw(rawValue: any, repository: EntityRepository<any>): Entity {
+        return Database.parseRaw(this, repository, rawValue)
     }
 
     static createEach<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner< InstanceType<I>[], I["initSchema"]>{
@@ -1546,32 +1552,32 @@ export class Entity{
 }
 
 
-function parseDataBySchema<T>(entityInstance: T, row: MutationEntityPropertyKeyValues, schema: Schema, client: string): T {
-    
-    for (const fieldName in row) {
-        let metaInfo = breakdownMetaFieldAlias(fieldName)
+function parseDataBySchema<T>(entityInstance: T, repository: EntityRepository<any>, row: MutationEntityPropertyKeyValues, schema: Schema): T {
+
+    for (const propName in row) {
+        const propType = schema.propertiesMap[propName].definition
         
         /**
          * it can be boolean, string, number, Object, Array of Object (class)
          * Depends on the props..
          */
-        let start = null
-        if(metaInfo.propName === 'products'){
-            start = new Date()
-        }
-        let propValue = row[fieldName]
-        if(metaInfo?.propType instanceof ParsableFieldPropertyTypeDefinition ||
-            metaInfo?.propType instanceof ComputePropertyTypeDefinition
+        // let start = null
+        // if(metaInfo.propName === 'products'){
+        //     start = new Date()
+        // }
+        let propValue = row[propName]
+        if(propType instanceof ParsableFieldPropertyTypeDefinition ||
+            propType instanceof ComputePropertyTypeDefinition
             ){
-            propValue = metaInfo.propType.parseRaw(row[fieldName], metaInfo.propName, client) ?? row[fieldName]
+            propValue = propType.parseRaw(row[propName], propName, repository) ?? row[propName]
         }
 
-        if(metaInfo.propName === 'products'){
-            //@ts-ignore
-            console.log('parseDataBySchema',  new Date() - start )
-        }
+        // if(metaInfo.propName === 'products'){
+        //     //@ts-ignore
+        //     console.log('parseDataBySchema',  new Date() - start )
+        // }
 
-        Object.defineProperty(entityInstance, metaInfo.propName, {
+        Object.defineProperty(entityInstance, propName, {
             configurable: true,
             enumerable: true,
             writable: true,

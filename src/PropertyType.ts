@@ -42,14 +42,13 @@ const jsonArray = (client: string, arrayOfColNames: Array<any> = []) => {
 }
 
 export interface ParsableTrait<I> {
-    parseRaw(rawValue: any, prop: string, client: string): I 
-    parseProperty(propertyvalue: I, prop: string, client: string): any
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>): I 
+    parseProperty(propertyvalue: I, prop: string, repository: EntityRepository<any>): any
 }
 
-export type Parsable<D> = {
-    new (): D
-    parseEntity(entityInstance: D, client: string): any
-    parseRaw(rawValue: any, client: string): D
+export type Parsable<I> = {
+    parseRaw(rawValue: any, repository: EntityRepository<any>): I
+    parseEntity(entityInstance: any, repository: EntityRepository<any>): any
 }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
@@ -81,10 +80,10 @@ export class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
 }
 
 export class ParsableFieldPropertyTypeDefinition<I> extends FieldPropertyTypeDefinition<I> implements ParsableTrait<I>{
-    parseRaw(rawValue: any, prop: string, client: string): I {
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any> ): I {
         return rawValue
     }
-    parseProperty(propertyvalue: I, prop: string, client: string): any {
+    parseProperty(propertyvalue: I, prop: string, repository: EntityRepository<any>): any {
         return propertyvalue
     }
 }
@@ -95,10 +94,10 @@ export class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> 
     queryTransform(query: SQLString, columns: string[] | null, intoSingleColumn: string, client: string): SQLString {
         throw new Error('It is not allowed')
     }
-    parseRaw(rawValue: any, prop: string, client: string): I {
+    parseRaw(rawValue: any, prop: string, repository: EntityRepository<any>): I {
         return rawValue
     }
-    parseProperty(propertyvalue: I, prop: string, client: string): any {
+    parseProperty(propertyvalue: I, prop: string, repository: EntityRepository<any>): any {
         return propertyvalue
     }
 }
@@ -535,7 +534,7 @@ export class ObjectOfEntity<E extends Parsable<any> > extends ComputePropertyTyp
         return jsonify
     }
     
-    parseRaw(rawValue: any, propName: string, client: string): E extends Parsable<infer D>? D: any {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): E extends Parsable<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -548,17 +547,17 @@ export class ObjectOfEntity<E extends Parsable<any> > extends ComputePropertyTyp
             throw new Error('It is not supported.')
         }
         // const entityClass = context.models[this.entityClassName] as unknown as E
-        return this.parsable.parseRaw(parsed, client)
+        return this.parsable.parseRaw(parsed, repository)
     }
     
-    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, client: string): any {
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, repository: EntityRepository<any>): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
         // return propertyvalue
         // throw new Error('NYI')
-        return this.parsable.parseEntity(propertyvalue, client)
+        return this.parsable.parseEntity(propertyvalue, repository)
     }
 }
 
@@ -612,7 +611,7 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
         // }
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): any[] {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): any[] {
         let parsed: Array<SimpleObject>
         if( rawValue === null){
             throw new Error('Null is not expected.')
@@ -628,20 +627,20 @@ export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends Compute
             this.type instanceof ComputePropertyTypeDefinition){
             const d = this.type
             return parsed.map(raw => {
-                return d.parseRaw(raw, propName, client)
+                return d.parseRaw(raw, propName, repository)
             })
         } else {
             return parsed as any[]
         }
     }
-    parseProperty(propertyvalue: any[], propName: string, client: string): any {
+    parseProperty(propertyvalue: any[], propName: string, repository: EntityRepository<any>): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         if( this.type instanceof ParsableFieldPropertyTypeDefinition){
             const d = this.type
             return propertyvalue.map(v => {
-                return d.parseRaw(v, propName, client)
+                return d.parseRaw(v, propName, repository)
             })
         } else {
             return propertyvalue as any
@@ -673,7 +672,7 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
 
     }
 
-    parseRaw(rawValue: any, propName: string, client: string): E extends Parsable<infer D>? D: any {
+    parseRaw(rawValue: any, propName: string, repository: EntityRepository<any>): E extends Parsable<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -704,7 +703,7 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
                     for(let j=0; j<numCols; j++){
                         record[header[j]] = rowData[i][j] 
                     }
-                    records[i] = parsableEntity.parseRaw(record, client)
+                    records[i] = parsableEntity.parseRaw(record, repository)
                 }
 
                 return records as any
@@ -713,14 +712,14 @@ export class ArrayOfEntity<E extends Parsable<any> > extends ComputePropertyType
         throw new Error('It is not supported.')
     }
     
-    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, client: string): any {
+    parseProperty(propertyvalue: E extends Parsable<infer D>? D: any, propName: string, repository: EntityRepository<any>): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
         // //TODO:
         // return propertyvalue
         // throw new Error('NYI')
-        return this.parsable.parseEntity(propertyvalue, client)
+        return this.parsable.parseEntity(propertyvalue, repository)
     }
 }
 
