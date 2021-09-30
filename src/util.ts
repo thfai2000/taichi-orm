@@ -90,44 +90,44 @@ export const quote = (client: string, name: string) => {
 }
 
 
-export const META_FIELD_DELIMITER = '___'
-const map1 = new Map<PropertyTypeDefinition, string>()
-const map2 = new Map<string, PropertyTypeDefinition>()
+// export const META_FIELD_DELIMITER = '___'
+// const map1 = new Map<PropertyTypeDefinition, string>()
+// const map2 = new Map<string, PropertyTypeDefinition>()
 
-export const registerGlobalPropertyTypeDefinition = function(d: PropertyTypeDefinition): string{
-    let r = map1.get(d)
-    if(!r){
-        let key = makeid(3)
-        map1.set(d, key)
-        map2.set(key, d)
-        r = key
-    }
-    return r
-}
+// export const registerGlobalPropertyTypeDefinition = function(d: PropertyTypeDefinition): string{
+//     let r = map1.get(d)
+//     if(!r){
+//         let key = makeid(3)
+//         map1.set(d, key)
+//         map2.set(key, d)
+//         r = key
+//     }
+//     return r
+// }
 
-export const findGlobalPropertyTypeDefinition = function(propAlias: string): PropertyTypeDefinition {
-    let r = map2.get(propAlias)
-    if(!r){
-        throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
-    }
-    return r
-}
+// export const findGlobalPropertyTypeDefinition = function(propAlias: string): PropertyTypeDefinition {
+//     let r = map2.get(propAlias)
+//     if(!r){
+//         throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
+//     }
+//     return r
+// }
 
-export const metaFieldAlias = function(name: string, p: PropertyTypeDefinition): string{
-    let propAlias = registerGlobalPropertyTypeDefinition(p)
-    return `${name}${META_FIELD_DELIMITER}${propAlias}`
-}
+// export const metaFieldAlias = function(name: string, p: PropertyTypeDefinition): string{
+//     let propAlias = registerGlobalPropertyTypeDefinition(p)
+//     return `${name}${META_FIELD_DELIMITER}${propAlias}`
+// }
 
-export const breakdownMetaFieldAlias = function(metaAlias: string){
-    metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
-    if(metaAlias.includes(META_FIELD_DELIMITER)){
-        let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
-        let propType = findGlobalPropertyTypeDefinition(propAlias)
-        return {propName, propType}
-    } else {
-        return {propName: metaAlias, propType: null }
-    }
-}
+// export const breakdownMetaFieldAlias = function(metaAlias: string){
+//     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')
+//     if(metaAlias.includes(META_FIELD_DELIMITER)){
+//         let [propName, propAlias] = metaAlias.split(META_FIELD_DELIMITER)
+//         let propType = findGlobalPropertyTypeDefinition(propAlias)
+//         return {propName, propType}
+//     } else {
+//         return {propName: metaAlias, propType: null }
+//     }
+// }
 
 // const breakdownMetaTableAlias = function(metaAlias: string) {
 //     metaAlias = metaAlias.replace(/[\`\'\"]/g, '')

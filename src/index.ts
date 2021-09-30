@@ -7,7 +7,7 @@ import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableO
 // export const Builtin = { ComputeFn }
 import { v4 as uuidv4 } from 'uuid'
 // import {And, Or, Equal, Contain,  IsNull, ValueOperator, ConditionOperator} from './Operator'
-import { ExtractComputeProps, ExtractProps, makeid, META_FIELD_DELIMITER, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { ExtractComputeProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 
 // import { SingleSourceArg, SingleSourceFilter } from './Relation'
 // import { SingleSourceFilter, SingleSourceQueryOptions, SingleSourceQueryFunction } from './Relation'
@@ -161,8 +161,8 @@ export class Property<D extends PropertyTypeDefinition> {
     }
     register(
         name: string){
-            if( /[\.`' ]/.test(name) || name.includes(META_FIELD_DELIMITER) || name.startsWith('_') || name.endsWith('_') ){
-                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "${META_FIELD_DELIMITER}", "'" or startsWith/endsWith '_'.`)
+            if( /[\.`' ]/.test(name) || name.startsWith('_') || name.endsWith('_') ){
+                throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "'" or startsWith/endsWith '_'.`)
             }
             // this.schema = schema
             // this.repository = repository
