@@ -12,7 +12,7 @@ export class ProductSchema extends TableSchema {
     name = this.field(StringType)
     shopId = this.field(NumberType)
     get shop(){
-        return Product.belongsTo(Shop, schema => schema.shopId)
+        return this.belongsTo(Shop.schema, schema => schema.shopId)
     }
     myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
         return {
@@ -24,6 +24,6 @@ export class ProductSchema extends TableSchema {
 }
 
 export default class Product extends Entity{
-    static initSchema = new ProductSchema()
+    static schema = new ProductSchema()
     myName: number  = 5
 }

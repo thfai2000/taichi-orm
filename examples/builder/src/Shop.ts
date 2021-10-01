@@ -8,10 +8,10 @@ export class ShopSchema extends TableSchema {
     name = this.field(StringType)
     hour= this.field(NumberType)
     get products(){
-        return Shop.hasMany(Product, schema => schema.shopId)
+        return this.hasMany(Product.schema, schema => schema.shopId)
     }
 }
 
 export default class Shop extends Entity {
-    static initSchema = new ShopSchema()
+    static schema = new ShopSchema()
 }

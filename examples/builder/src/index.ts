@@ -62,7 +62,7 @@ import Product from './Product'
 
     let dd = new Dataset()
             .from(s)
-            .innerJoin(p, ({product, shop}) => product.id.equals(shop.id))
+            .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id))
             // .innerJoin(p, ({And}) => And({"product.id": 5}) )
             // .innerJoin(p, ({product}) => product.id.equals(6) )
             // .innerJoin(
@@ -83,7 +83,7 @@ import Product from './Product'
             .filter(
                 ({shop, product, And}) => And(
                     shop.id.equals(1),
-                    product.name.equals('hellox')
+                    product.name.equals('hello')
                 )
             )
             .props(
@@ -96,7 +96,9 @@ import Product from './Product'
                 })
             )
     
-    let result = await orm.getRepository().query(dd)
+    let result = await orm.getRepository().query(dd, {
+        onSqlRun: console.log
+    })
     console.log('xxx', result)
 
 
@@ -125,7 +127,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaaa', allShopsX[0].products.length)
+    console.log('aaaa', allShopsX[0].products)
     console.timeEnd('simple')
 })()
 

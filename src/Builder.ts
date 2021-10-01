@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ParsableFieldPropertyTypeDefinition, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull } from "./PropertyType"
-import { addBlanketIfNeeds, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ObjectType, ParsableFieldPropertyTypeDefinition, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
+import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -555,33 +555,6 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
         this.expressionOrDataset = expressionOrDataset
     }
 
-    // get createdFromDataset(){
-    //     if(this.expressionOrDataset instanceof Dataset){
-    //         return this.expressionOrDataset
-    //     }
-    //     return null
-    // }
-
-    // get expression(){
-    //     if(this.expressionOrDataset instanceof Dataset){
-    //         const dataset = this.expressionOrDataset
-    //         return (repository: EntityRepository<any>) => {
-    //             return dataset.toNativeBuilder(repository)
-    //         }
-    //     }else {
-    //         return this.expressionOrDataset
-    //     }
-    // }
-
-    // producePropertyTypeDe(value: any): FieldPropertyTypeDefinition<any> {
-    //     if(typeof value === 'string'){
-    //         const s = value
-    //         return new StringTypeNotNull()
-    //     }
-    //     throw new Error('Cannot resolve value')
-    // }
-
-
     equals(rightOperand: any): Scalar<BooleanTypeNotNull> {
         return new EqualOperator(this, rightOperand).toScalar()
     }
@@ -620,36 +593,43 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
         }
 
         return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
-
-            if(this.definition instanceof ComputePropertyTypeDefinition && this.definition.queryTransform){
-                const definition = this.definition
-                if(rawOrDataset instanceof Dataset){
-                    const dataset = rawOrDataset
-                    
-                    return thenResult(dataset.toNativeBuilder(repository), oldSql => {
-                        const sql = definition.queryTransform(oldSql, dataset.selectItemsAlias(), 'column1', client)
-                        const newRaw = makeRaw(repository, sql)
-                        return newRaw
-                    })
-
-                } else {
-    
-                    const sql = definition.queryTransform(rawOrDataset, ['column1'], 'column1', client)
-                    const newRaw = makeRaw(repository, sql)
-                    return newRaw
-                }
+            if(!(rawOrDataset instanceof Dataset)){
+                const next = makeRaw(repository, rawOrDataset.toString())
+                return this.definition.transformQuery(next, repository)
             } else {
-                if(rawOrDataset instanceof Dataset){
-                    const dataset = rawOrDataset
-                        
-                    return thenResult(dataset.toNativeBuilder(repository), sql => {
-                        return makeRaw(repository, sql.toString())
-                    })
-                
-                } else {
-                    return makeRaw(repository, rawOrDataset.toString())
-                }
+                return this.definition.transformQuery(rawOrDataset, repository)
             }
+
+            // if('transformQuery' in this.definition){
+            //     const transformQuery = this.definition.transformQuery
+            //     const definition = this.definition
+            //     if(rawOrDataset instanceof Dataset){
+            //         const dataset = rawOrDataset
+                    
+            //         return thenResult(dataset.toNativeBuilder(repository), oldSql => {
+            //             const sql = transformQuery(oldSql, dataset.selectItemsAlias(), 'column1', client)
+            //             const newRaw = makeRaw(repository, sql)
+            //             return newRaw
+            //         })
+
+            //     } else {
+    
+            //         const sql = transformQuery(rawOrDataset, ['column1'], 'column1', client)
+            //         const newRaw = makeRaw(repository, sql)
+            //         return newRaw
+            //     }
+            // } else {
+            //     if(rawOrDataset instanceof Dataset){
+            //         const dataset = rawOrDataset
+                        
+            //         return thenResult(dataset.toNativeBuilder(repository), sql => {
+            //             return makeRaw(repository, sql.toString())
+            //         })
+                
+            //     } else {
+            //         return makeRaw(repository, rawOrDataset.toString())
+            //     }
+            // }
 
         })
 
@@ -796,7 +776,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             value = expression
         }
         if( value === null){
-            return new Scalar(new PropertyTypeDefinition(), repository => makeRaw(repository, '?', [null]) )
+            return new Scalar(new UnknownPropertyTypeDefinition(), repository => makeRaw(repository, '?', [null]) )
         } else if (typeof value === 'boolean') {
             const boolValue = value
             return new Scalar(new BooleanType(), repository => makeRaw(repository, '?', [boolValue]) )
@@ -819,7 +799,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            return value.toScalar(new PropertyTypeDefinition() )
+            return value.toScalar( new ObjectType(new Schema()) )
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {

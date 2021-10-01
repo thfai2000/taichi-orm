@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayOfEntity, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectOfEntity, Parsable, ParsableFieldPropertyTypeDefinition, PropertyTypeDefinition } from './PropertyType'
+import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableFieldPropertyTypeDefinition, ParsableTrait, PropertyTypeDefinition } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc} from './Builder'
 // export const Builtin = { ComputeFn }
@@ -221,7 +221,7 @@ export class FieldProperty<D extends PropertyTypeDefinition> extends Property<D>
     }
 }
 
-export class Schema {
+export class Schema implements ParsableTrait<any>{
 
     properties: (ComputeProperty<PropertyTypeDefinition, Schema, string, any> 
         | FieldProperty<PropertyTypeDefinition> | Property<PropertyTypeDefinition>)[] = []
@@ -261,21 +261,71 @@ export class Schema {
             this.properties.push(actual)
         }
     }
+
+
+    parseDataBySchema<T>(entityInstance: T, repository: EntityRepository<any>, row: MutationEntityPropertyKeyValues): T {
+        const schema = this
+        for (const propName in row) {
+            const propType = schema.propertiesMap[propName].definition
+            
+            /**
+             * it can be boolean, string, number, Object, Array of Object (class)
+             * Depends on the props..
+             */
+            // let start = null
+            // if(metaInfo.propName === 'products'){
+            //     start = new Date()
+            // }
+            let propValue = row[propName]
+            if(propType instanceof ParsableFieldPropertyTypeDefinition ||
+                propType instanceof ComputePropertyTypeDefinition
+                ){
+                propValue = propType.parseRaw(row[propName], repository, propName) ?? row[propName]
+            }
+
+            // if(metaInfo.propName === 'products'){
+            //     //@ts-ignore
+            //     console.log('parseDataBySchema',  new Date() - start )
+            // }
+
+            Object.defineProperty(entityInstance, propName, {
+                configurable: true,
+                enumerable: true,
+                writable: true,
+                value: propValue
+            })
+        }
+
+        // entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
+            // let prop = this.compiledNamedPropertyMap.get(fieldName)
+        // }, entityInstance)
+        
+        return entityInstance
+    }
+
+
+    parseRaw(rawValue: any, repository: EntityRepository<any>, prop?: string): any {
+        return this.parseDataBySchema({}, repository, rawValue)
+    }
+    parseProperty(propertyvalue: any, repository: EntityRepository<any>, prop?: string) {
+        return propertyvalue
+    }
+
 }
 
-export abstract class TableSchema extends Schema {
+export abstract class TableSchema<E extends typeof Entity = typeof Entity> extends Schema {
 
     abstract id: FieldProperty<PropertyTypeDefinition>
     uuid?: FieldProperty<PropertyTypeDefinition> = undefined
     hooks: Hook[] = []
-    entityClass?: typeof Entity
+    entityClass?: E
     overridedTableName?: string
 
     constructor(){
         super()
     }
 
-    initAndRegister(entityClass: typeof Entity){
+    initAndRegister(entityClass: E){
         // console.log('register TableSchema', entityClass)
         this.entityClass = entityClass
         super.init()
@@ -314,7 +364,7 @@ export abstract class TableSchema extends Schema {
         return this
     }
 
-    createTableStmt(options?: TableOptions){
+    createTableStmt(repository: EntityRepository<any>, options?: TableOptions){
         // console.log('xxxx', this.entityClass)
         if(!this.entityClass || !this.entityClass.orm){
             throw new Error('Not register yet')
@@ -329,14 +379,13 @@ export abstract class TableSchema extends Schema {
                 props.map( prop => {
                     let f = prop.definition
                     if(f instanceof FieldPropertyTypeDefinition){
-                        return `${f.create(prop.name, prop.fieldName(orm), client)}`  
+                        return `${f.create(prop.name, prop.fieldName(orm), repository)}`  
                     }
                     return ``
                 }).flat().join(',\n')}\n)`;
         }
         return ''
     }
-
 
     field<D extends FieldPropertyTypeDefinition<any> >(definition: (new (...args: any[]) => D) | D  ) {
 
@@ -368,6 +417,135 @@ export abstract class TableSchema extends Schema {
         const source = new TableDatasource(this, name, options)
         return source
     }
+
+    override parseRaw(rawValue: any, repository: EntityRepository<any>, prop?: string): InstanceType<E> {
+        const schema = this
+        const entityClass = this.entityClass
+        if(!entityClass){
+            throw new Error('Unexpected. Schema not registered.')
+        }
+        const instance = new entityClass() as InstanceType<E>
+        return this.parseDataBySchema( instance, repository, rawValue)
+    }
+    
+    override parseProperty(propertyvalue: InstanceType<E>, repository: EntityRepository<any>, prop?: string) {
+        return propertyvalue
+    }
+
+    hasMany<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
+        this: ParentSchema,
+        relatedSchema: RootSchema, 
+        relatedBy: ((schema: RootSchema) => FieldProperty<PropertyTypeDefinition>), 
+        parentKey?: ((schema: ParentSchema) => FieldProperty<PropertyTypeDefinition>)
+        ) {
+        
+        let computeFn = (parent: Datasource<ParentSchema, any>, 
+            args?: SingleSourceArg<RootSchema> | 
+                SingleSourceArgFunction<RootSchema>
+            ): Scalarable<any> => {
+
+            let dataset = new Dataset()
+
+            let relatedSource = relatedSchema.datasource('root')
+
+            let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema).name  ): undefined ) ?? parent.getFieldProperty("id")
+            let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
+        
+            let newDataset = dataset.from(relatedSource)
+
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+
+            let resolvedArgs: SingleSourceArg<RootSchema> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
+
+            if(resolvedArgs?.props){
+                let computed = resolvedArgs.props
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.props(Object.assign(props, computedValues))
+            }else {
+                dataset.props(props)
+            }
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.filter){
+               filters.push( resolvedArgs.filter as any )
+            }
+            newDataset.filter( ({And}) => And(...filters) )
+
+            return newDataset
+        }
+
+        return this.compute( new ArrayType(relatedSchema), computeFn )
+    }
+
+    belongsTo<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
+        this: ParentSchema,
+        relatedSchema: RootSchema, 
+        parentKey: ((schema: ParentSchema) => FieldProperty<PropertyTypeDefinition>),
+        relatedBy?: ((schema: RootSchema) => FieldProperty<PropertyTypeDefinition>) 
+        ) {
+        
+        let computeFn = (parent: Datasource<ParentSchema, any>, 
+            args?: SingleSourceArg<RootSchema> | 
+                SingleSourceArgFunction<RootSchema>
+            ): Scalarable<any> => {
+            
+            let dataset = new Dataset()
+
+            let relatedSource = relatedSchema.datasource('root')
+
+            let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
+            let parentColumn = parent.getFieldProperty( parentKey(parent.schema).name  )
+        
+            let newDataset = dataset.from(relatedSource)
+
+            let resolvedArgs: SingleSourceArg<RootSchema> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+            if(resolvedArgs?.props){
+                let computed = resolvedArgs.props
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.props(Object.assign(props, computedValues))
+            }else {
+                dataset.props(props)
+            }
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.filter){
+               filters.push( resolvedArgs.filter as any )
+            }
+            newDataset.filter( ({And}) => And(...filters) )
+
+            return newDataset
+        }
+
+        return this.compute( new ObjectType(relatedSchema), computeFn )
+    }
+
 }
 
 export type MutationName = 'create'|'update'|'delete'
@@ -590,7 +768,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
 
     schemaSqls(){
         let m = this.models
-        let sqls = Object.keys(m).map(k => m[k].schema).map(s => s.createTableStmt({ tablePrefix: this.tablePrefix})).filter(t => t)
+        let sqls = Object.keys(m).map(k => m[k].registeredSchema).map(s => s.createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
         return sqls
     }
 
@@ -663,17 +841,16 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
             const schema = dataset.schema()
             
             for(let i=0; i <len;i++){
-                parsedRows[i] = parseDataBySchema<R>({} as R, repository ,rows[i], schema)
+                parsedRows[i] = schema.parseRaw(rows[i], repository)
             }
         
             console.timeEnd('parsing')
-            console.log('parsed', parsedRows)
+            // console.log('parsed', parsedRows)
             return parsedRows 
         }
         return rows
     }
 }
-
 
 export type ExecutionOptions = {
     // isSoftDeleteMode: boolean
@@ -823,7 +1000,7 @@ export class DatabaseMutationRunner<I, S extends TableSchema> extends DatabaseQu
 
 export class Database{
  
-    static createOne<T extends typeof Entity, D extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T>, D>{
+    static createOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues): DatabaseMutationRunner< InstanceType<T>, D>{
         return new DatabaseMutationRunner< InstanceType<T>, D>(
             async (executionOptions: ExecutionOptions) => {
                 let result = await Database._create<T>(entityClass, repository, executionOptions, [data])
@@ -835,7 +1012,7 @@ export class Database{
         )
     }
 
-    static createEach<T extends typeof Entity, D extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[], D>{
+    static createEach<T extends typeof Entity, D extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseMutationRunner< InstanceType<T>[], D>{
         return new DatabaseMutationRunner< InstanceType<T>[], D >(
             async (executionOptions: ExecutionOptions) => {
                 let result = await Database._create<T>(entityClass, repository, executionOptions, arrayOfData)
@@ -849,7 +1026,7 @@ export class Database{
     }
 
     private static async _create<T extends typeof Entity>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, values: MutationEntityPropertyKeyValues[]) {
-        const schema = entityClass.schema
+        const schema = entityClass.registeredSchema
         const actionName = 'create'
 
         if(!repository){
@@ -978,7 +1155,7 @@ export class Database{
             let propertyValue = data[prop.name]
             if(prop.definition instanceof ParsableFieldPropertyTypeDefinition ||
                 prop.definition instanceof ComputePropertyTypeDefinition){
-                propertyValue =  prop.definition.parseProperty(data[prop.name], prop.name, repository)
+                propertyValue =  prop.definition.parseProperty(data[prop.name], repository, prop.name)
             }
 
             propValues[prop.name] = propertyValue
@@ -1085,7 +1262,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<T extends typeof Entity, D extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>,  D >{
+    static findOne<T extends typeof Entity, D extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>,  D >{
         return new DatabaseQueryRunner< InstanceType<T>, D>(
         async (executionOptions: ExecutionOptions) => {
             let rows = await Database._find(entityClass, repository, executionOptions, applyFilter?? null)
@@ -1098,7 +1275,7 @@ export class Database{
      * @param applyFilter 
      * @returns the found record
      */
-    static find<T extends typeof Entity, D extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any>|null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>[],  D >{
+    static find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, repository: EntityRepository<any>|null, applyFilter?: SingleSourceArg<D>): DatabaseQueryRunner<  InstanceType<T>[],  D >{
         return new DatabaseQueryRunner< Array<InstanceType<T>>, D >(
             async (executionOptions: ExecutionOptions) => {
                 let rows = await Database._find(entityClass, repository, executionOptions, applyFilter?? null)
@@ -1106,13 +1283,13 @@ export class Database{
         })
     }
 
-    private static async _find<T extends typeof Entity, D extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, applyOptions: SingleSourceArg<D> | null) {   
+    private static async _find<T extends typeof Entity, D extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, applyOptions: SingleSourceArg<D> | null) {   
         
         if(!repository){
             throw new Error('Entity is not accessed through Repository')
         }
 
-        let source = (entityClass.schema as D).datasource('root')
+        let source = (entityClass.registeredSchema as D).datasource('root')
 
         // let options: SingleSourceQueryOptions<D> | null
         // if(applyFilter instanceof Function){
@@ -1134,7 +1311,7 @@ export class Database{
         // console.log('xxxxxxx', dataset.toScalar(new ArrayOfEntity(entityClass)))
 
         let wrappedDataset = new Dataset().props({
-            root: dataset.toScalar(new ArrayOfEntity(entityClass))
+            root: dataset.toScalar(new ArrayType(entityClass.schema))
         })
 
         let resultData = await repository.query(wrappedDataset, executionOptions)
@@ -1146,7 +1323,7 @@ export class Database{
         return rows
     }
 
-    static updateOne<T extends typeof Entity, S extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
+    static updateOne<T extends typeof Entity, S extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
         return new DatabaseQueryRunner< InstanceType<T>, S >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
                 let result = await Database._update(entityClass, repository, executionOptions, data, applyFilter??null, true, false,  actionOptions)
@@ -1155,7 +1332,7 @@ export class Database{
         )
     }
 
-    static update<T extends typeof Entity, S extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
+    static update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
         return new DatabaseMutationRunner< InstanceType<T>[], S >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<S> > ) => {
                 let result = await Database._update(entityClass, repository, executionOptions, data, applyFilter??null, false, false, actionOptions)
@@ -1164,7 +1341,7 @@ export class Database{
         )
     }
 
-    private static async _update<T extends typeof Entity, S extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, data: MutationEntityPropertyKeyValues,  
+    private static async _update<T extends typeof Entity, S extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, executionOptions: ExecutionOptions, data: MutationEntityPropertyKeyValues,  
         applyFilter: SingleSourceFilter<S> | null, 
         isOneOnly: boolean,
         isDelete: boolean,
@@ -1175,10 +1352,10 @@ export class Database{
             throw new Error('Entity is not accessed through Repository')
         }
 
-        const schema = entityClass.schema
+        const schema = entityClass.registeredSchema
         const actionName = isDelete?'delete':'update'
 
-        const rootSource = entityClass.schema.datasource('root')
+        const rootSource = entityClass.registeredSchema.datasource('root')
         let propValues = await Database._prepareNewData(repository, data, schema, actionName, executionOptions)
 
         // let deleteMode: 'soft' | 'real' | null = null
@@ -1303,7 +1480,7 @@ export class Database{
         return fns.filter(notEmpty)
     }
 
-    static deleteOne<T extends typeof Entity, S extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
+    static deleteOne<T extends typeof Entity, S extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>, S>{
         return new DatabaseQueryRunner< InstanceType<T>, S>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< S > > ) => {
                 let result = await Database._update(entityClass, repository, executionOptions, data, applyFilter??null, true, true, actionOptions)
@@ -1312,7 +1489,7 @@ export class Database{
         )
     }
 
-    static delete<T extends typeof Entity, S extends T["initSchema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
+    static delete<T extends typeof Entity, S extends T["schema"]>(entityClass: T, repository: EntityRepository<any> | null, data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<S>): DatabaseQueryRunner< InstanceType<T>[], S >{
         return new DatabaseQueryRunner< InstanceType<T>[], S>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< S > > ) => {
                 let result = await Database._update(entityClass, repository, executionOptions, data, applyFilter??null, false, true, actionOptions)
@@ -1321,16 +1498,7 @@ export class Database{
         )
     }
 
-    static parseEntity<T extends typeof Entity>(entityInstance: InstanceType<T>, repository: EntityRepository<any> | null): any {
-        return entityInstance
-    }
 
-    static parseRaw<T extends typeof Entity>(entityClass: T, repository: EntityRepository<any>, row: MutationEntityPropertyKeyValues): InstanceType<T>{
-        
-        const schema = entityClass.schema
-        const instance = new entityClass() as InstanceType<T>
-        return parseDataBySchema( instance, repository, row, schema)
-    }
 
     static extractRealField(repository: EntityRepository<any>, schema: TableSchema, fieldValues: MutationEntityPropertyKeyValues): any {
         return Object.keys(fieldValues).reduce( (acc, key) => {
@@ -1353,8 +1521,8 @@ export class Entity {
     static entityName?: string
 
     [key: string]: any
+    static registeredSchema: TableSchema
     static schema: TableSchema
-    static initSchema: TableSchema
     // static init: () => TableSchema
     // static get schema(): TableSchema {
     //     if( !this._schema){
@@ -1365,56 +1533,54 @@ export class Entity {
 
     constructor(){
     }
-   
 
     static register(orm: ORM<any>, entityName: string) {
         this.orm = orm
         this.entityName = entityName
-        if(!this.initSchema){
+        if(!this.schema){
             throw new Error(`There is no schema for Entity ${entityName}`)
         }
-        let s = this.initSchema
+        let s = this.schema
         s.initAndRegister(this)
-        this.schema = s 
+        this.registeredSchema = s 
     }
 
     static registerPostAction() {
-        this.schema.registerPostAction()
+        this.registeredSchema.registerPostAction()
     }
 
-    static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name, options?: TableOptions): Datasource<I["initSchema"], Name> {
-        return this.schema.datasource(name, options)
+    static datasource<I extends typeof Entity, Name extends string>(this: I & (new (...args: any[]) => InstanceType<I>), name: Name, options?: TableOptions): Datasource<I["schema"], Name> {
+        return this.registeredSchema.datasource(name, options)
     }
 
-    static parseEntity(entityInstance: Entity, repository: EntityRepository<any>) {
-        let r = Database.parseEntity(entityInstance, repository)
-        return r
+    parseRaw(rawValue: any, repository: EntityRepository<any>, prop?: string): Entity {
+        throw new Error('Method not implemented.')
     }
-    static parseRaw(rawValue: any, repository: EntityRepository<any>): Entity {
-        return Database.parseRaw(this, repository, rawValue)
+    parseProperty(propertyvalue: Entity, repository: EntityRepository<any>, prop?: string) {
+        throw new Error('Method not implemented.')
     }
 
-    static createEach<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner< InstanceType<I>[], I["initSchema"]>{
+    static createEach<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), arrayOfData: MutationEntityPropertyKeyValues[]): DatabaseQueryRunner< InstanceType<I>[], I["schema"]>{
         return Database.createEach(this, null, arrayOfData)
     }
 
-    static createOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues): DatabaseQueryRunner< InstanceType<I>, I["initSchema"] >{
+    static createOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues): DatabaseQueryRunner< InstanceType<I>, I["schema"] >{
         return Database.createOne(this, null, data)
     }
 
-    static updateOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["initSchema"]>): DatabaseQueryRunner< InstanceType<I>, I["initSchema"] >{
+    static updateOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["schema"]>): DatabaseQueryRunner< InstanceType<I>, I["schema"] >{
         return Database.updateOne(this, null, data, applyFilter)
     }
 
-    static update<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["initSchema"]>): DatabaseQueryRunner< InstanceType<I>[], I["initSchema"] >{
+    static update<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["schema"]>): DatabaseQueryRunner< InstanceType<I>[], I["schema"] >{
         return Database.update(this, null, data, applyFilter)
     }
 
-    static deleteOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["initSchema"]>): DatabaseQueryRunner< InstanceType<I>, I["initSchema"] >{
+    static deleteOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["schema"]>): DatabaseQueryRunner< InstanceType<I>, I["schema"] >{
         return Database.deleteOne(this, null, data, applyFilter)
     }
 
-    static delete<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["initSchema"]>): DatabaseQueryRunner< InstanceType<I>[], I["initSchema"] >{
+    static delete<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), data: MutationEntityPropertyKeyValues, applyFilter?: SingleSourceFilter<I["schema"]>): DatabaseQueryRunner< InstanceType<I>[], I["schema"] >{
         return Database.delete(this, null, data, applyFilter)
     }
 
@@ -1423,7 +1589,7 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static findOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["initSchema"]>): DatabaseQueryRunner<InstanceType<I>, I["initSchema"]>{
+    static findOne<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["schema"]>): DatabaseQueryRunner<InstanceType<I>, I["schema"]>{
         return Database.findOne(this, null, applyFilter)
     }
 
@@ -1432,165 +1598,13 @@ export class Entity {
      * @param applyFilter 
      * @returns the found record
      */
-    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["initSchema"]>): DatabaseQueryRunner<InstanceType<I>[], I["initSchema"]>{
+    static find<I extends typeof Entity>(this: I & (new (...args: any[]) => InstanceType<I>), applyFilter?: SingleSourceArg<I["schema"]>): DatabaseQueryRunner<InstanceType<I>[], I["schema"]>{
         return Database.find(this, null, applyFilter)
     }
-
-    static hasMany<ParentClass extends typeof Entity, TypeClass extends typeof Entity>(
-        this: ParentClass & (new (...args: any[]) => InstanceType<ParentClass>),
-        relatedEntity: TypeClass, 
-        relatedBy: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>), 
-        parentKey?: ((schema: ParentClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>)
-        ) {
-        
-        let computeFn = (parent: Datasource<ParentClass["initSchema"], any>, 
-            args?: SingleSourceArg<TypeClass["initSchema"]> | 
-                SingleSourceArgFunction<TypeClass["initSchema"]>
-            ): Scalarable<any> => {
-
-            let dataset = new Dataset()
-
-            let relatedSource = relatedEntity.schema.datasource('root')
-
-            let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema).name  ): undefined ) ?? parent.getFieldProperty("id")
-            let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
-        
-            let newDataset = dataset.from(relatedSource)
-
-            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
-
-            let resolvedArgs: SingleSourceArg<TypeClass["initSchema"]> | undefined
-            
-            if(args){
-                if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap())
-                } else {
-                    resolvedArgs = args
-                }
-            }
-
-
-            if(resolvedArgs?.props){
-                let computed = resolvedArgs.props
-                let computedValues = Object.keys(computed).map(key => {
-                    //@ts-ignore
-                    let arg = computed[key]
-                    return relatedSource.getComputeProperty(key)(arg).value()
-                }).reduce( (acc,v) => Object.assign(acc, v), {})
-
-                dataset.props(Object.assign(props, computedValues))
-            }else {
-                dataset.props(props)
-            }
-            let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.filter){
-               filters.push( resolvedArgs.filter as any )
-            }
-            newDataset.filter( ({And}) => And(...filters) )
-
-            return newDataset
-        }
-
-        return this.schema.compute( new ArrayOfEntity(relatedEntity), computeFn )
-    }
-
-    static belongsTo<ParentClass extends typeof Entity, TypeClass extends typeof Entity>(
-        this: ParentClass & (new (...args: any[]) => InstanceType<ParentClass>),
-        relatedEntity: TypeClass, 
-        parentKey: ((schema: ParentClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>),
-        relatedBy?: ((schema: TypeClass["initSchema"]) => FieldProperty<PropertyTypeDefinition>) 
-        ) {
-        
-        let computeFn = (parent: Datasource<TypeClass["initSchema"], 'root'>, 
-            args?: SingleSourceArg<TypeClass["initSchema"]> | SingleSourceArgFunction<TypeClass["initSchema"]>
-            ): Scalarable<any> => {
-            
-            let dataset = new Dataset()
-
-            let relatedSource = relatedEntity.schema.datasource('root')
-
-            let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
-            let parentColumn = parent.getFieldProperty( parentKey(parent.schema).name  )
-        
-            let newDataset = dataset.from(relatedSource)
-
-            let resolvedArgs: SingleSourceArg<TypeClass["initSchema"]> | undefined
-            
-            if(args){
-                if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap())
-                } else {
-                    resolvedArgs = args
-                }
-            }
-
-            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
-            if(resolvedArgs?.props){
-                let computed = resolvedArgs.props
-                let computedValues = Object.keys(computed).map(key => {
-                    //@ts-ignore
-                    let arg = computed[key]
-                    return relatedSource.getComputeProperty(key)(arg).value()
-                }).reduce( (acc,v) => Object.assign(acc, v), {})
-
-                dataset.props(Object.assign(props, computedValues))
-            }else {
-                dataset.props(props)
-            }
-            let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.filter){
-               filters.push( resolvedArgs.filter as any )
-            }
-            newDataset.filter( ({And}) => And(...filters) )
-
-            return newDataset
-        }
-
-        return this.schema.compute( new ObjectOfEntity(relatedEntity), computeFn )
-    }
-
 }
 
 
-function parseDataBySchema<T>(entityInstance: T, repository: EntityRepository<any>, row: MutationEntityPropertyKeyValues, schema: Schema): T {
 
-    for (const propName in row) {
-        const propType = schema.propertiesMap[propName].definition
-        
-        /**
-         * it can be boolean, string, number, Object, Array of Object (class)
-         * Depends on the props..
-         */
-        // let start = null
-        // if(metaInfo.propName === 'products'){
-        //     start = new Date()
-        // }
-        let propValue = row[propName]
-        if(propType instanceof ParsableFieldPropertyTypeDefinition ||
-            propType instanceof ComputePropertyTypeDefinition
-            ){
-            propValue = propType.parseRaw(row[propName], propName, repository) ?? row[propName]
-        }
-
-        // if(metaInfo.propName === 'products'){
-        //     //@ts-ignore
-        //     console.log('parseDataBySchema',  new Date() - start )
-        // }
-
-        Object.defineProperty(entityInstance, propName, {
-            configurable: true,
-            enumerable: true,
-            writable: true,
-            value: propValue
-        })
-    }
-
-    // entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
-        // let prop = this.compiledNamedPropertyMap.get(fieldName)
-    // }, entityInstance)
-    
-    return entityInstance
-}
 
 // it is a special Entity or table. Just like the Dual in SQL Server
 // export class Dual extends Entity {

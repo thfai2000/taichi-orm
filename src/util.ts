@@ -1,7 +1,4 @@
-import { Knex } from "knex"
-import { ComputeProperty, FieldProperty, Property, TableSchema } from "."
-import { Scalar, Scalarable } from "./Builder";
-import { PropertyTypeDefinition } from "./PropertyType";
+import { ComputeProperty, FieldProperty} from "."
 
 
 export type SimpleObject = { [key:string]: any}
@@ -67,17 +64,17 @@ export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | P
     return fn(value)
 }
 
-export function addBlanketIfNeeds(text: string) {
-    text = text.trim()
-    let need = true
-    if(/^[a-zA-Z0-9\_\$\.`'"]+$/.test(text)){
-        need = false
-    }
-    if (need) {
-        text = `(${text})`
-    }
-    return text
-}
+// export function addBlanketIfNeeds(text: string) {
+//     text = text.trim()
+//     let need = true
+//     if(/^[a-zA-Z0-9\_\$\.`'"]+$/.test(text)){
+//         need = false
+//     }
+//     if (need) {
+//         text = `(${text})`
+//     }
+//     return text
+// }
 
 export const quote = (client: string, name: string) => {
     let c = client

@@ -1,6 +1,6 @@
 import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Scalarable, Dataset} from './Builder'
 import {Knex} from 'knex'
-import { BooleanType, BooleanTypeNotNull } from './PropertyType'
+import { BooleanTypeNotNull } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
 
 
