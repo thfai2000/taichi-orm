@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ObjectType, ParsableFieldPropertyTypeDefinition, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
-import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
+import { ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -27,13 +27,24 @@ import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject,
 //     }
 // }
 
-export type FieldPropertyValueMap<E> =  Partial<{
+export type FieldPropertyValueMap<E> = {
     [key in keyof E]:
         E[key] extends Prefixed<any, any, infer C>? (
-                C extends FieldProperty<infer D>? (D extends PropertyTypeDefinition<infer Primitive>? Primitive: never): never
-             ): E[key] extends FieldProperty<infer D>? (D extends PropertyTypeDefinition<infer Primitive>? Primitive: never): never
+                C extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive: never): never
+             ): E[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive: never): never
              
-}>
+}
+
+// type A<E> = Pick<E, ({
+//     [key in keyof E]:
+//         E[key] extends Prefixed<any, any, infer C>? (
+//                 C extends FieldProperty<any>? key: never
+//              ): E[key] extends FieldProperty<any>? key: never            
+// })[keyof E]>
+
+// export type FieldPropertyValueMap<E> = {
+//     [key in keyof A<E>]: key extends FieldProperty<infer D>? (D extends PropertyTypeDefinition<infer Primitive>? Primitive: never): never
+// }
 
 export type SQLKeywords<Props, PropMap> = {
     And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
@@ -67,7 +78,7 @@ type SelectItem = {
     actualAlias: string
 }
 
-export interface Scalarable<T extends PropertyTypeDefinition> {
+export interface Scalarable<T extends PropertyTypeDefinition<any> > {
     toScalar(type?: T): Scalar<T>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
@@ -321,7 +332,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return this
     }
 
-    toScalar<T extends PropertyTypeDefinition>(t: T): Scalar<T>{
+    toScalar<T extends PropertyTypeDefinition<any> >(t: T): Scalar<T>{
         return new Scalar(t, this)
     }
     
@@ -374,7 +385,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
 
     // }
         
-    props<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractFieldProps<SourceProps>, SourcePropMap> >>(named: S | 
+    props<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
             UnionToIntersection<
@@ -383,8 +394,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             {
             [key in keyof S] :
                 S[key] extends Scalar<infer D> ?
-                    D extends PropertyTypeDefinition?
-                    FieldProperty<D>
+                    D extends PropertyTypeDefinition<any>?
+                    Property<D>
                     : never
                 : never 
             }
@@ -458,7 +469,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return newDataset
     }
 
-    filter<X extends ExtractFieldProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+    filter<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
         //@ts-ignore
         this.__whereRawItem = expression
         return this
@@ -522,18 +533,14 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             const d = this.__selectItems[key].definition
             let referName = this.selectItemAlias(key, this.__selectItems[key])
 
-            if(d instanceof PropertyTypeDefinition){
-                //@ts-ignore
-                acc[key] = new FieldProperty(d).setFieldName(referName)
-            } else {
-                //@ts-ignore
-                acc[key] = new FieldProperty( new PropertyTypeDefinition() ).setFieldName(referName)
-            }
-
+            acc[key] = new Property(d)
+            acc[key].register(referName)
+            
             return acc
-        }, {} as SelectProps & {[key:string]: PropertyTypeDefinition<any>}) 
+        }, {} as {[key:string]: Property<any>}) 
 
-        let schema =  Object.assign(new Schema(), propertyMap)
+        //@ts-ignore
+        let schema =  Object.assign(new Schema(), propertyMap as SelectProps)
         schema.init()
         return schema
     }
@@ -546,11 +553,11 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
     // __type: 'Scalar'
     // __definition: PropertyTypeDefinition | null
 
-    readonly definition: PropertyTypeDefinition
+    readonly definition: PropertyTypeDefinition<any>
     protected expressionOrDataset: RawExpression | Dataset<any, any, any>
     // protected dataset:  | null = null
 
-    constructor(definition: PropertyTypeDefinition , expressionOrDataset: RawExpression | Dataset<any, any, any>){
+    constructor(definition: PropertyTypeDefinition<any> , expressionOrDataset: RawExpression | Dataset<any, any, any>){
         this.definition = definition
         this.expressionOrDataset = expressionOrDataset
     }
@@ -644,7 +651,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name, definition: PropertyTypeDefinition, expressionOrDataset: RawExpression| Dataset<any, any, any>){
+    constructor(alias: Name, definition: PropertyTypeDefinition<any>, expressionOrDataset: RawExpression| Dataset<any, any, any>){
         super(definition, expressionOrDataset)
         this.alias = alias
         // this.scalarable = scalarable

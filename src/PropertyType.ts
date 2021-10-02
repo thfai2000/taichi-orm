@@ -47,13 +47,13 @@ export interface ParsableTrait<I> {
     parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop?: string): any
 }
 
-// export type Parsable<I> = {
-//     parseRaw(rawValue: any, repository: EntityRepository<any>): I
-//     parseEntity(entityInstance: any, repository: EntityRepository<any>): any
-// }
+export type Parsable<I> = {
+    parseRaw(rawValue: any, repository: EntityRepository<any>, prop?: string): I 
+    parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop?: string): any
+}
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
-export abstract class PropertyTypeDefinition<I = any> {
+export abstract class PropertyTypeDefinition<I> implements ParsableTrait<I> {
     protected options = {}
     get nullable() {
         return true
@@ -63,30 +63,39 @@ export abstract class PropertyTypeDefinition<I = any> {
         this.options = this.options ??options
     }
 
-    abstract transformQuery(rawOrDataset: Knex.Raw<any>|Dataset<any, any, any>, repository: EntityRepository<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>>
+    parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I {
+        return rawValue
+    }
+    parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any {
+        return propertyvalue
+    }
+
+    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
+        if(rawOrDataset instanceof Dataset){
+            if(rawOrDataset.selectItemsAlias().length === 1){
+                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
+            }
+            throw new Error('Only Dataset with single column can be transformed.')
+        }
+        return rawOrDataset
+    }
 }
 
 export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
     abstract create(propName: string, fieldName: string, repository: EntityRepository<any>): string[]
 }
 
-export abstract class ParsableFieldPropertyTypeDefinition<I> extends FieldPropertyTypeDefinition<I> implements ParsableTrait<I>{
-    abstract parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I
-    abstract parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any
-}
+// export abstract class ParsableFieldPropertyTypeDefinition<I> extends FieldPropertyTypeDefinition<I> implements ParsableTrait<I>{
+//     abstract parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I
+//     abstract parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any
+// }
 
-export abstract class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> implements ParsableTrait<I>{
-    abstract parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I
-    abstract parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any
+export abstract class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+    // abstract parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I
+    // abstract parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any
 }
 
 export class UnknownPropertyTypeDefinition extends PropertyTypeDefinition<any> {
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>, singleColumnName?: string): Knex.Raw<any> {
-        if(rawOrDataset instanceof Dataset){
-            throw new Error('Dataset is not allowed to be PrimaryKeyType')
-        }
-        return rawOrDataset
-    }
 }
 
 export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
@@ -135,15 +144,7 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
                 ].join(' ')
             ]
         }
-    }
-
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> {
-        if(rawOrDataset instanceof Dataset){
-            throw new Error('Dataset is not allowed to be PrimaryKeyType')
-        }
-        return rawOrDataset
-    }
-    
+    }    
 }
 
 type NumberTypeOptions = {default?: number }
@@ -185,16 +186,6 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
             ].join(' ')
         ]
     }
-
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 export class NumberTypeNotNull extends FieldPropertyTypeDefinition<number> {
@@ -235,17 +226,6 @@ export class NumberTypeNotNull extends FieldPropertyTypeDefinition<number> {
             ].join(' ')
         ]
     }
-
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
-
 }
 
 type DecimalTypeOptions = { default?: number, precision?: number, scale?: number }
@@ -285,16 +265,6 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
                 (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
         ]
-    }
-
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
     }
 }
 
@@ -342,16 +312,6 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
             ].join(' ')
         ]
     }
-
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
@@ -398,16 +358,6 @@ export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
             ].join(' ')
         ]
     }
-
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 type StringTypeOptions = {default?: string, length?: number }
@@ -449,15 +399,6 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
         ]
     }
 
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
@@ -499,19 +440,10 @@ export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
             ].join(' ')
         ]
     }
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 type DateTypeOptions = { default?: Date }
-export class DateType extends ParsableFieldPropertyTypeDefinition<Date | null> {
+export class DateType extends FieldPropertyTypeDefinition<Date | null> {
     protected options: DateTypeOptions
 
     constructor(options: Partial<DateTypeOptions> = {}){
@@ -523,12 +455,12 @@ export class DateType extends ParsableFieldPropertyTypeDefinition<Date | null> {
         return true
     }
 
-    parseRaw(rawValue: any): Date | null {
+    override parseRaw(rawValue: any): Date | null {
         //TODO: warning if nullable is false but value is null
         return rawValue === null? null: new Date(rawValue)
     }
 
-    parseProperty(propertyvalue: Date | null, repository: EntityRepository<any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date | null, repository: EntityRepository<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -546,20 +478,10 @@ export class DateType extends ParsableFieldPropertyTypeDefinition<Date | null> {
             ].join(' ')
         ]
     }
-
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
-    }
 }
 
 type DateTimeTypeOptions = {default?: Date, precision?: number }
-export class DateTimeType extends ParsableFieldPropertyTypeDefinition<Date | null> {
+export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     protected options: DateTimeTypeOptions
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
@@ -571,12 +493,12 @@ export class DateTimeType extends ParsableFieldPropertyTypeDefinition<Date | nul
         return true
     }
 
-    parseRaw(rawValue: any): Date | null{
+    override parseRaw(rawValue: any): Date | null{
         //TODO: warning if nullable is false but value is null
         return rawValue === null? null: new Date(rawValue)
     }
 
-    parseProperty(propertyvalue: Date | null, repository: EntityRepository<any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date | null, repository: EntityRepository<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
@@ -594,16 +516,6 @@ export class DateTimeType extends ParsableFieldPropertyTypeDefinition<Date | nul
                 (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, repository, propName)}`:'') 
             ].join(' ')
         ]
-    }
-
-   transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>): Knex.Raw<any> | Promise<Knex.Raw<any>> {
-        if(rawOrDataset instanceof Dataset){
-            if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(repository), query => makeRaw(repository, `(${query})`) )
-            }
-            throw new Error('Only Dataset with single column can be transformed.')
-        }
-        return rawOrDataset
     }
 }
 
@@ -636,7 +548,7 @@ export class ObjectType<E extends ParsableTrait<any> > extends ComputePropertyTy
         })
     }
  
-    parseRaw(rawValue: any, repository: EntityRepository<any>, propName?: string): E extends ParsableTrait<infer D>? D: any {
+    override parseRaw(rawValue: any, repository: EntityRepository<any>, propName?: string): E extends ParsableTrait<infer D>? D: any {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -652,7 +564,7 @@ export class ObjectType<E extends ParsableTrait<any> > extends ComputePropertyTy
         return this.parsable.parseRaw(parsed, repository)
     }
     
-    parseProperty(propertyvalue: E extends ParsableTrait<infer D>? D: any, repository: EntityRepository<any>, propName?: string): any {
+    override parseProperty(propertyvalue: E extends ParsableTrait<infer D>? D: any, repository: EntityRepository<any>, propName?: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -736,12 +648,13 @@ export class ObjectType<E extends ParsableTrait<any> > extends ComputePropertyTy
 //     }
 // }
 
-export class ArrayType<E extends ParsableTrait<any> > extends ComputePropertyTypeDefinition<E | null>{
+export class ArrayType<E extends ParsableTrait<any>> extends ComputePropertyTypeDefinition< Array<(E extends ParsableTrait<infer D>?D:any)> | null>{
     
-    constructor(private parsable: E
-    // options: Partial<ObjectOfTypeOptions> = {}
-    ) {
-        super(parsable)
+    private parsable: E
+
+    constructor(parsable: E) {
+        super()
+        this.parsable = parsable
         // this.options = { ...options}
     }
 
@@ -762,7 +675,7 @@ export class ArrayType<E extends ParsableTrait<any> > extends ComputePropertyTyp
         })
     }
 
-    parseRaw(rawValue: any, repository: EntityRepository<any>, propName: string): E extends ParsableTrait<infer D>? D: any {
+    parseRaw(rawValue: any, repository: EntityRepository<any>, propName: string): E extends ParsableTrait<infer D>? D[]: any {
         // let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -794,7 +707,7 @@ export class ArrayType<E extends ParsableTrait<any> > extends ComputePropertyTyp
         throw new Error('It is not supported.')
     }
     
-    parseProperty(propertyvalue: E extends ParsableTrait<infer D>? D: any, repository: EntityRepository<any>, propName: string): any {
+    parseProperty(propertyvalue: (E extends ParsableTrait<infer D>? D: any)[], repository: EntityRepository<any>, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }

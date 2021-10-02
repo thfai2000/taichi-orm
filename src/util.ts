@@ -1,4 +1,4 @@
-import { ComputeProperty, FieldProperty} from "."
+import { ComputeProperty, FieldProperty, Property} from "."
 
 
 export type SimpleObject = { [key:string]: any}
@@ -15,8 +15,10 @@ export type UnionToIntersection<T> =
 
 export type ExtractProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any>? key:
-                    E[key] extends FieldProperty<any>? key:
+    [key in keyof E]: 
+                    // E[key] extends ComputeProperty<any, any, any, any>? key:
+                    // E[key] extends FieldProperty<any>? key:
+                    E[key] extends Property<any>? key:
                     never
 })[keyof E]> 
 
