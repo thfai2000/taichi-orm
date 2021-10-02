@@ -233,7 +233,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     __whereRawItem: null |  Expression<any, any> = null
     __selectItems: { [key: string]: Scalar<any> } = {}
     __fromItem: null | Datasource<Schema, string> = null
-    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> }> = []
+    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
@@ -321,7 +321,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return this
     }
 
-    toScalar<T extends PropertyTypeDefinition>(t: PropertyTypeDefinition): Scalar<T>{
+    toScalar<T extends PropertyTypeDefinition>(t: T): Scalar<T>{
         return new Scalar(t, this)
     }
     
