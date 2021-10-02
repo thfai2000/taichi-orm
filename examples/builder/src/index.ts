@@ -39,8 +39,8 @@ import Product from './Product'
 
 
     let shop1 = await repository.models.Shop.createOne({
-        name: 'hello',
-        hour: 10
+        name: '333',
+        hour: 5
     })
 
     console.log('finished-1', shop1)
@@ -127,7 +127,7 @@ import Product from './Product'
             ).filter( ({product}) => root.id.equals(product.shopId) )
         )
     })
-    console.log('aaaa', allShopsX[0].products)
+    console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')
 })()
 
