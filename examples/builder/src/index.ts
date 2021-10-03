@@ -56,8 +56,6 @@ import Product from './Product'
     console.log('finished')
 
     let myShop = myShopDS.datasource("myShop")
-    
-
 
 
     let dd = new Dataset()
@@ -94,7 +92,7 @@ import Product from './Product'
                     // xxx: xxx!,
                     ...product.ddd.value()
                 })
-            )
+            ).offset(0).limit(4000)
     
     let result = await orm.getRepository().query(dd, {
         onSqlRun: console.log
@@ -125,7 +123,9 @@ import Product from './Product'
             new Dataset().from(
                 repository.models.Product.datasource('product')
             ).where( ({product}) => root.id.equals(product.shopId) )
-        )
+        ),
+        offset: 0,
+        limit: 5000
     })
     console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')

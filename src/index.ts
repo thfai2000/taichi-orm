@@ -45,13 +45,17 @@ export type SingleSourceArg<S extends TableSchema> = {
     orderBy?: QueryOrderBy
 }
 
-
 export type SingleSourceFilter<S extends TableSchema> = Expression<
         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
 export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
+
+
+
+
+
 
 
 // export type SingleSourceQueryFunction<S extends TableSchema, SName extends string> = (ctx: ExecutionContext, root: Datasource<S, SName>) => {

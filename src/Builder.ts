@@ -240,16 +240,19 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
 
 export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implements Scalarable<any> {
     // parsableType: ParsableTrait<any> | null = null
-    __type: 'Dataset' = 'Dataset'
-    __whereRawItem: null |  Expression<any, any> = null
-    __selectItems: { [key: string]: Scalar<any> } = {}
-    __fromItem: null | Datasource<Schema, string> = null
-    __joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
+    // __type: 'Dataset' = 'Dataset'
+    #whereRawItem: null |  Expression<any, any> = null
+    #selectItems: { [key: string]: Scalar<any> } = {}
+    #fromItem: null | Datasource<Schema, string> = null
+    #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
+    #limit: null | number = null
+    #offset: null | number = null
+
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
     constructor(fromSource: Datasource<Schema, string> | null = null){
-        this.__fromItem = fromSource
+        this.#fromItem = fromSource
     }
 
     toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap> {
@@ -257,9 +260,9 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     }
     
     getSelectorMap(): SourcePropMap {
-        let sources = this.__joinItems.map(item => item.source)
-        if(this.__fromItem){
-            sources.push(this.__fromItem)
+        let sources = this.#joinItems.map(item => item.source)
+        if(this.#fromItem){
+            sources.push(this.#fromItem)
         }
 
         const sourcePropMap = sources.reduce( (acc, source) => {
@@ -272,7 +275,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     }
 
     selectItemsAlias(): string[]{
-        return Object.keys(this.__selectItems).map(key => this.selectItemAlias(key, this.__selectItems[key]) )
+        return Object.keys(this.#selectItems).map(key => this.selectItemAlias(key, this.#selectItems[key]) )
     }
 
     async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
@@ -280,19 +283,19 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
-        if(this.__fromItem){
-            const from = await this.__fromItem.toRaw(repository)
+        if(this.#fromItem){
+            const from = await this.#fromItem.toRaw(repository)
             nativeQB.from(from)
         }
 
 
         let selectorMap = this.getSelectorMap()
 
-        let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
         
         Object.assign(selectorMap, this.sqlKeywords(resolver) )
         
-        await this.__joinItems.reduce( async(acc, item) => {
+        await this.#joinItems.reduce( async(acc, item) => {
             await acc
             let finalExpr = await resolver(item.expression).toRaw(repository)
 
@@ -306,13 +309,22 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             return true
         }, Promise.resolve(true))
         
-        if(this.__whereRawItem){
-            const where: Knex.Raw = await resolver(this.__whereRawItem).toRaw(repository)
+        if(this.#whereRawItem){
+            const where: Knex.Raw = await resolver(this.#whereRawItem).toRaw(repository)
             nativeQB.where( where )
         }
-        if(this.__selectItems){
-            const selectItems = await this.resolveSelectItems(this.__selectItems, repository)
-            if(selectItems.length === 0 && !this.__fromItem){
+
+        if(this.#offset) {
+            nativeQB.offset(this.#offset)
+        }
+
+        if(this.#limit) {
+            nativeQB.limit(this.#limit)
+        }
+
+        if(this.#selectItems){
+            const selectItems = await this.resolveSelectItems(this.#selectItems, repository)
+            if(selectItems.length === 0 && !this.#fromItem){
                 throw new Error('No SELECT and FROM are provided for Dataset')
             }
             nativeQB.select( selectItems )
@@ -376,7 +388,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             return acc
         }, {})
 
-        this.__selectItems = nameMap
+        this.#selectItems = nameMap
         return this as any
     }
 
@@ -411,7 +423,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
 
             let selectorMap = this.getSelectorMap()
 
-            let resolver = makeExpressionResolver(this.__fromItem, this.__joinItems.map(item => item.source), selectorMap)
+            let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
             
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
             
@@ -421,7 +433,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             nameMap = named
         }
 
-        this.__selectItems = nameMap
+        this.#selectItems = nameMap
         return this as any
     }
 
@@ -464,17 +476,27 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
 
     clone(): Dataset<SelectProps, SourceProps, SourcePropMap> {
         const newDataset = new Dataset<SelectProps, SourceProps, SourcePropMap>()
-        newDataset.__fromItem = this.__fromItem
-        newDataset.__joinItems = this.__joinItems.map(i => i)
-        newDataset.__selectItems = this.__selectItems
-        newDataset.__whereRawItem = this.__whereRawItem
+        newDataset.#fromItem = this.#fromItem
+        newDataset.#joinItems = this.#joinItems.map(i => i)
+        newDataset.#selectItems = this.#selectItems
+        newDataset.#whereRawItem = this.#whereRawItem
         newDataset.nativeBuilderCallbacks = this.nativeBuilderCallbacks.map(i => i)
         return newDataset
     }
 
     where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
         //@ts-ignore
-        this.__whereRawItem = expression
+        this.#whereRawItem = expression
+        return this
+    }
+
+    limit(limit: number | null): Dataset<SelectProps, SourceProps, SourcePropMap> {
+        this.#limit = limit
+        return this
+    }
+
+    offset(offset: number | null): Dataset<SelectProps, SourceProps, SourcePropMap> {
+        this.#offset = offset
         return this
     }
 
@@ -483,7 +505,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
         > {
-            this.__fromItem = source
+            this.#fromItem = source
             return this as any
         }
 
@@ -492,7 +514,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectProps,X,Y>{
-        this.__joinItems.push( {
+        this.#joinItems.push( {
             type: "inner",
             source,
             expression
@@ -505,7 +527,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
-        this.__joinItems.push( {
+        this.#joinItems.push( {
             type: "left",
             source,
             expression
@@ -518,7 +540,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
-        this.__joinItems.push( {
+        this.#joinItems.push( {
             type: "right",
             source,
             expression
@@ -531,10 +553,10 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     }
 
     schema(): SelectProps & Schema{
-        const propertyMap =  Object.keys(this.__selectItems).reduce((acc, key) => {
+        const propertyMap =  Object.keys(this.#selectItems).reduce((acc, key) => {
 
-            const d = this.__selectItems[key].definition
-            let referName = this.selectItemAlias(key, this.__selectItems[key])
+            const d = this.#selectItems[key].definition
+            let referName = this.selectItemAlias(key, this.#selectItems[key])
 
             acc[key] = new Property(d)
             acc[key].register(referName)
@@ -686,37 +708,37 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
 //     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
 // }
 
-export const isRaw = (builder: any) : boolean => {
-    //@ts-ignore
-    if(builder.__type === 'Raw' ){
-        return true
-    }
-    return false
-}
+// export const isRaw = (builder: any) : boolean => {
+//     //@ts-ignore
+//     if(builder.__type === 'Raw' ){
+//         return true
+//     }
+//     return false
+// }
 
-export const isDataset = (builder: any) : boolean => {
-    //@ts-ignore
-    if(builder.__type === 'Dataset' ){
-        return true
-    }
-    return false
-}
+// export const isDataset = (builder: any) : boolean => {
+//     //@ts-ignore
+//     if(builder.__type === 'Dataset' ){
+//         return true
+//     }
+//     return false
+// }
 
-export const isColumn = (builder: any) : boolean => {
-    //@ts-ignore
-    if( isScalar(builder) && builder.__actualAlias){
-        return true
-    }
-    return false
-}
+// export const isColumn = (builder: any) : boolean => {
+//     //@ts-ignore
+//     if( isScalar(builder) && builder.__actualAlias){
+//         return true
+//     }
+//     return false
+// }
 
-export const isScalar = (builder: any) : boolean => {
-    //@ts-ignore
-    if(builder.__type === 'Scalar' ){
-        return true
-    }
-    return false
-}
+// export const isScalar = (builder: any) : boolean => {
+//     //@ts-ignore
+//     if(builder.__type === 'Scalar' ){
+//         return true
+//     }
+//     return false
+// }
 
 
 export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: any[]) => {
