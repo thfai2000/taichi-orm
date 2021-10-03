@@ -32,8 +32,8 @@ export type ComputePropertyArgsMap<E> = {
 
 
 export type SingleSourceArg<S extends TableSchema> = {
-    props?: Partial<ComputePropertyArgsMap<S>>,
-    filter?: Expression< 
+    select?: Partial<ComputePropertyArgsMap<S>>,
+    where?: Expression< 
         UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
                 > | ExpressionFunc<
@@ -471,23 +471,23 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
             }
 
 
-            if(resolvedArgs?.props){
-                let computed = resolvedArgs.props
+            if(resolvedArgs?.select){
+                let computed = resolvedArgs.select
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
                     return relatedSource.getComputeProperty(key)(arg).value()
                 }).reduce( (acc,v) => Object.assign(acc, v), {})
 
-                dataset.props(Object.assign(props, computedValues))
+                dataset.select(Object.assign(props, computedValues))
             }else {
-                dataset.props(props)
+                dataset.select(props)
             }
             let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.filter){
-               filters.push( resolvedArgs.filter as any )
+            if(resolvedArgs?.where){
+               filters.push( resolvedArgs.where as any )
             }
-            newDataset.filter( ({And}) => And(...filters) )
+            newDataset.where( ({And}) => And(...filters) )
 
             return newDataset
         }
@@ -527,23 +527,23 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
             }
 
             let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
-            if(resolvedArgs?.props){
-                let computed = resolvedArgs.props
+            if(resolvedArgs?.select){
+                let computed = resolvedArgs.select
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
                     return relatedSource.getComputeProperty(key)(arg).value()
                 }).reduce( (acc,v) => Object.assign(acc, v), {})
 
-                dataset.props(Object.assign(props, computedValues))
+                dataset.select(Object.assign(props, computedValues))
             }else {
-                dataset.props(props)
+                dataset.select(props)
             }
             let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.filter){
-               filters.push( resolvedArgs.filter as any )
+            if(resolvedArgs?.where){
+               filters.push( resolvedArgs.where as any )
             }
-            newDataset.filter( ({And}) => And(...filters) )
+            newDataset.where( ({And}) => And(...filters) )
 
             return newDataset
         }
@@ -962,7 +962,17 @@ class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<
     }
 
     usingConnection(trx: Knex.Transaction): this{
+        if(!trx){
+            throw new Error('No transaction given.')
+        }
         this.execOptions.trx = trx
+        return this
+    }
+
+    usingConnectionIfAny(trx: Knex.Transaction): this{
+        if(trx){
+            this.execOptions.trx = trx
+        }
         return this
     }
 
@@ -1089,7 +1099,7 @@ export class Database{
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
                     
                     let record = await this.findOne<T, typeof schema>(entityClass, repository, {
-                        filter: {
+                        where: {
                             id: insertedId
                         }
                     }).withOptions(executionOptions)
@@ -1106,7 +1116,7 @@ export class Database{
                             let uuid = input.uuid
                             let record = await this.findOne<T, typeof schema>(entityClass, repository, {
                                 //@ts-ignore
-                                filter: ({root}) => root.uuid.equals(uuid)
+                                where: ({root}) => root.uuid.equals(uuid)
                             }).withOptions(executionOptions)
 
                             // console.log('create findOne', record)
@@ -1124,7 +1134,7 @@ export class Database{
                     
                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
                     let record = await this.findOne<T, TableSchema>(entityClass, repository, {
-                        filter: {
+                        where: {
                             id: insertedId
                         }
                     }).withOptions(executionOptions)
@@ -1300,18 +1310,18 @@ export class Database{
         //     options = applyFilter
         // }
         let dataset = new Dataset()
-            .props( await resolveEntityProps(source, applyOptions?.props ) )
+            .select( await resolveEntityProps(source, applyOptions?.select ) )
             .from(source)
             // .type(new ArrayOfEntity(entityClass))
 
-        dataset = applyOptions?.filter ? dataset.filter(applyOptions?.filter as Expression<any,any>) : dataset
+        dataset = applyOptions?.where ? dataset.where(applyOptions?.where as Expression<any,any>) : dataset
         // console.debug("========== FIND ================")
         // console.debug(sqlString.toString())
         // console.debug("================================")
 
         // console.log('xxxxxxx', dataset.toScalar(new ArrayOfEntity(entityClass)))
 
-        let wrappedDataset = new Dataset().props({
+        let wrappedDataset = new Dataset().select({
             root: dataset.toScalar(new ArrayType(entityClass.schema))
         })
 
@@ -1369,11 +1379,11 @@ export class Database{
             updateSqlString: !isDelete && Object.keys(realFieldValues).length > 0? 
                             (applyFilter? new Dataset()
                                             .from( rootSource )
-                                            .filter(applyFilter): 
+                                            .where(applyFilter): 
                                             new Dataset().from(rootSource ).native( qb => qb.update(realFieldValues)) ): null,
             selectSqlString: (applyFilter? new Dataset()
                                             .from(rootSource)
-                                            .filter(applyFilter):
+                                            .where(applyFilter):
                                         new Dataset().from(rootSource) ),
             entityData: data
         }

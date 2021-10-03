@@ -307,11 +307,14 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         }, Promise.resolve(true))
         
         if(this.__whereRawItem){
-            nativeQB.where( await resolver(this.__whereRawItem).toRaw(repository) )
+            const where: Knex.Raw = await resolver(this.__whereRawItem).toRaw(repository)
+            nativeQB.where( where )
         }
         if(this.__selectItems){
             const selectItems = await this.resolveSelectItems(this.__selectItems, repository)
-            // console.log('aaaaaa', selectItems)
+            if(selectItems.length === 0 && !this.__fromItem){
+                throw new Error('No SELECT and FROM are provided for Dataset')
+            }
             nativeQB.select( selectItems )
         }
         await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
@@ -336,7 +339,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return new Scalar(t, this)
     }
     
-    fields<P extends keyof SourceProps>(...properties: P[]): 
+    selectProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
             UnionToIntersection<
             SelectProps |
@@ -385,7 +388,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
 
     // }
         
-    props<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
+    select<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
             UnionToIntersection<
@@ -469,7 +472,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return newDataset
     }
 
-    filter<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+    where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
         //@ts-ignore
         this.__whereRawItem = expression
         return this
@@ -775,7 +778,7 @@ export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | E
 
 export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any> | null, sources: Datasource<any, any>[], dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >) {
 
-    const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => {
+    const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>): Scalar<any> => {
         let value
         if( expression instanceof Function) {
             value = expression(dictionary)

@@ -32,7 +32,7 @@ import Product from './Product'
     
     let p = repository.models.Product.datasource('product')
     
-    let myShopDS = new Dataset().from(s).fields("shop.id", "shop.name")
+    let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(repository)
     console.log('test1', builder.toString() )
@@ -75,18 +75,18 @@ import Product from './Product'
             //         "shop.name": "ssss"
             //     }, product.name.equals(shop.name) )
             // )
-            // .fields(
-            //     // "product.id",
-            //     // "shop.id",
-            //     "myShop.name"
-            // )
-            .filter(
+            .selectProps(
+                // "product.id",
+                // "shop.id",
+                "shop.name"
+            )
+            .where(
                 ({shop, product, And}) => And(
                     shop.id.equals(1),
                     product.name.equals('hello')
                 )
             )
-            .props(
+            .select(
                 ({shop, product}) => ({
                     // shop.id.value(),
                     ...shop.hour.value(),
@@ -103,14 +103,14 @@ import Product from './Product'
 
 
     let allShops = await repository.models.Shop.find({
-        filter: ({root}) => root.name.equals('helloShopx')
+        where: ({root}) => root.name.equals('helloShopx')
     })
     console.log('aaa', allShops)
     console.time('simple')
     let allShopsX = await repository.models.Shop.find({
-        props: { 
+        select: {
             products: (P) => ({
-                props: {
+                select: {
                     myABC: 5,
                     shop: {
                         // props: {
@@ -121,10 +121,10 @@ import Product from './Product'
                 }
             })
         },
-        filter: ({root, Exists}) => Exists(
+        where: ({root, Exists}) => Exists(
             new Dataset().from(
                 repository.models.Product.datasource('product')
-            ).filter( ({product}) => root.id.equals(product.shopId) )
+            ).where( ({product}) => root.id.equals(product.shopId) )
         )
     })
     console.log('aaaa', allShopsX[0].products.length)
