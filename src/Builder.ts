@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
-import { ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -227,8 +227,8 @@ export class TableDatasource<E extends TableSchema, Name extends string> extends
 
 export class DerivedDatasource<E extends Schema, Name extends string> extends DatasourceBase<E, Name> {
 
-    readonly dataset: Dataset<any, any, any>
-    constructor(dataset: Dataset<any, any, any>, sourceAlias: Name){
+    readonly dataset: Dataset<any, any, any, any>
+    constructor(dataset: Dataset<any, any, any, any>, sourceAlias: Name){
         super(dataset.schema(), sourceAlias)
         this.dataset = dataset
     }
@@ -238,11 +238,12 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
     }
 }
 
-export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implements Scalarable<any> {
+export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> implements Scalarable<any> {
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
     #whereRawItem: null |  Expression<any, any> = null
-    #selectItems: { [key: string]: Scalar<any> } = {}
+    #selectItems: { [key: string]: Scalar<any> } | null = null
+    #updateItems: Partial<FieldPropertyValueMap<ExtractFieldProps<FromSource>>> | null = null
     #fromItem: null | Datasource<Schema, string> = null
     #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
@@ -255,7 +256,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         this.#fromItem = fromSource
     }
 
-    toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap> {
+    toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
         return this
     }
     
@@ -275,7 +276,11 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     }
 
     selectItemsAlias(): string[]{
-        return Object.keys(this.#selectItems).map(key => this.selectItemAlias(key, this.#selectItems[key]) )
+        if(!this.#selectItems){
+            return []
+        }
+        const selectItems = this.#selectItems
+        return Object.keys(selectItems).map(key => this.selectItemAlias(key, selectItems[key]) )
     }
 
     async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
@@ -283,11 +288,14 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
+        if(this.#updateItems && this.#selectItems){
+            throw new Error('Cannot be both select or update statements')
+        }
+
         if(this.#fromItem){
             const from = await this.#fromItem.toRaw(repository)
             nativeQB.from(from)
         }
-
 
         let selectorMap = this.getSelectorMap()
 
@@ -315,10 +323,16 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         }
 
         if(this.#offset) {
+            if(this.#updateItems){
+                throw new Error('Cannot use limit on update')
+            }
             nativeQB.offset(this.#offset)
         }
 
         if(this.#limit) {
+            if(this.#updateItems){
+                throw new Error('Cannot use limit on update')
+            }
             nativeQB.limit(this.#limit)
         }
 
@@ -329,6 +343,15 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             }
             nativeQB.select( selectItems )
         }
+
+        if(this.#updateItems){
+            const updateItems = await this.resolveSelectItems(this.#updateItems, repository)
+            if(updateItems.length === 0 && !this.#fromItem){
+                throw new Error('No UPDATE and FROM are provided for Dataset')
+            }
+            nativeQB.update( updateItems )
+        }
+
         await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
             await callback(nativeQB)
         }))
@@ -336,13 +359,13 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return nativeQB
     }
 
-    native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+    native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
         this.nativeBuilderCallbacks = []
         this.addNative(nativeBuilderCallback)
         return this
     }
     
-    addNative(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+    addNative(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
         this.nativeBuilderCallbacks.push(nativeBuilderCallback)
         return this
     }
@@ -377,7 +400,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             }
             >
         , 
-        SourceProps, SourcePropMap>{
+        SourceProps, SourcePropMap, FromSource>{
        
         let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
         let fields = properties as string[]
@@ -416,7 +439,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
             }
             >
         , 
-        SourceProps, SourcePropMap> {
+        SourceProps, SourcePropMap, FromSource> {
 
         let nameMap: { [key: string]: Scalar<any> }
         if(named instanceof Function){
@@ -440,7 +463,6 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     private selectItemAlias(name: string, scalar: Scalar<any>){
         return name
     }
-
 
     private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
         const client = repository.orm.client()
@@ -474,8 +496,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return sqlkeywords
     }
 
-    clone(): Dataset<SelectProps, SourceProps, SourcePropMap> {
-        const newDataset = new Dataset<SelectProps, SourceProps, SourcePropMap>()
+    clone(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
+        const newDataset = new Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>()
         newDataset.#fromItem = this.#fromItem
         newDataset.#joinItems = this.#joinItems.map(i => i)
         newDataset.#selectItems = this.#selectItems
@@ -484,18 +506,18 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return newDataset
     }
 
-    where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap>{
+    where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
         //@ts-ignore
         this.#whereRawItem = expression
         return this
     }
 
-    limit(limit: number | null): Dataset<SelectProps, SourceProps, SourcePropMap> {
+    limit(limit: number | null): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
         this.#limit = limit
         return this
     }
 
-    offset(offset: number | null): Dataset<SelectProps, SourceProps, SourcePropMap> {
+    offset(offset: number | null): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
         this.#offset = offset
         return this
     }
@@ -503,7 +525,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
     from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
         Dataset<{}, 
             UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> } >
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
         > {
             this.#fromItem = source
             return this as any
@@ -513,7 +535,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectProps,X,Y>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectProps,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "inner",
             source,
@@ -526,7 +548,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "left",
             source,
@@ -539,7 +561,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "right",
             source,
@@ -548,15 +570,24 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}> implem
         return this as any
     }
 
+    update(keyValues: Partial<FieldPropertyValueMap<ExtractFieldProps< (FromSource extends Datasource<infer S, any>?S:any)  >>> ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+        this.#updateItems = keyValues
+        return this as any
+    }
+
     datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
         return new DerivedDatasource(this, name)
     }
 
     schema(): SelectProps & Schema{
-        const propertyMap =  Object.keys(this.#selectItems).reduce((acc, key) => {
+        if(!this.#selectItems){
+            throw new Error('No selectItems for a schema')
+        }
+        const selectItems = this.#selectItems
+        const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
 
-            const d = this.#selectItems[key].definition
-            let referName = this.selectItemAlias(key, this.#selectItems[key])
+            const d = selectItems[key].definition
+            let referName = this.selectItemAlias(key, selectItems[key])
 
             acc[key] = new Property(d)
             acc[key].register(referName)
@@ -582,7 +613,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
     protected expressionOrDataset: RawExpression | Dataset<any, any, any>
     // protected dataset:  | null = null
 
-    constructor(definition: PropertyTypeDefinition<any> , expressionOrDataset: RawExpression | Dataset<any, any, any>){
+    constructor(definition: PropertyTypeDefinition<any> , expressionOrDataset: RawExpression | Dataset<any, any, any, any>){
         this.definition = definition
         this.expressionOrDataset = expressionOrDataset
     }

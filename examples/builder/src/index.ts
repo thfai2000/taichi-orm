@@ -129,6 +129,15 @@ import Product from './Product'
     })
     console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')
+
+
+    let d = new Dataset()
+        .from(repository.models.Shop.datasource("myShop"))
+        .where(({myShop}) => myShop.id.equals(1))
+        .update({
+            name: 'baby'
+        })
+        
 })()
 
 
