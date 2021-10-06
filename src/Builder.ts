@@ -30,8 +30,8 @@ import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject,
 export type FieldPropertyValueMap<E> = {
     [key in keyof E]:
         E[key] extends Prefixed<any, any, infer C>? (
-                C extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive: never): never
-             ): E[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive: never): never
+                C extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D> ): never): never
+             ): E[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D> ): never): never
              
 }
 
@@ -53,7 +53,11 @@ export type SQLKeywords<Props, PropMap> = {
     Exists: (dataset: Dataset<any, any, any>) => ExistsOperator<Props, PropMap>
 }
 
-export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
+export type HelperFunctions = {
+    $raw: () => Knex.Raw
+}
+
+export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> | HelperFunctions > ) => Expression<O, M>
 
 export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
     | AndOperator<O, M> 
@@ -243,17 +247,19 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     // __type: 'Dataset' = 'Dataset'
     #whereRawItem: null |  Expression<any, any> = null
     #selectItems: { [key: string]: Scalar<any> } | null = null
-    #updateItems: Partial<FieldPropertyValueMap<ExtractFieldProps<FromSource>>> | null = null
+    #updateItems: { [key: string]: Scalar<any> } | null = null
     #fromItem: null | Datasource<Schema, string> = null
     #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
     #limit: null | number = null
     #offset: null | number = null
+    #repository: EntityRepository<any> | null = null
 
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
-    constructor(fromSource: Datasource<Schema, string> | null = null){
-        this.#fromItem = fromSource
+    constructor(repository?: EntityRepository<any>){
+        // this.#fromItem = fromSource
+        this.#repository = repository ?? null
     }
 
     toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
@@ -283,7 +289,14 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return Object.keys(selectItems).map(key => this.selectItemAlias(key, selectItems[key]) )
     }
 
-    async toNativeBuilder(repository: EntityRepository<any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: EntityRepository<any>): Promise<Knex.QueryBuilder> {
+
+        const repository = repo ?? this.#repository
+
+        if(!repository){
+            throw new Error('There is no repository provided.')
+        }
+
         let nativeQB = repository.orm.getKnexInstance().clearSelect()
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
@@ -345,8 +358,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#updateItems){
-            const updateItems = await this.resolveSelectItems(this.#updateItems, repository)
-            if(updateItems.length === 0 && !this.#fromItem){
+            const updateItems = await this.resolveUpdateItems(this.#updateItems, repository)
+            if(Object.keys(updateItems).length === 0 && !this.#fromItem){
                 throw new Error('No UPDATE and FROM are provided for Dataset')
             }
             nativeQB.update( updateItems )
@@ -442,29 +455,50 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         SourceProps, SourcePropMap, FromSource> {
 
         let nameMap: { [key: string]: Scalar<any> }
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
+        
         if(named instanceof Function){
-
-            let selectorMap = this.getSelectorMap()
-
-            let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
-            
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
-            
             const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
             nameMap = named(map)
-        }else {
+        } else {
             nameMap = named
         }
 
-        this.#selectItems = nameMap
+        this.#selectItems = Object.keys(nameMap).reduce( (acc, key) => {
+            acc[key] = resolver(nameMap[key])
+            return acc
+        }, {} as { [key: string]: Scalar<any> } )
         return this as any
     }
 
+    update<S extends Partial<FieldPropertyValueMap<ExtractFieldProps< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>
+    (keyValues: S | ((map: Y ) => S )): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+        
+        let nameMap: { [key: string]: any | Scalar<any> }
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
+        
+        if(keyValues instanceof Function){    
+            Object.assign(selectorMap, this.sqlKeywords(resolver) )
+            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            nameMap = keyValues(map)
+        } else {
+            nameMap = keyValues
+        }
+
+        this.#updateItems = Object.keys(nameMap).reduce( (acc, key) => {
+            acc[key] = resolver(nameMap[key])
+            return acc
+        }, {} as { [key: string]: Scalar<any> } )
+        return this as any
+    }
     private selectItemAlias(name: string, scalar: Scalar<any>){
         return name
     }
 
-    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
+    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>): Promise<Knex.Raw<any>[]> {
         const client = repository.orm.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
@@ -482,8 +516,28 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             const newRaw = makeRaw(repository, `${text} AS ${quote(client, this.selectItemAlias(k, scalar))}`)
 
             return newRaw
-
         }))
+    }
+
+    private async resolveUpdateItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
+        const client = repository.orm.client()
+        return await Object.keys(nameMap).reduce( async (accP, k) => {
+
+            const acc = await accP
+            // let acc = await accP
+            let scalar = nameMap[k]
+            if(!scalar){
+                throw new Error(`cannot resolve field ${k}`)
+            }
+            const raw: Knex.Raw = await scalar.toRaw(repository)
+            let text = raw.toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            acc[k] = makeRaw(repository, text)
+            return acc
+        }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
     }
 
     sqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>){
@@ -570,10 +624,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return this as any
     }
 
-    update(keyValues: Partial<FieldPropertyValueMap<ExtractFieldProps< (FromSource extends Datasource<infer S, any>?S:any)  >>> ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
-        this.#updateItems = keyValues
-        return this as any
-    }
+
 
     datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
         return new DerivedDatasource(this, name)
@@ -600,20 +651,24 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         schema.init()
         return schema
     }
+
+    hasSelectedItems(){
+        return Object.keys(this.#selectItems ?? {}).length > 0
+    }
 }
 
-
-type RawExpression = (repository: EntityRepository<any>) => Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any>
+type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
+type RawExpression = ( (repository: EntityRepository<any>) => RawUnit) | RawUnit
 
 export class Scalar<T extends PropertyTypeDefinition<any> >  {
     // __type: 'Scalar'
     // __definition: PropertyTypeDefinition | null
 
     readonly definition: PropertyTypeDefinition<any>
-    protected expressionOrDataset: RawExpression | Dataset<any, any, any>
+    protected expressionOrDataset: RawExpression
     // protected dataset:  | null = null
 
-    constructor(definition: PropertyTypeDefinition<any> , expressionOrDataset: RawExpression | Dataset<any, any, any, any>){
+    constructor(definition: PropertyTypeDefinition<any> , expressionOrDataset: RawExpression ){
         this.definition = definition
         this.expressionOrDataset = expressionOrDataset
     }
@@ -631,11 +686,8 @@ export class Scalar<T extends PropertyTypeDefinition<any> >  {
         const client = repository.orm.client()
         const expressionOrDataset = this.expressionOrDataset
 
-        const resolveIntoRawOrDataset = (ex: Knex.Raw<any> | Knex.QueryBuilder | Scalar<any> | RawExpression | Dataset<any, any, any> |
-            Promise<Knex.Raw<any> | Knex.QueryBuilder | Scalar<any> | RawExpression | Dataset<any, any, any>> ):
-            (Knex.Raw<any> | Knex.QueryBuilder | Dataset<any, any, any> |
-                Promise<Knex.Raw<any> | Knex.QueryBuilder | Dataset<any, any, any>>
-            ) => {
+        const resolveIntoRawOrDataset = (ex: RawExpression ):
+            ( Knex.Raw<any> | Knex.QueryBuilder | Dataset<any, any, any>) => {
 
             return thenResult(ex, ex => {
 

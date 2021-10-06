@@ -818,6 +818,14 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         return result
     }
 
+    from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
+        Dataset<{}, 
+            UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+        > {
+            return new Dataset(this).from(source)
+        }
+
     async query<S, R extends {
         [key in keyof ExtractProps<S>]: 
         S[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
@@ -841,24 +849,27 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         } else {
             throw new Error('Unsupport client.')
         }
-        
-        if(Array.isArray(rows)){
-
-            console.time('parsing')
-            const repository = this
-            const len = rows.length
-            let parsedRows = new Array(len) as R[]
-            const schema = dataset.schema()
+        if(!dataset.hasSelectedItems()){
+            return []
+        } else {
+            if(Array.isArray(rows)){
+    
+                console.time('parsing')
+                const repository = this
+                const len = rows.length
+                let parsedRows = new Array(len) as R[]
+                const schema = dataset.schema()
+                
+                for(let i=0; i <len;i++){
+                    parsedRows[i] = schema.parseRaw(rows[i], repository)
+                }
             
-            for(let i=0; i <len;i++){
-                parsedRows[i] = schema.parseRaw(rows[i], repository)
+                console.timeEnd('parsing')
+                // console.log('parsed', parsedRows)
+                return parsedRows 
             }
-        
-            console.timeEnd('parsing')
-            // console.log('parsed', parsedRows)
-            return parsedRows 
+            return rows
         }
-        return rows
     }
 }
 
@@ -1462,7 +1473,7 @@ export class Database{
                         let record = await this.findOne(entityClass, repository, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
                         let finalRecord = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         if(isDelete){
-                            await repository.orm.executeStatement( new Dataset(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+                            await repository.orm.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
                         return finalRecord
                         
@@ -1480,7 +1491,7 @@ export class Database{
                         let record = await this.findOne(entityClass, repository, {[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
                         let finalRecord = await this.afterMutation<T>(repository, record, schema, actionName, propValues, executionOptions)
                         if(isDelete){
-                            await repository.orm.executeStatement( new Dataset(schema.datasource('root') ).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+                            await repository.orm.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
                         return finalRecord
                     } else {

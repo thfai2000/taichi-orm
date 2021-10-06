@@ -1,8 +1,9 @@
-import { Dataset } from "../../../dist/Builder"
+import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import Shop from './Shop'
 import Product from './Product'
+import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../dist/PropertyType"
 
 
 (async() => {
@@ -135,9 +136,19 @@ import Product from './Product'
         .from(repository.models.Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
-            name: 'baby'
+            name: new Scalar(new UnknownPropertyTypeDefinition(), makeRaw(repository, '?', 'hello') )
         })
-        
+
+    await orm.getRepository().query(d, {
+        onSqlRun: console.log
+    })
+
+    // let a = function<x extends {}>(a: x) : x {
+
+    // }
+
+    // a({s: 5})
+
 })()
 
 
