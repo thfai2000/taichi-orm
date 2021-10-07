@@ -718,7 +718,7 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
     }
 
     async execute<S>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions) {
-        return this.getRepository().query(dataset, executionOptions)
+        return this.getRepository().execute(dataset, executionOptions)
     }
 }
 
@@ -818,15 +818,12 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         return result
     }
 
-    from<S extends Schema, SName extends string>(source: Datasource<S, SName>):
-        Dataset<{}, 
-            UnionToIntersection< AddPrefix< ExtractProps< S>, '', ''> | AddPrefix< ExtractProps< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
-        > {
-            return new Dataset(this).from(source)
+    dataset<S extends Schema, SName extends string>():
+        Dataset<{},{},{},any>{
+            return new Dataset(this)
         }
 
-    async query<S, R extends {
+    async execute<S, R extends {
         [key in keyof ExtractProps<S>]: 
         S[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
             // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
@@ -1340,7 +1337,7 @@ export class Database{
             root: dataset.toScalar(new ArrayType(entityClass.schema))
         })
 
-        let resultData = await repository.query(wrappedDataset, executionOptions)
+        let resultData = await repository.execute(wrappedDataset, executionOptions)
 
         // console.log('return from database', rowData)
 

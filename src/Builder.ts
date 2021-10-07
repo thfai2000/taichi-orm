@@ -655,6 +655,21 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     hasSelectedItems(){
         return Object.keys(this.#selectItems ?? {}).length > 0
     }
+
+    async execute<R extends {
+        [key in keyof ExtractProps<SelectProps>]: 
+        SelectProps[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
+            // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
+                // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
+    }>(executionOptions?: ExecutionOptions, repo?: EntityRepository<any>): Promise<R[]>{
+        const repository = repo ?? this.#repository
+
+        if(!repository){
+            throw new Error('There is no repository provided.')
+        }
+
+        return repository.execute(this, executionOptions)
+    }
 }
 
 type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>

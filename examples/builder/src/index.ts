@@ -95,7 +95,7 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
                 })
             ).offset(0).limit(4000)
     
-    let result = await orm.getRepository().query(dd, {
+    let result = await orm.getRepository().execute(dd, {
         onSqlRun: console.log
     })
     console.log('xxx', result)
@@ -133,21 +133,19 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
 
 
     let d = new Dataset()
+        
+
+    await orm.getRepository()
+        .dataset()
         .from(repository.models.Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
             name: new Scalar(new UnknownPropertyTypeDefinition(), makeRaw(repository, '?', 'hello') )
+        }).execute({
+            onSqlRun: console.log
         })
 
-    await orm.getRepository().query(d, {
-        onSqlRun: console.log
-    })
 
-    // let a = function<x extends {}>(a: x) : x {
-
-    // }
-
-    // a({s: 5})
 
 })()
 
