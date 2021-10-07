@@ -791,54 +791,6 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     }
 }
 
-// export interface FromClause<Props, PropMap> extends Knex.Raw {
-//     __type: 'FromClause'
-//     // __raw: string
-//     __parentSource: FromClause<any, any> | null
-//     __realClone: Function
-// }
-
-// const castAsRow = (builder: any) : Row => {
-//     //@ts-ignore
-//     if(builder.__type === 'Dataset' ){
-//         return builder as Row
-//     }
-//     throw new Error('Cannot cast into QueryBuilder. Please use the modified version of QueryBuilder.')
-// }
-
-// export const isRaw = (builder: any) : boolean => {
-//     //@ts-ignore
-//     if(builder.__type === 'Raw' ){
-//         return true
-//     }
-//     return false
-// }
-
-// export const isDataset = (builder: any) : boolean => {
-//     //@ts-ignore
-//     if(builder.__type === 'Dataset' ){
-//         return true
-//     }
-//     return false
-// }
-
-// export const isColumn = (builder: any) : boolean => {
-//     //@ts-ignore
-//     if( isScalar(builder) && builder.__actualAlias){
-//         return true
-//     }
-//     return false
-// }
-
-// export const isScalar = (builder: any) : boolean => {
-//     //@ts-ignore
-//     if(builder.__type === 'Scalar' ){
-//         return true
-//     }
-//     return false
-// }
-
-
 export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: any[]) => {
     let r = repository.orm.getKnexInstance().raw(first, ...args)
     // @ts-ignore
@@ -849,50 +801,6 @@ export const makeRaw = (repository: EntityRepository<any>, first: any, ...args: 
     // r.__type = 'Raw'
     return r
 }
-
-// export const makeScalar = <T extends PropertyTypeDefinition>(repository: EntityRepository<any>, expression: Knex.Raw | Knex.QueryBuilder, definition: T | null = null): Scalar<T> => {
-
-//     let text = expression.toString().trim()
-
-//     text = addBlanketIfNeeds(text)
-//     let scalar: Scalar<any> = makeRaw(repository, text) as Scalar<any>
-//     scalar.__type = 'Scalar'
-//     scalar.__expression = expression.clone()
-//     scalar.__definition = definition
-
-//     scalar.equals = (value: any): Scalar<BooleanType> => {
-
-//         return makeScalar<BooleanType>(repository, new EqualOperator(value).toRaw(repository, scalar), new BooleanType())
-//     }
-
-//     scalar.is = (operator: string, value: any): Scalar<BooleanType> => {
-//         if(!expression){
-//             throw new Error('Only Dataset can apply count')
-//         }
-
-//         return makeScalar<BooleanType>(repository, makeRaw(repository, `(${expression.toString()}) ${operator} ?`, [value]), new BooleanType())
-//     }
-
-//     scalar.clone = () =>{
-//         return makeScalar<T>(repository, expression, definition)
-//     }
-
-//     scalar.toRaw = () => {
-//         return scalar
-//     }
-    
-//     return scalar
-// }
-
-
-
-// export const extractColumns = (builder: Knex.QueryBuilder): string[] => {
-    
-//     // let ourBuilder = castAsRow(builderOrRaw)
-//     return builder.__selectItems.map(item => {
-//         return item.actualAlias
-//     })
-// }
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M> | ExpressionFunc<Props, M>) => Scalar<any>
 

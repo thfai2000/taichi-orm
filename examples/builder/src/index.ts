@@ -8,10 +8,6 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
 
 (async() => {
 
-
-    // let a = Object.assign({e:8},{a:5},{b:6},Object.assign({c:7},{h:0}))
-    // console.log('aaa', a)
-
     const orm = new ORM({
         models: {Shop: ShopClass, Product: ProductClass},
         enableUuid: true,
@@ -78,8 +74,7 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
             //     }, product.name.equals(shop.name) )
             // )
             .selectProps(
-                // "product.id",
-                // "shop.id",
+                "shop.id",
                 "shop.name"
             )
             .where(
@@ -90,10 +85,8 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
             )
             .select(
                 ({shop, product}) => ({
-                    // shop.id.value(),
                     ...shop.hour.value(),
                     ...product.shopId.equals(10).asColumn('nini').value(),
-                    // xxx: xxx!,
                     ...product.ddd.value()
                 })
             ).offset(0).limit(4000)
@@ -115,10 +108,10 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
                 select: {
                     myABC: 5,
                     shop: {
-                        // props: {
-                        //     products: {}
-                        // },
-                        // filter: ({root}) => root.name.equals(P.name)
+                        select: {
+                            products: {}
+                        },
+                        where: ({root}) => root.name.equals(P.name)
                     }
                 }
             })
