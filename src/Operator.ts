@@ -47,14 +47,14 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         // const p = this.toRaw(repository, resolver)
         // return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
             return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
                 args.map(arg => {
                     const resolved = this.resolver(arg)
                     return thenResult(resolved, resolved => `${ resolved.toRaw(repository)}`)
                 }).join(' AND ')
             ))
-        })
+        }, new BooleanTypeNotNull())
     }
 }
 
@@ -76,13 +76,13 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         // const p = this.toRaw(repository, resolver)
         // return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
             return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
                 args.map(arg => {
                     return thenResult(this.resolver(arg), resolved => `${ resolved.toRaw(repository)}`)
                 }).join(' OR ')
             ))
-        })
+        }, new BooleanTypeNotNull())
     }
 }
 
@@ -103,11 +103,11 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         // return thenResult(p, r => new Scalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
 
-        return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
             return thenResult(this.resolver(this.arg), scalar => raw(repository, 
                 `NOT (${scalar.toRaw(repository)})`) 
             )
-        })
+        },new BooleanTypeNotNull())
     }
 }
 
@@ -127,11 +127,11 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
         // const p = this.toRaw(repository, resolver)
         // return thenResult(p, r => new Scalar(repository, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar(new BooleanTypeNotNull(), (repository): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
             return thenResult(this.arg.toNativeBuilder(repository), scalar => raw(repository, 
                 `EXISTS (${scalar.toString()})`) 
             )
-        })
+        },new BooleanTypeNotNull())
     }
 }
 
@@ -152,7 +152,7 @@ export class ContainOperator extends AssertionOperator {
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResultArray(this.rightOperands.map(s => s.toRaw(repository) ), rights => {
 
@@ -164,7 +164,7 @@ export class ContainOperator extends AssertionOperator {
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        },new BooleanTypeNotNull())
     }
 }
 
@@ -185,7 +185,7 @@ export class NotContainOperator extends AssertionOperator {
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResultArray(this.rightOperands.map(s => s.toRaw(repository) ), rights => {
 
@@ -197,7 +197,7 @@ export class NotContainOperator extends AssertionOperator {
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        },new BooleanTypeNotNull())
     }
 }
 
@@ -218,7 +218,7 @@ export class LikeOperator extends AssertionOperator {
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResult(this.rightOperand.toRaw(repository), right => {
 
@@ -230,7 +230,7 @@ export class LikeOperator extends AssertionOperator {
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        },new BooleanTypeNotNull())
     }
     
     // toScalar(): Scalar<BooleanType>{
@@ -257,7 +257,7 @@ export class NotLikeOperator extends AssertionOperator {
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResult(this.rightOperand.toRaw(repository), right => {
 
@@ -269,7 +269,7 @@ export class NotLikeOperator extends AssertionOperator {
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        },new BooleanTypeNotNull())
     }
     
     // toScalar(): Scalar<BooleanType>{
@@ -296,7 +296,7 @@ export class EqualOperator extends AssertionOperator{
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(repository)) ?? this.rightOperand, right => {
 
@@ -308,7 +308,7 @@ export class EqualOperator extends AssertionOperator{
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        },new BooleanTypeNotNull())
     }
 }
 
@@ -329,7 +329,7 @@ export class NotEqualOperator extends AssertionOperator {
 
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
 
             return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(repository)) ?? this.rightOperand, right => {
 
@@ -341,7 +341,7 @@ export class NotEqualOperator extends AssertionOperator {
 
             })
             // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-        })
+        }, new BooleanTypeNotNull())
     }
 }
 
@@ -354,11 +354,11 @@ export class IsNullOperator extends AssertionOperator {
     }
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
             return thenResult(this.leftOperand.toRaw(repository), left => {
                 return raw(repository, `${left} IS NULL`)
             })
-        })
+        }, new BooleanTypeNotNull())
     }
 }
 
@@ -371,11 +371,11 @@ export class IsNotNullOperator extends AssertionOperator {
     }
     toScalar(): Scalar<BooleanTypeNotNull>{
 
-        return new Scalar(new BooleanTypeNotNull(), (repository) => {
+        return new Scalar((repository) => {
             return thenResult(this.leftOperand.toRaw(repository), left => {
                 return raw(repository, `${left} IS NOT NULL`)
             })
-        })
+        }, new BooleanTypeNotNull())
     }
 }
 

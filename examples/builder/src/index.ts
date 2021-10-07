@@ -3,7 +3,7 @@ import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../dist/PropertyType"
+import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../dist/PropertyType"
 
 
 (async() => {
@@ -87,7 +87,8 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
                 ({shop, product}) => ({
                     ...shop.hour.value(),
                     ...product.shopId.equals(10).asColumn('nini').value(),
-                    ...product.ddd.value()
+                    ...product.ddd.value(),
+                    test: Scalar.fromRaw(` 5 + ?`, [3], new NumberTypeNotNull())
                 })
             ).offset(0).limit(4000)
     
@@ -132,13 +133,22 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
-            name: new Scalar(new UnknownPropertyTypeDefinition(), makeRaw(orm.getRepository(), '?', 'hello') )
+            name: Scalar.fromRaw(`?`,['hello'])
         }).execute({
             onSqlRun: console.log
         })
 
+    console.log('test parse', await dataset()
+        .from(Shop.datasource("myShop"))
+        .selectProps('myShop.name','myShop.id','myShop.products') //fix bug for no source name
+        .toScalar(new ArrayType(Shop.schema))
+        .execute({
+            onSqlRun: console.log
+        }))
 
-
+        //TODO: groupBy, having
+        // cater selectProps , computed
+        // addSelectProps
 })()
 
 
