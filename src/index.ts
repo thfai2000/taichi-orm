@@ -583,6 +583,9 @@ export type HookAction = <T>(repository: EntityRepository<any>, rootValue: T, in
 
 export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
 
+    #globalKnexInstance: Knex | null = null
+    #repositoryMap = new Map<string, EntityRepository<EntityClassMap>>()
+
     defaultORMConfig: ORMConfig<any> = {
         // primaryKeyName: 'id',
         enableUuid: false,
@@ -596,38 +599,44 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
         }
     }
 
-    ormConfig: ORMConfig<EntityClassMap>
+    #ormConfig: ORMConfig<EntityClassMap>
     // @ts-ignore
-    private registeredModels: EntityClassMap = {}
+    #registeredModels: EntityClassMap = {}
 
     constructor(newConfig: Partial<ORMConfig<EntityClassMap>>){
         let newOrmConfig: ORMConfig<EntityClassMap> = Object.assign({}, this.defaultORMConfig, newConfig)
         // newOrmConfig.ormContext = Object.assign({}, defaultORMConfig.ormContext, newConfig.ormContext)
-        this.ormConfig = newOrmConfig
+        this.#ormConfig = newOrmConfig
         this.register()
+    }
+
+
+    get ormConfig(){
+        //TODO: deep copy
+        return Object.assign({}, this.#ormConfig)
     }
 
     register(){
         const registerEntity = (entityName: string, entityClass: typeof Entity) => {
             entityClass.register(this, entityName)
             // @ts-ignore
-            this.registeredModels[entityName] = entityClass
+            this.#registeredModels[entityName] = entityClass
         }
         
         //register models 
-        if(this.ormConfig.models){
-            let models = this.ormConfig.models
+        if(this.#ormConfig.models){
+            let models = this.#ormConfig.models
             Object.keys(models).forEach(key => {
                 registerEntity(key, models[key]);
             })
         }
 
         //register models by path
-        if(this.ormConfig.modelsPath){
-            let files = fs.readdirSync(this.ormConfig.modelsPath)
+        if(this.#ormConfig.modelsPath){
+            let files = fs.readdirSync(this.#ormConfig.modelsPath)
             files.forEach( (file) => {
                 if(file.endsWith('.js')){
-                    let path = this.ormConfig.modelsPath + '/' + file
+                    let path = this.#ormConfig.modelsPath + '/' + file
                     path = path.replace(/\.js$/,'')
                     // console.debug('load model file:', path)
                     let p = path.split('/')
@@ -638,26 +647,31 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
             })
         }
 
-        Object.keys(this.registeredModels).forEach(k => {
-            this.registeredModels[k].registerPostAction()
+        Object.keys(this.#registeredModels).forEach(k => {
+            this.#registeredModels[k].registerPostAction()
         })
     }
 
     getRepository(config?: Partial<EntityRepositoryConfig>): EntityRepository<EntityClassMap> {
-        return new EntityRepository(this, this.registeredModels, config)
+        //!!!important: lazy load, don't always return new object
+        const key = JSON.stringify(config)
+        let repo = this.#repositoryMap.get(key)
+        if(!repo){
+            repo = new EntityRepository(this, this.#registeredModels, config)
+            this.#repositoryMap.set(key, repo)
+        }
+        return repo
     }
-
-    _globalKnexInstance: Knex | null = null
 
     // a global knex instance
     getKnexInstance(): Knex {
-        if(this._globalKnexInstance){
-            return this._globalKnexInstance
+        if(this.#globalKnexInstance){
+            return this.#globalKnexInstance
         }
 
         let newKnexConfig = Object.assign({
             useNullAsDefault: true
-        }, this.ormConfig.knexConfig)
+        }, this.#ormConfig.knexConfig)
 
         if(typeof newKnexConfig.connection !== 'object'){
             throw new Error('Configuration connection only accept object.')
@@ -672,11 +686,11 @@ export class ORM<EntityClassMap extends {[key:string]: typeof Entity}>{
         
         
         // console.log('newKnexConfig', newKnexConfig)
-        this._globalKnexInstance = knex(newKnexConfig)
-        return this._globalKnexInstance
+        this.#globalKnexInstance = knex(newKnexConfig)
+        return this.#globalKnexInstance
     }
 
-    client = (): string => this.ormConfig.knexConfig.client.toString()
+    client = (): string => this.#ormConfig.knexConfig.client.toString()
 
     async startTransaction<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> {
         let knex = this.getKnexInstance()
@@ -729,65 +743,69 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
     private config: Partial<EntityRepositoryConfig> | null = null
     readonly orm
     private registeredModels: EntityClassMap
+    public models: EntityClassMap
 
     constructor(orm: ORM<EntityClassMap>, registeredModels: EntityClassMap, config?: Partial<EntityRepositoryConfig> ){
         // this.name = name
         this.orm = orm
         this.config = config ?? {}
         this.registeredModels = registeredModels
+
+
+        const makeModels = () => {
+            const repository = this
+            const models: EntityClassMap = this.registeredModels
+            let proxyEntities = new Map<string, typeof Entity>()
+
+            let proxyRoot: EntityClassMap = new Proxy(models, {
+                get: (models, sKey: string): typeof Entity => {
+                    let e = proxyEntities.get(sKey)
+                    if(e){
+                        return e
+                    }else {
+                        const newE: typeof Entity = new Proxy(models[sKey], {
+                            get: (entityClass: typeof Entity, sKey: string) => {
+
+                                // @ts-ignore
+                                const method = entityClass[sKey]
+
+                                // @ts-ignore
+                                const referMethod = Database[sKey]
+                                if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
+                                    return (...args: any[]) => referMethod(newE, repository, ...args)
+                                }
+                                return method
+                            }
+                        })
+                        proxyEntities.set(sKey, newE)
+                        return newE
+                    }
+                }
+            })
+
+            return proxyRoot
+        }
+
+        this.models = makeModels()
     }
 
     get tablePrefix(){
         return this.config?.tablePrefix ?? ''
     }
 
-    get models(){
-        const repository = this
-        const models: EntityClassMap = this.registeredModels
-        let proxyEntities = new Map<string, typeof Entity>()
-
-        let proxyRoot: EntityClassMap = new Proxy(models, {
-            get: (models, sKey: string): typeof Entity => {
-                let e = proxyEntities.get(sKey)
-                if(e){
-                    return e
-                }else {
-                    const newE: typeof Entity = new Proxy(models[sKey], {
-                        get: (entityClass: typeof Entity, sKey: string) => {
-
-                            // @ts-ignore
-                            const method = entityClass[sKey]
-
-                            // @ts-ignore
-                            const referMethod = Database[sKey]
-                            if( (sKey in entityClass) && (sKey in Database) && method instanceof Function ){
-                                return (...args: any[]) => referMethod(newE, repository, ...args)
-                            }
-                            return method
-                        }
-                    })
-                    proxyEntities.set(sKey, newE)
-                    return newE
-                }
-            }
-        })
-
-        return proxyRoot
-    }
-
-    schemaSqls(){
+    schemaSqls = () => {
         let m = this.models
         let sqls = Object.keys(m).map(k => m[k].registeredSchema).map(s => s.createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
         return sqls
     }
 
     //write schemas into sql file
-    outputSchema(path: string){
+    outputSchema = (path: string) => {
         fs.writeFileSync(path, this.schemaSqls().join(";\n") + ';')
         // console.debug('schemas files:', Object.keys(schemas))
     }
 
-    async createModels() {
+    createModels = async() => {
         // create tables
         // important: sqllite3 doesn't accept multiple statements
         await Promise.all( this.schemaSqls().map( async(sql) => {
@@ -795,7 +813,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         }) )
     }
 
-    async executeStatement(stmt: SQLString, executionOptions?: ExecutionOptions): Promise<any> {
+    executeStatement = async (stmt: SQLString, executionOptions?: ExecutionOptions): Promise<any> => {
 
         const sql = stmt.toString()
         if(executionOptions?.onSqlRun) {
@@ -818,17 +836,17 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         return result
     }
 
-    dataset<S extends Schema, SName extends string>():
-        Dataset<{},{},{},any>{
+    dataset = <S extends Schema, SName extends string>() : Dataset<{},{},{},any> => 
+        {
             return new Dataset(this)
         }
 
-    async execute<S, R extends {
+    execute = async <S, R extends {
         [key in keyof ExtractProps<S>]: 
         S[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
             // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
                 // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
-    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]>
+    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]> =>
      {
         console.time('construct-sql')
         const nativeSql = await dataset.toNativeBuilder(this)

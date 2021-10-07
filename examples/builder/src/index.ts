@@ -1,8 +1,8 @@
 import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
-import Shop from './Shop'
-import Product from './Product'
+import ShopClass from './Shop'
+import ProductClass from './Product'
 import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../dist/PropertyType"
 
 
@@ -13,7 +13,7 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
     // console.log('aaa', a)
 
     const orm = new ORM({
-        models: {Shop, Product},
+        models: {Shop: ShopClass, Product: ProductClass},
         enableUuid: true,
         entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
@@ -25,21 +25,27 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
         }
     })
 
-    let repository = orm.getRepository()
-    // repository.outputSchema('/schema')
-    await repository.createModels()
+
+    let {
+        createModels,
+        dataset, 
+        models: {Shop, Product} 
+    } = orm.getRepository()
+
+
+    await createModels()
     
-    let s = repository.models.Shop.datasource('shop')
+    let s = Shop.datasource('shop')
     
-    let p = repository.models.Product.datasource('product')
+    let p = Product.datasource('product')
     
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
-    const builder = await myShopDS.toNativeBuilder(repository)
-    console.log('test1', builder.toString() )
+    const builder = await myShopDS.toNativeBuilder(orm.getRepository())
+    console.log('sql1', builder.toString() )
 
 
-    let shop1 = await repository.models.Shop.createOne({
+    let shop1 = await Shop.createOne({
         name: '333',
         hour: 5
     })
@@ -47,7 +53,7 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
     console.log('finished-1', shop1)
     
     for (let i = 0; i < 5; i++) {      
-        await repository.models.Product.createOne({
+        await Product.createOne({
             ddd: 5,
             name: 'hello',
             shopId: shop1.id
@@ -55,9 +61,6 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
     }
 
     console.log('finished')
-
-    let myShop = myShopDS.datasource("myShop")
-
 
     let dd = new Dataset()
             .from(s)
@@ -101,12 +104,12 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
     console.log('xxx', result)
 
 
-    let allShops = await repository.models.Shop.find({
+    let allShops = await Shop.find({
         where: ({root}) => root.name.equals('helloShopx')
     })
     console.log('aaa', allShops)
     console.time('simple')
-    let allShopsX = await repository.models.Shop.find({
+    let allShopsX = await Shop.find({
         select: {
             products: (P) => ({
                 select: {
@@ -122,7 +125,7 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
         },
         where: ({root, Exists}) => Exists(
             new Dataset().from(
-                repository.models.Product.datasource('product')
+                Product.datasource('product')
             ).where( ({product}) => root.id.equals(product.shopId) )
         ),
         offset: 0,
@@ -132,15 +135,11 @@ import { PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../
     console.timeEnd('simple')
 
 
-    let d = new Dataset()
-        
-
-    await orm.getRepository()
-        .dataset()
-        .from(repository.models.Shop.datasource("myShop"))
+    await dataset()
+        .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
-            name: new Scalar(new UnknownPropertyTypeDefinition(), makeRaw(repository, '?', 'hello') )
+            name: new Scalar(new UnknownPropertyTypeDefinition(), makeRaw(orm.getRepository(), '?', 'hello') )
         }).execute({
             onSqlRun: console.log
         })
