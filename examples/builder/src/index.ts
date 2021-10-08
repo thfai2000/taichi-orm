@@ -147,6 +147,15 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
             onSqlRun: console.log
         }))
 
+
+    console.log('test groupBy', await dataset()
+        .from(Shop.datasource("myShop"))
+        .groupByProps('hour')
+        .selectProps('name')
+        .execute({
+            onSqlRun: console.log
+        }))
+
         // TODO: groupBy, having
         // cater selectProps , computed
         // addSelectProps

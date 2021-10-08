@@ -250,6 +250,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     #fromItem: null | Datasource<Schema, string> = null
     #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
+    #groupBy: { [key: string]: Scalar<any> } | null = null
     #limit: null | number = null
     #offset: null | number = null
     #repository: EntityRepository<any> | null = null
@@ -349,7 +350,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#selectItems){
-            const selectItems = await this.resolveSelectItems(this.#selectItems, repository)
+            const selectItems = await this.scalarMap2RawArray(this.#selectItems, repository)
             if(selectItems.length === 0 && !this.#fromItem){
                 throw new Error('No SELECT and FROM are provided for Dataset')
             }
@@ -357,7 +358,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#updateItems){
-            const updateItems = await this.resolveUpdateItems(this.#updateItems, repository)
+            const updateItems = await this.scalarMap2RawMap(this.#updateItems, repository)
             if(Object.keys(updateItems).length === 0 && !this.#fromItem){
                 throw new Error('No UPDATE and FROM are provided for Dataset')
             }
@@ -414,46 +415,42 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         , 
         SourceProps, SourcePropMap, FromSource>{
        
-        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
-        let fields = properties as string[]
-        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
-            let [source, field] = key.split('.')
-            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
-            if(!field){
-                field = source
-                if(!this.#fromItem){
-                    throw new Error(`There must be a FROM`)
-                }
-                let from = this.#fromItem.selectorMap() as SelectorMap< {[key:string]: any}>
-                item = from[field]
-            }
-            else {
-                item = map[source][field]
-            }
-
-            if(!item){
-                throw new Error('Cannot resolve field')
-            }else if(item instanceof Column){
-                acc = Object.assign({}, acc, item.value() )
-            }else {
-                acc = Object.assign({}, acc, item().value() )    
-            }
-            
-            return acc
-        }, {})
-
-        this.#selectItems = nameMap
+        this.#selectItems = this.propNameArray2ScalarMap(properties as string[])
         return this as any
     }
 
-    // type<I>(parsableType: ParsableTrait<I>){
-    //     this.parsableType = parsableType
-    // }
+    groupByProps<P extends keyof SourceProps>(...properties: P[]): 
+        Dataset<
+            UnionToIntersection<
+            SelectProps |
+            {
+                [key in keyof SourceProps
+                    as 
+                    (
+                        key extends P? (
+                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
+                            N & string
+                            : 
+                            never
+                        ): never
+                        
+                    )
+                ]: 
+                    key extends P? (
+                            SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
+                            C
+                            : 
+                            never
+                        ): never
+            }
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource>{
+       
+        this.#groupBy = this.propNameArray2ScalarMap(properties as string[])
+        return this as any
+    }
 
-    // getType(): ParsableTrait<any> {
-
-    // }
-        
     select<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
@@ -472,23 +469,54 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         , 
         SourceProps, SourcePropMap, FromSource> {
 
-        let nameMap: { [key: string]: Scalar<any> }
+        const result = this.func2ScalarMap<S, Y>(named)
+
+        this.#selectItems = result
+        return this as any
+    }
+
+    groupBy<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
+        ((map: Y ) => S ) ):
+        Dataset<
+            UnionToIntersection<
+            SelectProps
+            | 
+            {
+            [key in keyof S] :
+                S[key] extends Scalar<infer D> ?
+                    D extends PropertyTypeDefinition<any>?
+                    Property<D>
+                    : never
+                : never 
+            }
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource> {
+
+        const result = this.func2ScalarMap<S, Y>(named)
+
+        this.#groupBy = result
+        return this as any
+    }
+    
+    private func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractProps<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+        let nameMap: { [key: string]: Scalar<any>} 
         let selectorMap = this.getSelectorMap()
         let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
-        
-        if(named instanceof Function){
-            Object.assign(selectorMap, this.sqlKeywords(resolver) )
+
+        if (named instanceof Function) {
+            Object.assign(selectorMap, this.sqlKeywords(resolver))
             const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
         }
 
-        this.#selectItems = Object.keys(nameMap).reduce( (acc, key) => {
+        const result = Object.keys(nameMap).reduce((acc, key) => {
             acc[key] = resolver(nameMap[key])
             return acc
-        }, {} as { [key: string]: Scalar<any> } )
-        return this as any
+        }, {} as { [key: string]: Scalar<any>} )
+        return result
     }
 
     update<S extends Partial<FieldPropertyValueMap<ExtractFieldProps< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>
@@ -516,7 +544,38 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return name
     }
 
-    private async resolveSelectItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>): Promise<Knex.Raw<any>[]> {
+    private propNameArray2ScalarMap(properties: string[]){
+        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
+        let fields = properties
+        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
+            let [source, field] = key.split('.')
+            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
+            if(!field){
+                field = source
+                if(!this.#fromItem){
+                    throw new Error(`There must be a FROM`)
+                }
+                let from = this.#fromItem.selectorMap() as SelectorMap< {[key:string]: any}>
+                item = from[field]
+            }
+            else {
+                item = map[source][field]
+            }
+
+            if(!item){
+                throw new Error('Cannot resolve field')
+            }else if(item instanceof Column){
+                acc = Object.assign({}, acc, item.value() )
+            }else {
+                acc = Object.assign({}, acc, item().value() )    
+            }
+            
+            return acc
+        }, {})
+        return nameMap
+    }
+
+    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>): Promise<Knex.Raw<any>[]> {
         const client = repository.orm.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
@@ -537,7 +596,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }))
     }
 
-    private async resolveUpdateItems(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
+    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
         const client = repository.orm.client()
         return await Object.keys(nameMap).reduce( async (accP, k) => {
 
