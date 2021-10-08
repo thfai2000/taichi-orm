@@ -88,7 +88,8 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
                     ...shop.hour.value(),
                     ...product.shopId.equals(10).asColumn('nini').value(),
                     ...product.ddd.value(),
-                    test: Scalar.fromRaw(` 5 + ?`, [3], new NumberTypeNotNull())
+                    test: Scalar.number(` 5 + ?`, [3]),
+                    ...shop.products().value()
                 })
             ).offset(0).limit(4000)
     
@@ -133,31 +134,30 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
-            name: Scalar.fromRaw(`?`,['hello'])
+            name: Scalar.value(`?`,['hello'])
         }).execute({
             onSqlRun: console.log
         })
 
     console.log('test parse', await dataset()
         .from(Shop.datasource("myShop"))
-        .selectProps('myShop.name','myShop.id','myShop.products') //fix bug for no source name
+        .selectProps('name','myShop.id','myShop.products')
         .toScalar(new ArrayType(Shop.schema))
         .execute({
             onSqlRun: console.log
         }))
 
-        //TODO: groupBy, having
+        // TODO: groupBy, having
         // cater selectProps , computed
         // addSelectProps
-})()
-
-
-// let c = {
-//         ...{a: 5},
-//         ...{b: 5},
-//         ...{c: 5},
-//         ...{d: 6},
-//         ...{e: 8},
-//         ...{f: 5}
-//     }
-// console.log(c)
+        // fix all unit tests
+        // repository.scalar()
+        // EXISTS, NOT, BETWEEN, 
+        // greaterThan, lessThan
+        // equalOrGreaterThan, equalOrLessThan
+        // minus, plus
+        // SUM, MAX, MIN
+        // delete()
+        // Scalar.boolean, Scalar.string
+        // think about migrate issue
+})();

@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { rootCertificates } from "tls"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
+import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberTypeNotNull, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -416,10 +416,29 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
        
         let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
         let fields = properties as string[]
-        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, f:string) => {
-            let [source, field] = f.split('.') 
-            let col = map[source][field]
-            acc = Object.assign({}, acc, col.value() )
+        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
+            let [source, field] = key.split('.')
+            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
+            if(!field){
+                field = source
+                if(!this.#fromItem){
+                    throw new Error(`There must be a FROM`)
+                }
+                let from = this.#fromItem.selectorMap() as SelectorMap< {[key:string]: any}>
+                item = from[field]
+            }
+            else {
+                item = map[source][field]
+            }
+
+            if(!item){
+                throw new Error('Cannot resolve field')
+            }else if(item instanceof Column){
+                acc = Object.assign({}, acc, item.value() )
+            }else {
+                acc = Object.assign({}, acc, item().value() )    
+            }
+            
             return acc
         }, {})
 
@@ -692,10 +711,18 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         this.repository = repository ?? null
     }
 
-    static fromRaw<D extends PropertyTypeDefinition<any>>(sql: string, args: any[], definition?: D): Scalar<D >{
+    static value<D extends PropertyTypeDefinition<any>>(sql: string, args: any[], definition?: D): Scalar<D >{
         return new Scalar( (repository: EntityRepository<any>) => makeRaw(repository, sql, args), definition )
     }
 
+    static numberNotNull(sql: string, args: any[]) {
+        return Scalar.value(sql, args, new NumberTypeNotNull() )
+    }
+
+    static number(sql: string, args: any[]) {
+        return Scalar.value(sql, args, new NumberType() )
+    }
+    
     equals(rightOperand: any): Scalar<BooleanTypeNotNull> {
         return new EqualOperator(this, rightOperand).toScalar()
     }

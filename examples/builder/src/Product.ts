@@ -15,7 +15,7 @@ export class ProductSchema extends TableSchema {
         return this.belongsTo(Shop.schema, schema => schema.shopId)
     }
     myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
-        return Scalar.fromRaw(`5 + ?`, [arg ?? 0])
+        return Scalar.value(`5 + ?`, [arg ?? 0])
     })
 }
 
