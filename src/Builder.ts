@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { rootCertificates } from "tls"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanNotNullType, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringNotNullType, UnknownPropertyTypeDefinition } from "./PropertyType"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -82,7 +82,7 @@ type SelectItem = {
 }
 
 export interface Scalarable<T extends PropertyTypeDefinition<any> > {
-    toScalar(type?: T): Scalar<T>
+    toScalar(type?: T | (new (...args: any[]) => T) ): Scalar<T>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
 
@@ -95,8 +95,8 @@ export interface Datasource<E extends Schema, alias extends string> {
     realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
-    getAllFieldProperty: <T extends PropertyTypeDefinition<any>>()  => Column<string, T>[]
-    getFieldProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>    
+    getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
+    getFieldProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>>    
     getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
@@ -163,13 +163,13 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
     //     }
     // }
 
-    getAllFieldProperty<T extends PropertyTypeDefinition<any>>(): Column<string, T>[] {
+    getAllFieldProperty(): Column<string, PropertyTypeDefinition<any>>[] {
         return Object.keys(this.schema.propertiesMap)
         .map(key => (this.schema.propertiesMap[key] instanceof FieldProperty)? this.getFieldProperty(key) :null )
         .filter(notEmpty)
     }
 
-    getFieldProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name): Column<Name, T> {
+    getFieldProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof FieldProperty)){
             throw new Error(`it is not field property ${name}`)
@@ -192,10 +192,13 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         }else{
             const cProp = prop
             return (args?: ARG) => {
-                return new Column(name, (entityRepository) => {
+            
+                let col = new Column<Name, R>(name, (entityRepository) => {
                     const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, args)
                     return thenResult( subquery, scalarable => scalarable.toScalar(cProp.definition) )
                 }, cProp.definition)
+
+                return col
             }
         }
     }
@@ -391,8 +394,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return this
     }
 
-    toScalar<T extends PropertyTypeDefinition<any> >(t: T): Scalar<T>{
-        return new Scalar(this, t, this.#repository)
+    toScalar<T extends PropertyTypeDefinition<any> >(type?: T | (new (...args: any[]) => T)): Scalar<T>{
+        return new Scalar(this, type, this.#repository)
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
@@ -760,20 +763,27 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
 type RawExpression = ( (repository: EntityRepository<any>) => RawUnit) | RawUnit
 
-export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarable<any> {
+export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarable<T> {
     // __type: 'Scalar'
     // __definition: PropertyTypeDefinition | null
 
-    readonly definition: PropertyTypeDefinition<any>
+    readonly definition: T | PropertyTypeDefinition<any>
     protected expressionOrDataset: RawExpression
     protected repository: EntityRepository<any> | null = null
     
     // protected dataset:  | null = null
 
     constructor(expressionOrDataset: RawExpression, 
-        definition: PropertyTypeDefinition<any> = new PropertyTypeDefinition(),
+        definition?: T | (new (...args: any[]) => T) | PropertyTypeDefinition<any>,
         repository?: EntityRepository<any> | null){
-        this.definition = definition
+
+        if(!definition){
+            this.definition = new PropertyTypeDefinition<any>()
+        } else if(definition instanceof PropertyTypeDefinition){
+            this.definition = definition
+        } else {
+            this.definition = new definition()
+        }
         this.expressionOrDataset = expressionOrDataset
         this.repository = repository ?? null
     }
@@ -862,7 +872,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         return new Column(propName, this.expressionOrDataset, this.definition, this.repository)
     }
 
-    toScalar<P extends PropertyTypeDefinition<any> = T>(definition?: P): Scalar<P>{
+    toScalar<P extends PropertyTypeDefinition<any> = T>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
         const d = definition ??  this.definition
         return new Scalar(this.toRealRaw(), d, this.repository)
     }
@@ -885,7 +895,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition: PropertyTypeDefinition<any>, repository?: EntityRepository<any> | null){
+    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, repository?: EntityRepository<any> | null){
         super(expressionOrDataset, definition, repository)
         this.alias = alias
         // this.scalarable = scalarable
@@ -1035,7 +1045,7 @@ export async function resolveEntityProps<T extends typeof Entity, D extends T["s
         })
     }
     let fieldCols = source.schema.properties.filter(prop => !(prop instanceof ComputeProperty) )
-        .map(prop => source.getFieldProperty<string, any>(prop.name).value() )
+        .map(prop => source.getFieldProperty(prop.name).value() )
     let r = Object.assign({}, ...fieldCols, ...computedCols)
     return r as { [key: string]: Scalar<any> }
 }

@@ -237,9 +237,9 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends P
 
 export class Schema implements ParsableTrait<any>{
 
-    properties: (ComputeProperty<ComputePropertyTypeDefinition<any>, Schema, string, any> 
+    properties: (ComputeProperty<PropertyTypeDefinition<any>, Schema, string, any> 
         | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
-    propertiesMap: {[key:string]: (ComputeProperty<ComputePropertyTypeDefinition<any>, Schema, string, any> 
+    propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition<any>, Schema, string, any> 
         | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)} = {}
     
     // id: PropertyDefinition

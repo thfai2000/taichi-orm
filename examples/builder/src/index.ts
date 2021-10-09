@@ -45,7 +45,7 @@ import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
         name: '333',
         hour: 5
     })
-
+    
     console.log('finished-1', shop1)
     
     for (let i = 0; i < 5; i++) {      
