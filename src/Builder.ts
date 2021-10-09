@@ -771,7 +771,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
     // protected dataset:  | null = null
 
     constructor(expressionOrDataset: RawExpression, 
-        definition: PropertyTypeDefinition<any> = new UnknownPropertyTypeDefinition(),
+        definition: PropertyTypeDefinition<any> = new PropertyTypeDefinition(),
         repository?: EntityRepository<any> | null){
         this.definition = definition
         this.expressionOrDataset = expressionOrDataset

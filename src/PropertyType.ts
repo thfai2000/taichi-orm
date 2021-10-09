@@ -53,7 +53,7 @@ export type Parsable<I> = {
 }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
-export abstract class PropertyTypeDefinition<I> implements ParsableTrait<I> {
+export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
     protected options = {}
     get nullable() {
         return true
@@ -82,6 +82,10 @@ export abstract class PropertyTypeDefinition<I> implements ParsableTrait<I> {
 }
 
 export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+
+    constructor(options?: any){
+        super(options)
+    }
     abstract create(propName: string, fieldName: string, repository: EntityRepository<any>): string[]
 }
 
@@ -91,17 +95,24 @@ export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinit
 // }
 
 export abstract class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+
+    constructor(options?: any){
+        super(options)
+    }
     // abstract parseRaw(rawValue: any, repository: EntityRepository<any>, prop: string): I
     // abstract parseProperty(propertyvalue: I, repository: EntityRepository<any>, prop: string): any
 }
 
-export class UnknownPropertyTypeDefinition extends PropertyTypeDefinition<any> {
-}
+// export class UnknownPropertyTypeDefinition extends PropertyTypeDefinition<any> {
+//     constructor(options?: any){
+//         super(options)
+//     }
+// }
 
 export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
 
-    constructor(){
-        super()
+    constructor(options?: any){
+        super(options)
     }
 
     get nullable() {

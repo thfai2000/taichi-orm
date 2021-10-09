@@ -3,7 +3,7 @@ import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTypeDefinition } from "../../../dist/PropertyType"
+import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
 
 
 (async() => {
@@ -159,7 +159,7 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
             h1: myShop.hour,
             cnt: Scalar.value(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar(new NumberTypeNotNull())
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar(NumberNotNullType)
         }))
         .execute({
             onSqlRun: console.log

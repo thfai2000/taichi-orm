@@ -999,7 +999,7 @@ class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<
         return this
     }
 
-    usingConnectionIfAny(trx: Knex.Transaction): this{
+    usingConnectionIfAny(trx?: Knex.Transaction | null): this{
         if(trx){
             this.execOptions.trx = trx
         }
