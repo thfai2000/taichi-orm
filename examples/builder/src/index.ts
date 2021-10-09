@@ -158,7 +158,8 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
         .select(({myShop}) => ({
             h1: myShop.hour,
             cnt: Scalar.value(`COUNT(?)`, [myShop.hour]),
-            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)])
+            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar(new NumberTypeNotNull())
         }))
         .execute({
             onSqlRun: console.log

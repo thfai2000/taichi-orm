@@ -1,84 +1,87 @@
-import {builder, raw, configure, Schema, Entity, Types, models, globalContext} from '../dist/'
-import {snakeCase, omit} from 'lodash'
+import {Entity, ORM, TableSchema} from '../dist/'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-// import {clearSysFields} from './util'
+import { PrimaryKeyType, 
+        StringTypeNotNull, 
+        StringType,
+        BooleanType,
+        BooleanTypeNotNull,
+        DecimalType,
+        DecimalTypeNotNull,
+        DateTimeType,
+        DateTimeTypeNotNull,
+        NumberType,
+        NumberTypeNotNull
+      } from '../dist/PropertyType'
+      
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
-
-      static register(schema: Schema){
-          schema.prop('location', Types.String({nullable: false, length: 255}))
-      }
+class ShopSchema extends TableSchema {
+    id= this.field(PrimaryKeyType)
+    uuid = this.field(StringTypeNotNull)
+    location = this.field(new StringTypeNotNull({length:255}))
+    get products(){
+        return this.hasMany(Product.schema, schema => schema.shopId)
     }
-    
-    class Product extends Entity{
-    
-      static register(schema: Schema){
-          schema.prop('name', Types.String({nullable: true, length: 255}))
-          schema.prop('isActive', Types.Boolean())
-          schema.prop('price', Types.Decimal({precision: 7, scale: 2}))
-          schema.prop('createdAt', Types.DateTime({precision: 6}))
-          schema.prop('shopId', Types.Number())
-      }
-    }
-
-    class StrictProduct extends Entity{
-    
-      static register(schema: Schema){
-          schema.prop('name', Types.String({nullable: false, length: 255}))
-          schema.prop('isActive', Types.Boolean({nullable: false}))
-          schema.prop('price', Types.Decimal({nullable: false, precision: 5, scale: 2}))
-          schema.prop('createdAt', Types.DateTime({nullable: false}))
-          schema.prop('shopId', Types.Number({nullable: false}))
-      }
-    }
-
-
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
-
-    await configure({
-        models: {Shop, Product, StrictProduct},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
 }
 
-const clearDatabase = () => {
-
+class Shop extends Entity {
+    static schema = new ShopSchema()
 }
 
-beforeEach( async () => {
-    await initializeDatabase();
-});
+class ProductSchema extends TableSchema{
+    id= this.field(PrimaryKeyType)
+    uuid = this.field(StringTypeNotNull)
+    name = this.field(StringType)
+    isActive = this.field(BooleanType)
+    price = this.field(new DecimalType({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeType({precision: 6}))
+    shopId = this.field(NumberType)
+}
 
-afterEach(() => {
-    return clearDatabase();
-});
+class Product extends Entity {
+    static schema = new ProductSchema()
+}
 
-// test('test jest', () => {
-//   expect([1,2,3]).toEqual([1,3,2]);
+class StrictProductSchema extends TableSchema{
+    id= this.field(PrimaryKeyType)
+    uuid = this.field(StringTypeNotNull)
+    name = this.field(StringTypeNotNull)
+    isActive = this.field(BooleanTypeNotNull)
+    price = this.field(new DecimalTypeNotNull({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeTypeNotNull({precision: 6}))
+    shopId = this.field(NumberTypeNotNull)
+}
 
-// })
+
+class StrictProduct extends Entity{
+    static schema = new StrictProductSchema()
+}
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
+
+let orm = new ORM({
+    models: {Shop, Product, StrictProduct},
+    enableUuid: true,
+    entityNameToTableName: (className: string) => snakeCase(className),
+    propNameTofieldName: (propName: string) => snakeCase(propName),
+    knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
+
 
 describe('Basic Read and Write', () => {
 
   test('Create and Find Shop', async () => {
 
+    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    await repo.createModels()
+    let {Shop, Product} = repo.models
+
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
     }
-    let shop1 = await models.Shop.createOne({
+    let shop1 = await Shop.createOne({
       ...omit(expectedShop1, ['id'])
     })
     expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
@@ -87,7 +90,7 @@ describe('Basic Read and Write', () => {
       id: 2,
       location: 'Yuen Long'
     }
-    let shop2 = await models.Shop.createOne({
+    let shop2 = await Shop.createOne({
       ...omit(expectedShop2, ['id'])
     })
     expect(shop2).toMatchObject(expect.objectContaining(expectedShop2))
@@ -97,7 +100,7 @@ describe('Basic Read and Write', () => {
       name: 'Product 1',
       shopId: shop1.id
     }
-    let product1 = await models.Product.createOne({
+    let product1 = await Product.createOne({
       ...omit(expectedProduct1, ['id'])
     })
 
@@ -108,7 +111,7 @@ describe('Basic Read and Write', () => {
       name: 'Product 2',
       shopId: shop1.id
     }
-    let product2 = await models.Product.createOne({
+    let product2 = await Product.createOne({
       ...omit(expectedProduct2, ['id'])
     })
 
@@ -119,25 +122,33 @@ describe('Basic Read and Write', () => {
       name: 'Product 3',
       shopId: shop2.id
     }
-    let product3 = await models.Product.createOne({
+    let product3 = await Product.createOne({
       ...omit(expectedProduct3, ['id'])
     })
 
     expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
-    let foundShop1ById = await models.Shop.findOne((stmt, s) => stmt.filter({id: shop1.id}))
-    let foundShop1ByLocation = await models.Shop.findOne((stmt, s) => stmt.filter({location: expectedShop1.location}))
+    let foundShop1ById = await Shop.findOne({
+      where: {id: shop1.id}
+    })
+    let foundShop1ByLocation = await Shop.findOne({
+      where: {location: expectedShop1.location}
+    })
 
     expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
     expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
-    let foundShop2ById = await models.Shop.findOne((stmt, s) => stmt.filter({id: shop2.id}))
+    let foundShop2ById = await Shop.findOne({
+      where: {id: shop2.id}
+    })
     expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
-    let foundShopNotExists = await models.Shop.findOne((stmt, s) => stmt.filter({id: 100000}))
+    let foundShopNotExists = await Shop.findOne({
+      where: {id: 100000}
+    })
     expect(foundShopNotExists).toBeNull()
 
-    let foundAllShop = await models.Shop.find()
+    let foundAllShop = await Shop.find()
     expect(foundAllShop).toEqual(
       [
         expect.objectContaining(expectedShop1), 
@@ -145,14 +156,18 @@ describe('Basic Read and Write', () => {
       ] 
     )
 
-    let foundProductsByShopId1 = await models.Product.find((stmt, s) => stmt.toQueryBuilder().where(s({shopId: shop1.id})) )
+    let foundProductsByShopId1 = await Product.find({
+      where: {shopId: shop1.id}
+    })
     expect(foundProductsByShopId1).toEqual( 
       [
         expect.objectContaining(expectedProduct1), 
         expect.objectContaining(expectedProduct2)
       ]
     )
-    let foundProductsByShopId2 = await models.Product.find((stmt, s) => stmt.toQueryBuilder().where(s({shopId: shop2.id})) )
+    let foundProductsByShopId2 = await Product.find({
+      where: {shopId: shop2.id}
+    })
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
   });
@@ -162,6 +177,11 @@ describe('Basic Read and Write', () => {
 describe('Type Parsing', () => {
 
   test('Parsing Value', async () => {
+
+    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    await repo.createModels()
+    let {Product} = repo.models
+
     let expectedProduct1 = {
       id: 1,
       name: 'My Product',
@@ -170,7 +190,7 @@ describe('Type Parsing', () => {
       createdAt: new Date(),
       shopId: 2
     }
-    let product1 = await models.Product.createOne({
+    let product1 = await Product.createOne({
       ...expectedProduct1
     })
 
@@ -180,6 +200,10 @@ describe('Type Parsing', () => {
 
   test('Parsing Null', async () => {
 
+    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    await repo.createModels()
+    let {Product} = repo.models
+
     let expectedProduct2 = {
       id: 2,
       name: null,
@@ -188,7 +212,7 @@ describe('Type Parsing', () => {
       createdAt: null,
       shopId: null
     }
-    let product2 = await models.Product.createOne({
+    let product2 = await Product.createOne({
       ...expectedProduct2
     })
 

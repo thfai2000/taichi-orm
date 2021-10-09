@@ -268,6 +268,34 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
     }
 }
 
+export class DecimalTypeNotNull extends FieldPropertyTypeDefinition<number>  {
+
+    protected options: DecimalTypeOptions
+    
+    constructor(options: Partial<DecimalTypeOptions> = {}){
+        super()
+        this.options = { ...options}
+    }
+
+    get nullable() {
+        return false
+    }
+
+    create(propName: string, fieldName: string, repository: EntityRepository<any>){
+        const client = repository.orm.client()
+        let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
+
+        return [
+            [
+                `${quote(client, fieldName)}`, 
+                `DECIMAL${c.length > 0?`(${c})`:''}`,
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
+            ].join(' ')
+        ]
+    }
+}
+
 type BooleanTypeOptions = {default?: boolean }
 export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
     protected options: BooleanTypeOptions
@@ -281,25 +309,25 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         return true
     }
 
-    // parseRaw(rawValue: any, propName: string, client: string): boolean | null {
-    //     //TODO: warning if nullable is false but value is null
-    //     if(rawValue === null)
-    //         return null
-    //     else if(rawValue === true)
-    //         return true
-    //     else if(rawValue === false)
-    //         return false
-    //     else if(Number.isInteger(rawValue)){
-    //         return parseInt(rawValue) > 0
-    //     }
-    //     throw new Error('Cannot parse Raw into Boolean')
-    // }
-    // parseProperty(propertyvalue: boolean | null, propName: string, client: string): any {
-    //     if(propertyvalue === null && !this.nullable){
-    //         throw new Error(`The Property '${propName}' cannot be null.`)
-    //     }
-    //     return propertyvalue === null? null: (propertyvalue? '1': '0')
-    // }
+    override parseRaw(rawValue: any, repository: EntityRepository<any>,propName: string): boolean | null {
+        //TODO: warning if nullable is false but value is null
+        if(rawValue === null)
+            return null
+        else if(rawValue === true)
+            return true
+        else if(rawValue === false)
+            return false
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue) > 0
+        }
+        throw new Error('Cannot parse Raw into Boolean')
+    }
+    override parseProperty(propertyvalue: boolean | null, repository: EntityRepository<any>,propName: string): any {
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue === null? null: (propertyvalue? '1': '0')
+    }
 
     create(propName: string, fieldName: string, repository: EntityRepository<any>){
         const client = repository.orm.client()
@@ -327,25 +355,24 @@ export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
         return true
     }
 
-    // parseRaw(rawValue: any, propName: string, client: string): boolean {
-    //     //TODO: warning if nullable is false but value is null
-    //     if(rawValue === null)
-    //         throw new Error('Cannot null')
-    //     else if(rawValue === true)
-    //         return true
-    //     else if(rawValue === false)
-    //         return false
-    //     else if(Number.isInteger(rawValue)){
-    //         return parseInt(rawValue) > 0
-    //     }
-    //     throw new Error('Cannot parse Raw into Boolean')
-    // }
-    // parseProperty(propertyvalue: boolean, propName: string, client: string): any {
-    //     if(propertyvalue === null && !this.nullable){
-    //         throw new Error(`The Property '${propName}' cannot be null.`)
-    //     }
-    //     return propertyvalue === null? null: (propertyvalue? '1': '0')
-    // }
+    override parseRaw(rawValue: any, repository: EntityRepository<any>,propName: string): boolean {
+        if(rawValue === null)
+            throw new Error('Not expected null')
+        else if(rawValue === true)
+            return true
+        else if(rawValue === false)
+            return false
+        else if(Number.isInteger(rawValue)){
+            return parseInt(rawValue) > 0
+        }
+        throw new Error('Cannot parse Raw into Boolean')
+    }
+    override parseProperty(propertyvalue: boolean, repository: EntityRepository<any>,propName: string): any {
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue === null? null: (propertyvalue? '1': '0')
+    }
 
     create(propName: string, fieldName: string, repository: EntityRepository<any>){
         const client = repository.orm.client()
@@ -499,6 +526,44 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     }
 
     override parseProperty(propertyvalue: Date | null, repository: EntityRepository<any>, propName?: string): any {
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue
+    }
+
+   create(propName: string, fieldName: string, repository: EntityRepository<any>){
+       const client = repository.orm.client()
+        let c = [this.options.precision].filter(v => v).join(',')
+        return [
+            [
+                `${quote(client, fieldName)}`,
+                (client.startsWith('pg')? `TIMESTAMP${c.length > 0?`(${c})`:''}`: `DATETIME${c.length > 0?`(${c})`:''}`),
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, repository, propName)}`:'') 
+            ].join(' ')
+        ]
+    }
+}
+
+export class DateTimeTypeNotNull extends FieldPropertyTypeDefinition<Date> {
+    protected options: DateTimeTypeOptions
+
+    constructor(options: Partial<DateTimeTypeOptions> = {}){
+        super()
+        this.options = { ...options}
+    }
+
+    get nullable() {
+        return false
+    }
+
+    override parseRaw(rawValue: any): Date {
+        //TODO: warning if nullable is false but value is null
+        return new Date(rawValue)
+    }
+
+    override parseProperty(propertyvalue: Date, repository: EntityRepository<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }

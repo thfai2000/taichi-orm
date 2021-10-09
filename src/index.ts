@@ -826,9 +826,9 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         }
         let result = null
         try{
-            console.time('execute-stmt')
+            // console.time('execute-stmt')
             result = await KnexStmt
-            console.timeEnd('execute-stmt')
+            // console.timeEnd('execute-stmt')
         }catch(error){
             throw error
         }
@@ -848,9 +848,9 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
                 // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
     }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]> =>
      {
-        console.time('construct-sql')
+        // console.time('construct-sql')
         const nativeSql = await dataset.toNativeBuilder(this)
-        console.timeEnd('construct-sql')
+        // console.timeEnd('construct-sql')
         // console.log('nativeSql', nativeSql.toString())
         let data = await this.executeStatement(nativeSql, executionOptions)
         // console.log('data', data)
@@ -869,7 +869,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
         } else {
             if(Array.isArray(rows)){
     
-                console.time('parsing')
+                // console.time('parsing')
                 const repository = this
                 const len = rows.length
                 let parsedRows = new Array(len) as R[]
@@ -879,7 +879,7 @@ export class EntityRepository<EntityClassMap extends {[key:string]: typeof Entit
                     parsedRows[i] = schema.parseRaw(rows[i], repository)
                 }
             
-                console.timeEnd('parsing')
+                // console.timeEnd('parsing')
                 // console.log('parsed', parsedRows)
                 return parsedRows 
             }
