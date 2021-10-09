@@ -150,15 +150,22 @@ import { ArrayType, NumberTypeNotNull, PropertyTypeDefinition, UnknownPropertyTy
 
     console.log('test groupBy', await dataset()
         .from(Shop.datasource("myShop"))
+        .where(({myShop, And})=> And(
+            myShop.hour.equals(myShop.hour),
+            myShop.hour.equals(myShop.hour)
+        ))
         .groupByProps('hour')
-        .selectProps('name')
+        .select(({myShop}) => ({
+            h1: myShop.hour,
+            cnt: Scalar.value(`COUNT(?)`, [myShop.hour]),
+            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)])
+        }))
         .execute({
             onSqlRun: console.log
         }))
 
-        // TODO: groupBy, having
-        // cater selectProps , computed
-        // addSelectProps
+        // TODO: having
+        // TODO: addSelectProps
         // fix all unit tests
         // repository.scalar()
         // EXISTS, NOT, BETWEEN, 

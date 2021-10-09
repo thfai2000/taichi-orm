@@ -250,7 +250,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     #fromItem: null | Datasource<Schema, string> = null
     #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     
-    #groupBy: { [key: string]: Scalar<any> } | null = null
+    #groupByItems: { [key: string]: Scalar<any> } | null = null
     #limit: null | number = null
     #offset: null | number = null
     #repository: EntityRepository<any> | null = null
@@ -335,6 +335,14 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             nativeQB.where( where )
         }
 
+        if(this.#groupByItems){
+            const groupByItems = await this.scalarMap2RawArray(this.#groupByItems, repository, false)
+            if(groupByItems.length === 0){
+                throw new Error('No groupByItems')
+            }
+            nativeQB.groupByRaw( groupByItems.map(item => item.toString()).join(',') )
+        }
+
         if(this.#offset) {
             if(this.#updateItems){
                 throw new Error('Cannot use limit on update')
@@ -350,7 +358,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#selectItems){
-            const selectItems = await this.scalarMap2RawArray(this.#selectItems, repository)
+            const selectItems = await this.scalarMap2RawArray(this.#selectItems, repository, true)
             if(selectItems.length === 0 && !this.#fromItem){
                 throw new Error('No SELECT and FROM are provided for Dataset')
             }
@@ -447,7 +455,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         , 
         SourceProps, SourcePropMap, FromSource>{
        
-        this.#groupBy = this.propNameArray2ScalarMap(properties as string[])
+        this.#groupByItems = this.propNameArray2ScalarMap(properties as string[])
         return this as any
     }
 
@@ -495,7 +503,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 
         const result = this.func2ScalarMap<S, Y>(named)
 
-        this.#groupBy = result
+        this.#groupByItems = result
         return this as any
     }
     
@@ -575,7 +583,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return nameMap
     }
 
-    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>): Promise<Knex.Raw<any>[]> {
+    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
         const client = repository.orm.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
@@ -590,7 +598,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(repository, `${text} AS ${quote(client, this.selectItemAlias(k, scalar))}`)
+            const newRaw = makeRaw(repository, `${text}${includeAlias?` AS ${quote(client, this.selectItemAlias(k, scalar))}`:''}`)
 
             return newRaw
         }))
@@ -758,7 +766,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
 
     readonly definition: PropertyTypeDefinition<any>
     protected expressionOrDataset: RawExpression
-    private repository: EntityRepository<any> | null = null
+    protected repository: EntityRepository<any> | null = null
     
     // protected dataset:  | null = null
 
@@ -770,8 +778,22 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         this.repository = repository ?? null
     }
 
-    static value<D extends PropertyTypeDefinition<any>>(sql: string, args: any[], definition?: D): Scalar<D >{
-        return new Scalar( (repository: EntityRepository<any>) => makeRaw(repository, sql, args), definition )
+    static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D >{
+        return new Scalar( (repository: EntityRepository<any>) => {
+            if(!args){
+                return makeRaw(repository, sql)
+            } else {
+                const rawArgs = args.map( (arg) => {
+                    if(arg instanceof Scalar){
+                        return arg.toRaw(repository)
+                    } else if(arg instanceof Dataset){
+                        return arg.toNativeBuilder(repository)
+                    }
+                    return arg
+                })
+                return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(repository, sql, rawArgs)) )
+            }
+        }, definition)
     }
 
     static numberNotNull(sql: string, args: any[]) {
@@ -790,8 +812,18 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         return this.expressionOrDataset
     }
 
-    toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw> {
-        const client = repository.orm.client()
+    // toString() {
+    //     if(this.repository){
+    //         return this.toRaw().toString()
+    //     }
+    //     return super.toString()
+    // }
+
+    toRaw(repository?: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw> {
+        const repo = (repository ?? this.repository)
+        if(!repo){
+            throw new Error('There is no repository provided')
+        }
         const expressionOrDataset = this.expressionOrDataset
 
         const resolveIntoRawOrDataset = (ex: RawExpression ):
@@ -808,7 +840,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
                     
                 } else if( ex instanceof Function){
                     // console.log('resolve', ex.toString())
-                    return resolveIntoRawOrDataset(ex(repository))
+                    return resolveIntoRawOrDataset(ex(repo))
                 }
                 // console.log('here 3')
                 return ex
@@ -817,54 +849,22 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
 
         return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
             if(!(rawOrDataset instanceof Dataset)){
-                const next = makeRaw(repository, rawOrDataset.toString())
-                return this.definition.transformQuery(next, repository)
+                const next = makeRaw(repo, rawOrDataset.toString())
+                return this.definition.transformQuery(next, repo)
             } else {
-                return this.definition.transformQuery(rawOrDataset, repository)
+                return this.definition.transformQuery(rawOrDataset, repo)
             }
-
-            // if('transformQuery' in this.definition){
-            //     const transformQuery = this.definition.transformQuery
-            //     const definition = this.definition
-            //     if(rawOrDataset instanceof Dataset){
-            //         const dataset = rawOrDataset
-                    
-            //         return thenResult(dataset.toNativeBuilder(repository), oldSql => {
-            //             const sql = transformQuery(oldSql, dataset.selectItemsAlias(), 'column1', client)
-            //             const newRaw = makeRaw(repository, sql)
-            //             return newRaw
-            //         })
-
-            //     } else {
-    
-            //         const sql = transformQuery(rawOrDataset, ['column1'], 'column1', client)
-            //         const newRaw = makeRaw(repository, sql)
-            //         return newRaw
-            //     }
-            // } else {
-            //     if(rawOrDataset instanceof Dataset){
-            //         const dataset = rawOrDataset
-                        
-            //         return thenResult(dataset.toNativeBuilder(repository), sql => {
-            //             return makeRaw(repository, sql.toString())
-            //         })
-                
-            //     } else {
-            //         return makeRaw(repository, rawOrDataset.toString())
-            //     }
-            // }
-
         })
 
     }
 
     asColumn<Name extends string>(propName: Name): Column<Name, T> {
-        return new Column(propName, this.expressionOrDataset, this.definition)
+        return new Column(propName, this.expressionOrDataset, this.definition, this.repository)
     }
 
     toScalar<P extends PropertyTypeDefinition<any> = T>(definition?: P): Scalar<P>{
         const d = definition ??  this.definition
-        return new Scalar(this.toRealRaw(), d)
+        return new Scalar(this.toRealRaw(), d, this.repository)
     }
 
     async execute(executionOptions?: ExecutionOptions, repo?: EntityRepository<any>): 
@@ -885,8 +885,8 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition: PropertyTypeDefinition<any>){
-        super(expressionOrDataset, definition)
+    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition: PropertyTypeDefinition<any>, repository?: EntityRepository<any> | null){
+        super(expressionOrDataset, definition, repository)
         this.alias = alias
         // this.scalarable = scalarable
     }
