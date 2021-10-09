@@ -188,7 +188,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
     }
 }
 
-export class NumberTypeNotNull extends FieldPropertyTypeDefinition<number> {
+export class NumberNotNullType extends FieldPropertyTypeDefinition<number> {
 
     protected options: NumberTypeOptions
     
@@ -268,7 +268,7 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
     }
 }
 
-export class DecimalTypeNotNull extends FieldPropertyTypeDefinition<number>  {
+export class DecimalNotNullType extends FieldPropertyTypeDefinition<number>  {
 
     protected options: DecimalTypeOptions
     
@@ -342,7 +342,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
     }
 }
 
-export class BooleanTypeNotNull extends FieldPropertyTypeDefinition<boolean>  {
+export class BooleanNotNullType extends FieldPropertyTypeDefinition<boolean>  {
 
     protected options: BooleanTypeOptions
 
@@ -428,7 +428,7 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
 
 }
 
-export class StringTypeNotNull extends FieldPropertyTypeDefinition<string> {
+export class StringNotNullType extends FieldPropertyTypeDefinition<string> {
 
     protected options: StringTypeOptions
 
@@ -507,6 +507,45 @@ export class DateType extends FieldPropertyTypeDefinition<Date | null> {
     }
 }
 
+export class DateNotNullType extends FieldPropertyTypeDefinition<Date> {
+    protected options: DateTypeOptions
+
+    constructor(options: Partial<DateTypeOptions> = {}){
+        super()
+        this.options = { ...options}
+    }
+
+    get nullable() {
+        return false
+    }
+
+    override parseRaw(rawValue: any): Date {
+        if(rawValue === null){
+            throw new Error('Unexpected null value')
+        }
+        return new Date(rawValue)
+    }
+
+    override parseProperty(propertyvalue: Date, repository: EntityRepository<any>, propName?: string): any {
+        if(propertyvalue === null && !this.nullable){
+            throw new Error(`The Property '${propName}' cannot be null.`)
+        }
+        return propertyvalue
+    }
+
+    create(propName: string, fieldName: string, repository: EntityRepository<any>){
+        const client = repository.orm.client()
+        return [
+            [
+                `${quote(client, fieldName)}`,
+                `DATE`,
+                nullableText(this.nullable), 
+                (this.options?.default !== undefined?`DEFAULT ${this.parseProperty(this.options?.default, repository)}`:'') 
+            ].join(' ')
+        ]
+    }
+}
+
 type DateTimeTypeOptions = {default?: Date, precision?: number }
 export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     protected options: DateTimeTypeOptions
@@ -546,7 +585,7 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     }
 }
 
-export class DateTimeTypeNotNull extends FieldPropertyTypeDefinition<Date> {
+export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
     protected options: DateTimeTypeOptions
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){

@@ -2,23 +2,23 @@ import {Entity, ORM, TableSchema} from '../dist/'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
-        StringTypeNotNull, 
+        StringNotNullType, 
         StringType,
         BooleanType,
-        BooleanTypeNotNull,
+        BooleanNotNullType,
         DecimalType,
-        DecimalTypeNotNull,
+        DecimalNotNullType,
         DateTimeType,
-        DateTimeTypeNotNull,
+        DateTimeNotNullType,
         NumberType,
-        NumberTypeNotNull
+        NumberNotNullType
       } from '../dist/PropertyType'
       
 
 class ShopSchema extends TableSchema {
     id= this.field(PrimaryKeyType)
-    uuid = this.field(StringTypeNotNull)
-    location = this.field(new StringTypeNotNull({length:255}))
+    uuid = this.field(StringNotNullType)
+    location = this.field(new StringNotNullType({length:255}))
     get products(){
         return this.hasMany(Product.schema, schema => schema.shopId)
     }
@@ -30,7 +30,7 @@ class Shop extends Entity {
 
 class ProductSchema extends TableSchema{
     id= this.field(PrimaryKeyType)
-    uuid = this.field(StringTypeNotNull)
+    uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     isActive = this.field(BooleanType)
     price = this.field(new DecimalType({precision: 7, scale: 2}))
@@ -44,12 +44,12 @@ class Product extends Entity {
 
 class StrictProductSchema extends TableSchema{
     id= this.field(PrimaryKeyType)
-    uuid = this.field(StringTypeNotNull)
-    name = this.field(StringTypeNotNull)
-    isActive = this.field(BooleanTypeNotNull)
-    price = this.field(new DecimalTypeNotNull({precision: 7, scale: 2}))
-    createdAt = this.field(new DateTimeTypeNotNull({precision: 6}))
-    shopId = this.field(NumberTypeNotNull)
+    uuid = this.field(StringNotNullType)
+    name = this.field(StringNotNullType)
+    isActive = this.field(BooleanNotNullType)
+    price = this.field(new DecimalNotNullType({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeNotNullType({precision: 6}))
+    shopId = this.field(NumberNotNullType)
 }
 
 

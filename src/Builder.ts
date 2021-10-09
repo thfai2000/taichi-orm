@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { rootCertificates } from "tls"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanTypeNotNull, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberTypeNotNull, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringTypeNotNull, UnknownPropertyTypeDefinition } from "./PropertyType"
+import { BooleanType, BooleanNotNullType, ComputePropertyTypeDefinition, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, StringNotNullType, UnknownPropertyTypeDefinition } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -797,14 +797,14 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
     }
 
     static numberNotNull(sql: string, args: any[]) {
-        return Scalar.value(sql, args, new NumberTypeNotNull() )
+        return Scalar.value(sql, args, new NumberNotNullType() )
     }
 
     static number(sql: string, args: any[]) {
         return Scalar.value(sql, args, new NumberType() )
     }
     
-    equals(rightOperand: any): Scalar<BooleanTypeNotNull> {
+    equals(rightOperand: any): Scalar<BooleanNotNullType> {
         return new EqualOperator(this, rightOperand).toScalar()
     }
 
@@ -1004,7 +1004,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
     
                 return scalars
     
-            }, [] as Scalar<BooleanTypeNotNull>[] )
+            }, [] as Scalar<BooleanNotNullType>[] )
 
             let arr = new AndOperator<Props, M>(resolver, ...scalars)
             return resolver(arr)

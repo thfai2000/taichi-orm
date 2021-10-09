@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringTypeNotNull } from './PropertyType'
+import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
 // export { PropertyDefinition as PropertyType, types }
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc, FieldPropertyValueMap} from './Builder'
 // export const Builtin = { ComputeFn }
@@ -325,7 +325,7 @@ export class Schema implements ParsableTrait<any>{
 export abstract class TableSchema<E extends typeof Entity = typeof Entity> extends Schema implements ParsableTrait<InstanceType<E>>{
 
     abstract id: FieldProperty<PrimaryKeyType>
-    uuid?: FieldProperty<StringTypeNotNull> = undefined
+    uuid?: FieldProperty<StringNotNullType> = undefined
     hooks: Hook[] = []
     entityClass?: E
     overridedTableName?: string
