@@ -37,8 +37,8 @@ import { ExtractFieldProps } from "../../../dist/util"
     // let x: ExpectedInstance<SingleSourceArg<ShopClass['schema']>>
 
     type EntityPropertyKeyValues<E> = {
-    [key in keyof ExtractFieldProps<E>]:
-        ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
+        [key in keyof ExtractFieldProps<E>]:
+            ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
     }
 
     type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
@@ -54,34 +54,26 @@ import { ExtractFieldProps } from "../../../dist/util"
     type ExpectedInstance<F extends SingleSourceArg<any>> = EntityPropertyKeyValues< FindSchema<F> > //&  { [k in keyof F["select"]]: string }
 
 
-    class Filter<T extends TableSchema> {
-        constructor(private options: any) {
+    // class Filter<T extends TableSchema> {
+    //     constructor(private options: any) {
             
-        }
-    }
+    //     }
+    // }
 
-    class B extends TableSchema {
-        id = new FieldProperty<PrimaryKeyType>(new PrimaryKeyType())
-        c = this.field(StringType)
-        myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
-            return Scalar.value(`5 + ?`, [arg ?? 0])
-        })
-        static hello<Sc extends TableSchema, F extends Filter<Sc>>
-            (this: (new (...args:any[])=> Sc) & typeof TableSchema, s: F): F {
-            throw new Error('xxx')
-        }
-    }
+    // class B extends TableSchema {
+    //     id = new FieldProperty<PrimaryKeyType>(new PrimaryKeyType())
+    //     c = this.field(StringType)
+    //     myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
+    //         return Scalar.value(`5 + ?`, [arg ?? 0])
+    //     })
+    //     static hello<Sc extends TableSchema, F extends Filter<Sc>>
+    //         (this: (new (...args:any[])=> Sc) & typeof TableSchema, s: F): F {
+    //         throw new Error('xxx')
+    //     }
+    // }
 
     
-    let z = B.hello(new Filter())
-    
-
-
-
-  
-
-
-
+    // let z = B.hello(new Filter())
     
     let s = Shop.datasource('shop')
     
@@ -178,6 +170,7 @@ import { ExtractFieldProps } from "../../../dist/util"
         offset: 0,
         limit: 5000
     })
+
     console.log('aaaa', allShopsX[0].products.length)
     console.timeEnd('simple')
 
@@ -217,6 +210,10 @@ import { ExtractFieldProps } from "../../../dist/util"
             onSqlRun: console.log
         }))
 
+        //TODO: dynamic result type on 'find'
+        //TODO: dataset api use DatabaseAction chain
+
+        // TODO: orderBy
         // TODO: having
         // TODO: addSelectProps
         // fix all unit tests

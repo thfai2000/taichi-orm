@@ -1,7 +1,7 @@
-import { Entity, EntityRepository, ORM, TableSchema } from "../../../dist"
-import { BooleanType, NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/PropertyType"
+import { Entity, TableSchema } from "../../../dist"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/PropertyType"
 // import { belongsTo, hasMany } from "../../../dist/Relation"
-import { Dataset, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
+import { Scalar, Scalarable } from "../../../dist/Builder"
 // import { Shop } from "./orm"
 import Shop from "./Shop"
 

@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { rootCertificates } from "tls"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, EntityRepository, ORM, Entity, Property } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseRepository, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
@@ -35,17 +35,6 @@ export type MutationEntityPropertyKeyValues<E> = {
              ): E[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D> ): never): never
              
 }
-
-// type A<E> = Pick<E, ({
-//     [key in keyof E]:
-//         E[key] extends Prefixed<any, any, infer C>? (
-//                 C extends FieldProperty<any>? key: never
-//              ): E[key] extends FieldProperty<any>? key: never            
-// })[keyof E]>
-
-// export type FieldPropertyValueMap<E> = {
-//     [key in keyof A<E>]: key extends FieldProperty<infer D>? (D extends PropertyTypeDefinition<infer Primitive>? Primitive: never): never
-// }
 
 export type SQLKeywords<Props, PropMap> = {
     And: (...condition: Array<Expression<Props, PropMap> > ) => AndOperator<Props, PropMap>,
@@ -91,8 +80,8 @@ export interface Datasource<E extends Schema, alias extends string> {
     schema: E
     selectorMap(): SelectorMap<E>
 
-    toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
-    realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
+    toRaw(repository: DatabaseRepository<any, any>): Knex.Raw | Promise<Knex.Raw>
+    realSource(repository: DatabaseRepository<any, any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
@@ -123,7 +112,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
     }
-    abstract realSource(repository: EntityRepository<any>): SQLString | Promise<SQLString>
+    abstract realSource(repository: DatabaseRepository<any, any>): SQLString | Promise<SQLString>
 
     selectorMap(): SelectorMap<E>{
         const datasource = this
@@ -177,7 +166,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             const fieldProp = prop
             return new Column(name, (entityRepository) => {
                 const orm = entityRepository.orm
-                const client = orm.client()
+                const client = entityRepository.client()
                 let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
                 return makeRaw(entityRepository, rawTxt)
             }, fieldProp.definition)
@@ -203,8 +192,8 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         }
     }
     
-    async toRaw(repository: EntityRepository<any>){
-        const client = repository.orm.client()
+    async toRaw(repository: DatabaseRepository<any, any>){
+        const client = repository.client()
         const sql = await this.realSource(repository)
         return makeRaw(repository, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
     }
@@ -220,14 +209,14 @@ export class TableDatasource<E extends TableSchema, Name extends string> extends
         this.options = options
     }
 
-    realSource(repository: EntityRepository<any>){
+    realSource(repository: DatabaseRepository<any, any>){
         const finalOptions = Object.assign({}, {tablePrefix: repository.tablePrefix}, this.options ?? {})
 
         let tableName = this.schema.tableName(finalOptions)
         if(!tableName){
             throw new Error('Not yet registered')
         }
-        return quote(repository.orm.client(), tableName)
+        return quote(repository.client(), tableName)
     }
 }
 
@@ -239,7 +228,7 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
         this.dataset = dataset
     }
 
-    async realSource(repository: EntityRepository<any>){
+    async realSource(repository: DatabaseRepository<any, any>){
         return `(${(await this.dataset.toNativeBuilder(repository))})`
     }
 }
@@ -256,11 +245,11 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     #groupByItems: { [key: string]: Scalar<any> } | null = null
     #limit: null | number = null
     #offset: null | number = null
-    #repository: EntityRepository<any> | null = null
+    #repository: DatabaseRepository<any, any> | null = null
 
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
-    constructor(repository?: EntityRepository<any> | null){
+    constructor(repository?: DatabaseRepository<any, any> | null){
         // this.#fromItem = fromSource
         this.#repository = repository ?? null
     }
@@ -292,7 +281,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return Object.keys(selectItems).map(key => this.selectItemAlias(key, selectItems[key]) )
     }
 
-    async toNativeBuilder(repo?: EntityRepository<any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: DatabaseRepository<any, any>): Promise<Knex.QueryBuilder> {
 
         const repository = repo ?? this.#repository
 
@@ -586,8 +575,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return nameMap
     }
 
-    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
-        const client = repository.orm.client()
+    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: DatabaseRepository<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
+        const client = repository.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
             // let acc = await accP
@@ -607,8 +596,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }))
     }
 
-    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, repository: EntityRepository<any>) {
-        const client = repository.orm.client()
+    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, repository: DatabaseRepository<any, any>) {
+        const client = repository.client()
         return await Object.keys(nameMap).reduce( async (accP, k) => {
 
             const acc = await accP
@@ -745,11 +734,11 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     }
 
     async execute<R extends {
-        [key in keyof ExtractProps<SelectProps>]: 
+        [key in keyof ExtractProps<SelectProps>]:
         SelectProps[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
             // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
                 // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
-    }>(executionOptions?: ExecutionOptions, repo?: EntityRepository<any>): Promise<R[]>{
+    }>(executionOptions?: ExecutionOptions, repo?: DatabaseRepository<any, any>): Promise<R[]>{
         const repository = repo ?? this.#repository
 
         if(!repository){
@@ -761,7 +750,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 }
 
 type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
-type RawExpression = ( (repository: EntityRepository<any>) => RawUnit) | RawUnit
+type RawExpression = ( (repository: DatabaseRepository<any, any>) => RawUnit) | RawUnit
 
 export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarable<T> {
     // __type: 'Scalar'
@@ -769,13 +758,13 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
 
     readonly definition: T | PropertyTypeDefinition<any>
     protected expressionOrDataset: RawExpression
-    protected repository: EntityRepository<any> | null = null
+    protected repository: DatabaseRepository<any, any> | null = null
     
     // protected dataset:  | null = null
 
     constructor(expressionOrDataset: RawExpression, 
         definition?: T | (new (...args: any[]) => T) | PropertyTypeDefinition<any>,
-        repository?: EntityRepository<any> | null){
+        repository?: DatabaseRepository<any, any> | null){
 
         if(!definition){
             this.definition = new PropertyTypeDefinition<any>()
@@ -789,7 +778,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
     }
 
     static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D >{
-        return new Scalar( (repository: EntityRepository<any>) => {
+        return new Scalar( (repository: DatabaseRepository<any, any>) => {
             if(!args){
                 return makeRaw(repository, sql)
             } else {
@@ -829,7 +818,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
     //     return super.toString()
     // }
 
-    toRaw(repository?: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw> {
+    toRaw(repository?: DatabaseRepository<any, any>): Knex.Raw | Promise<Knex.Raw> {
         const repo = (repository ?? this.repository)
         if(!repo){
             throw new Error('There is no repository provided')
@@ -877,7 +866,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         return new Scalar(this.toRealRaw(), d, this.repository)
     }
 
-    async execute(executionOptions?: ExecutionOptions, repo?: EntityRepository<any>): 
+    async execute(executionOptions?: ExecutionOptions, repo?: DatabaseRepository<any, any>): 
         Promise<T extends PropertyTypeDefinition<infer D>? D: any> {
         const repository = repo ?? this.repository
 
@@ -895,7 +884,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, repository?: EntityRepository<any> | null){
+    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, repository?: DatabaseRepository<any, any> | null){
         super(expressionOrDataset, definition, repository)
         this.alias = alias
         // this.scalarable = scalarable
@@ -912,7 +901,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     }
 }
 
-export const makeRaw = (repository: EntityRepository<any>, sql: any, args?: any[]) => {
+export const makeRaw = (repository: DatabaseRepository<any, any>, sql: any, args?: any[]) => {
     let r = repository.orm.getKnexInstance().raw(sql, args ?? [])
     // @ts-ignore
     r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'

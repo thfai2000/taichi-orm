@@ -1,5 +1,5 @@
-import { Entity, ORM, TableSchema } from "../../../dist"
-import { BooleanType, NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/PropertyType"
+import { Entity, TableSchema } from "../../../dist"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/PropertyType"
 import Product from "./Product"
 
 export class ShopSchema extends TableSchema {
