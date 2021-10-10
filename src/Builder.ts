@@ -28,7 +28,7 @@ import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject,
 //     }
 // }
 
-export type FieldPropertyValueMap<E> = {
+export type MutationEntityPropertyKeyValues<E> = {
     [key in keyof E]:
         E[key] extends Prefixed<any, any, infer C>? (
                 C extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D> ): never): never
@@ -56,7 +56,7 @@ export type SQLKeywords<Props, PropMap> = {
 
 export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
 
-export type Expression<O, M> = Partial<FieldPropertyValueMap<O>>  
+export type Expression<O, M> = Partial<MutationEntityPropertyKeyValues<O>>  
     | AndOperator<O, M> 
     | OrOperator<O, M> 
     | NotOperator<O, M>
@@ -530,7 +530,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return result
     }
 
-    update<S extends Partial<FieldPropertyValueMap<ExtractFieldProps< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>
+    update<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldProps< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>
     (keyValues: S | ((map: Y ) => S )): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
         
         let nameMap: { [key: string]: any | Scalar<any> }

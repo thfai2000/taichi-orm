@@ -1,9 +1,10 @@
-import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
+import { Dataset, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { ORM } from "../../../dist"
+import { FieldProperty, ORM, SingleSourceArg, TableSchema } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, StringType } from "../../../dist/PropertyType"
+import { ExtractFieldProps } from "../../../dist/util"
 
 
 (async() => {
@@ -30,6 +31,57 @@ import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
 
 
     await createModels()
+
+
+
+    // let x: ExpectedInstance<SingleSourceArg<ShopClass['schema']>>
+
+    type EntityPropertyKeyValues<E> = {
+    [key in keyof ExtractFieldProps<E>]:
+        ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
+    }
+
+    type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
+
+    
+    let b = ShopClass["schema"]
+    let a: FindSchema<SingleSourceArg<typeof ShopClass["schema"]>>
+    
+    let x: EntityPropertyKeyValues< FindSchema<SingleSourceArg<typeof ShopClass["schema"]>> >
+    
+    console.log(x!)
+
+    type ExpectedInstance<F extends SingleSourceArg<any>> = EntityPropertyKeyValues< FindSchema<F> > //&  { [k in keyof F["select"]]: string }
+
+
+    class Filter<T extends TableSchema> {
+        constructor(private options: any) {
+            
+        }
+    }
+
+    class B extends TableSchema {
+        id = new FieldProperty<PrimaryKeyType>(new PrimaryKeyType())
+        c = this.field(StringType)
+        myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
+            return Scalar.value(`5 + ?`, [arg ?? 0])
+        })
+        static hello<Sc extends TableSchema, F extends Filter<Sc>>
+            (this: (new (...args:any[])=> Sc) & typeof TableSchema, s: F): F {
+            throw new Error('xxx')
+        }
+    }
+
+    
+    let z = B.hello(new Filter())
+    
+
+
+
+  
+
+
+
     
     let s = Shop.datasource('shop')
     
@@ -139,13 +191,13 @@ import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
             onSqlRun: console.log
         })
 
-    console.log('test parse', await dataset()
+    let r = await dataset()
         .from(Shop.datasource("myShop"))
         .selectProps('name','myShop.id','myShop.products')
         .toScalar(new ArrayType(Shop.schema))
         .execute({
             onSqlRun: console.log
-        }))
+        })
 
 
     console.log('test groupBy', await dataset()
@@ -177,4 +229,5 @@ import { ArrayType, NumberNotNullType } from "../../../dist/PropertyType"
         // delete()
         // Scalar.boolean, Scalar.string
         // think about migrate issue
+        // handle actionOptions failIfNone
 })();
