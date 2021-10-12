@@ -70,7 +70,7 @@ type SelectItem = {
     actualAlias: string
 }
 
-export interface Scalarable<T extends PropertyTypeDefinition<any> > {
+export interface Scalarable<T extends PropertyTypeDefinition<any>> {
     toScalar(type?: T | (new (...args: any[]) => T) ): Scalar<T>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
@@ -752,7 +752,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
 type RawExpression = ( (repository: DatabaseRepository<any, any>) => RawUnit) | RawUnit
 
-export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarable<T> {
+export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable<T> {
     // __type: 'Scalar'
     // __definition: PropertyTypeDefinition | null
 
@@ -777,7 +777,7 @@ export class Scalar<T extends PropertyTypeDefinition<any> > implements Scalarabl
         this.repository = repository ?? null
     }
 
-    static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D >{
+    static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D>{
         return new Scalar( (repository: DatabaseRepository<any, any>) => {
             if(!args){
                 return makeRaw(repository, sql)

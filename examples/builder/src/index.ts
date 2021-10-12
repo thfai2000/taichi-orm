@@ -1,11 +1,10 @@
 import { Dataset, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { FieldProperty, ORM, SingleSourceArg, TableSchema } from "../../../dist"
-import ShopClass from './Shop'
+import { EntityPropertyKeyValues, EntityWithOptionalProperty, FieldProperty, ORM, SingleSourceArg, TableSchema } from "../../../dist"
+import ShopClass, { ShopSchema } from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, StringType } from "../../../dist/PropertyType"
-import { ExtractFieldProps } from "../../../dist/util"
-
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
+import { Expand, ExtractFieldProps } from "../../../dist/util"
 
 (async() => {
 
@@ -32,48 +31,6 @@ import { ExtractFieldProps } from "../../../dist/util"
 
     await createModels()
 
-
-
-    // let x: ExpectedInstance<SingleSourceArg<ShopClass['schema']>>
-
-    type EntityPropertyKeyValues<E> = {
-        [key in keyof ExtractFieldProps<E>]:
-            ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
-    }
-
-    type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
-
-    
-    let b = ShopClass["schema"]
-    let a: FindSchema<SingleSourceArg<typeof ShopClass["schema"]>>
-    
-    let x: EntityPropertyKeyValues< FindSchema<SingleSourceArg<typeof ShopClass["schema"]>> >
-    
-    console.log(x!)
-
-    type ExpectedInstance<F extends SingleSourceArg<any>> = EntityPropertyKeyValues< FindSchema<F> > //&  { [k in keyof F["select"]]: string }
-
-
-    // class Filter<T extends TableSchema> {
-    //     constructor(private options: any) {
-            
-    //     }
-    // }
-
-    // class B extends TableSchema {
-    //     id = new FieldProperty<PrimaryKeyType>(new PrimaryKeyType())
-    //     c = this.field(StringType)
-    //     myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
-    //         return Scalar.value(`5 + ?`, [arg ?? 0])
-    //     })
-    //     static hello<Sc extends TableSchema, F extends Filter<Sc>>
-    //         (this: (new (...args:any[])=> Sc) & typeof TableSchema, s: F): F {
-    //         throw new Error('xxx')
-    //     }
-    // }
-
-    
-    // let z = B.hello(new Filter())
     
     let s = Shop.datasource('shop')
     
@@ -83,7 +40,6 @@ import { ExtractFieldProps } from "../../../dist/util"
     
     const builder = await myShopDS.toNativeBuilder(orm.getRepository())
     console.log('sql1', builder.toString() )
-
 
     let shop1 = await Shop.createOne({
         name: '333',
@@ -142,11 +98,16 @@ import { ExtractFieldProps } from "../../../dist/util"
     })
     console.log('xxx', result)
 
+    let c: ExtractFieldProps<ShopSchema>
+    let b: Expand<EntityPropertyKeyValues< ExtractFieldProps<ShopSchema>>>
+
+    let a: Expand<EntityWithOptionalProperty<ShopSchema, {}>>
+
 
     let allShops = await Shop.find({
         where: ({root}) => root.name.equals('helloShopx')
     })
-    console.log('aaa', allShops)
+    console.log('aaa', allShops[0])
     console.time('simple')
     let allShopsX = await Shop.find({
         select: {
@@ -171,7 +132,7 @@ import { ExtractFieldProps } from "../../../dist/util"
         limit: 5000
     })
 
-    console.log('aaaa', allShopsX[0].products.length)
+    console.log('aaaa', allShopsX[0])
     console.timeEnd('simple')
 
 

@@ -1,18 +1,13 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, Entity, DatabaseRepository, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, Entity, DatabaseRepository, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, EntityFieldPropertyKeyValues, EntityWithOptionalProperty } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { ExtractFieldProps, ExtractProps, notEmpty, SimpleObject } from "./util"
+import { Expand, ExtractFieldProps, ExtractProps, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Datasource, Expression, resolveEntityProps, TableOptions } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition } from "./PropertyType"
 
-type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
-
-type EntityFieldPropertyKeyValues<E> = {
-    [key in keyof ExtractFieldProps<E>]:
-        ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
-}
+// type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
 
-export class Model<T extends typeof Entity = typeof Entity>{
+export class Model<T extends typeof Entity>{
 
     #entityClass: T
     #repository: DatabaseRepository<any, any>
@@ -34,6 +29,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
         return this.#entityClass.schema
     }
 
+    
     createOne(data: PartialMutationEntityPropertyKeyValues<T["schema"]>): DatabaseMutationRunner< (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>), T["schema"]>{
         
         return new DatabaseMutationRunner< (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>), T["schema"]>(
@@ -42,7 +38,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
-                return result[0]
+                return result[0] as (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>)
             }
         )
     }
@@ -55,7 +51,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
                         if(data === null){
                             throw new Error('Unexpected Flow.')
                         }
-                        return data
+                        return data as (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>)
                     })
             })
     }
@@ -125,7 +121,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
                         }
                     }).withOptions(executionOptions)
 
-                    let b = await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                    let b = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                     return b
                 } else if (repository.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
@@ -142,10 +138,10 @@ export class Model<T extends typeof Entity = typeof Entity>{
 
                             // console.log('create findOne', record)
 
-                            return await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                            return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                         }
                     } else {
-                        return null
+                        throw new Error('Unexpected Flow.')
                     }
 
                 } else if (repository.client().startsWith('pg')) {
@@ -161,7 +157,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
                         }
                     }).withOptions(executionOptions)
 
-                    return await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                    return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
 
                 } else {
                     throw new Error('Unsupport client')
@@ -233,7 +229,7 @@ export class Model<T extends typeof Entity = typeof Entity>{
         return propValues
     }
 
-    private async afterMutation<R extends InstanceType<T>>(
+    private async afterMutation<R>(
         record: R, 
         schema: TableSchema,
         actionName: MutationName,
@@ -264,14 +260,23 @@ export class Model<T extends typeof Entity = typeof Entity>{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
+            const foundPropName = foundProp.name
+            let propertyValue
+            if( foundPropName in record){
+                propertyValue = (record as {[key:string]: any})[foundPropName]
+            } else {
+                propertyValue = inputProps[foundProp.name]
+            }
+
             record = await h.action(repository, record, {
                 hookName: h.name,
                 mutationName: actionName,
-                propertyName: foundProp.name,
+                propertyName: foundPropName,
                 propertyDefinition: foundProp.definition,
-                propertyValue: record[foundProp.name] ?? inputProps[foundProp.name],
+                propertyValue: propertyValue,
                 rootClassName: entityName
             }, executionOptions)
+
             return record
         }, Promise.resolve(record) )
 
@@ -296,8 +301,8 @@ export class Model<T extends typeof Entity = typeof Entity>{
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg<T["schema"]>>(applyFilter?: F): DatabaseQueryRunner<  (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>) ,  T["schema"] >{        
-        return new DatabaseQueryRunner< (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>), T["schema"]>(
+    findOne<F extends SingleSourceArg<T["schema"]>>(applyFilter: F = {} as F): DatabaseQueryRunner<  EntityWithOptionalProperty<T["schema"], F> ,  T["schema"] >{        
+        return new DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], F> , T["schema"]>(
         async (executionOptions: ExecutionOptions) => {
             let rows = await this._find(executionOptions, applyFilter?? null)
             return rows[0] ?? null
@@ -309,15 +314,15 @@ export class Model<T extends typeof Entity = typeof Entity>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg<T["schema"]>>(applyFilter?: F): DatabaseQueryRunner<  Array< (InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>)>,  T["schema"] >{
-        return new DatabaseQueryRunner< Array<(InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]>)>, T["schema"] >(
+    find<F extends SingleSourceArg<T["schema"]>>(applyFilter: F = {} as F): DatabaseQueryRunner<  Array< EntityWithOptionalProperty<T["schema"], F> >,  T["schema"] >{
+        return new DatabaseQueryRunner< Array<  EntityWithOptionalProperty<T["schema"], F> >, T["schema"] >(
             async (executionOptions: ExecutionOptions) => {
                 let rows = await this._find(executionOptions, applyFilter?? null)
                 return rows
         })
     }
 
-    private async _find<F extends SingleSourceArg<T["schema"]>>(executionOptions: ExecutionOptions, applyOptions: F | null) {   
+    private async _find<F extends SingleSourceArg<T["schema"]>>(executionOptions: ExecutionOptions, applyOptions: F ) {   
         
         const repository = this.#repository
         const entityClass = this.#entityClass
@@ -349,12 +354,12 @@ export class Model<T extends typeof Entity = typeof Entity>{
 
         let resultData = await repository.execute(wrappedDataset, executionOptions)
 
-        let rows = resultData[0].root as Array<InstanceType<T> & EntityFieldPropertyKeyValues<T["schema"]> >
+        let rows = resultData[0].root as Array<  EntityWithOptionalProperty<T["schema"], F> >
         return rows
     }
 
-    updateOne<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< InstanceType<T>, T["schema"]>{
-        return new DatabaseQueryRunner< InstanceType<T>, T["schema"] >(
+    updateOne<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>, T["schema"]>{
+        return new DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>, T["schema"] >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<T["schema"]> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, false,  actionOptions)
                 return result[0] ?? null
@@ -362,8 +367,8 @@ export class Model<T extends typeof Entity = typeof Entity>{
         )
     }
 
-    update<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< InstanceType<T>[], T["schema"] >{
-        return new DatabaseMutationRunner< InstanceType<T>[], T["schema"] >(
+    update<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>[], T["schema"] >{
+        return new DatabaseMutationRunner< EntityWithOptionalProperty<T["schema"], {}>[], T["schema"] >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<T["schema"]> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)
                 return result
@@ -427,8 +432,11 @@ export class Model<T extends typeof Entity = typeof Entity>{
                 }
                 let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
                     let pkValue = row[ schemaPrimaryKeyFieldName ]
-                    let record = await this.findOne({[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                    let finalRecord = await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                    let record = await this.findOne({
+                        //@ts-ignore
+                        where: {[schemaPrimaryKeyPropName]: pkValue}
+                    }).withOptions(executionOptions)
+                    let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                     if(isDelete){
                         await repository.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                     }
@@ -473,8 +481,11 @@ export class Model<T extends typeof Entity = typeof Entity>{
                                 return null
                             } 
                         }
-                        let record = await this.findOne({[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                        let finalRecord = await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                        let record = await this.findOne({
+                            //@ts-ignore
+                            where: {[schemaPrimaryKeyPropName]: pkValue}
+                        }).withOptions(executionOptions)
+                        let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                         if(isDelete){
                             await repository.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
@@ -483,16 +494,22 @@ export class Model<T extends typeof Entity = typeof Entity>{
                     } else if (repository.client().startsWith('sqlite')) {
                         if(updateStmt){
                             let updateResult = await repository.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
-                            let found = await this.findOne({[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
+                            let found = await this.findOne({
+                                //@ts-ignore
+                                where: {[schemaPrimaryKeyPropName]: pkValue}
+                            }).withOptions(executionOptions)
                             let data = input.entityData!
-                            let unmatchedKey = Object.keys(data).filter( k => data[k] !== found[k])
+                            let unmatchedKey = Object.keys(data).filter( k => data[k] !== (found as {[key:string]: any})[k])
                             if( unmatchedKey.length > 0 ){
-                                console.log('Unmatched prop values', unmatchedKey.map(k => `${k}: ${data[k]} != ${found[k]}` ))
+                                console.log('Unmatched prop values', unmatchedKey.map(k => `${k}: ${data[k]} != ${(found as {[key:string]: any})[k]}` ))
                                 throw new Error(`The record cannot be updated. `)
                             }
                         }
-                        let record = await this.findOne({[schemaPrimaryKeyPropName]: pkValue}).withOptions(executionOptions)
-                        let finalRecord = await this.afterMutation(record, schema, actionName, propValues, executionOptions)
+                        let record = await this.findOne({
+                            //@ts-ignore
+                            where: {[schemaPrimaryKeyPropName]: pkValue}
+                        }).withOptions(executionOptions)
+                        let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                         if(isDelete){
                             await repository.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
@@ -509,8 +526,8 @@ export class Model<T extends typeof Entity = typeof Entity>{
         return fns.filter(notEmpty)
     }
 
-    deleteOne<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< InstanceType<T>, T["schema"]>{
-        return new DatabaseQueryRunner< InstanceType<T>, T["schema"]>(
+    deleteOne<F extends SingleSourceFilter<T["schema"]>>(data: PartialMutationEntityPropertyKeyValues<T["schema"]>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>, T["schema"]>{
+        return new DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>, T["schema"]>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< T["schema"] > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, true, actionOptions)
                 return result[0] ?? null
@@ -518,8 +535,8 @@ export class Model<T extends typeof Entity = typeof Entity>{
         )
     }
 
-    delete<F extends SingleSourceFilter<T["schema"]>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< InstanceType<T>[], T["schema"] >{
-        return new DatabaseQueryRunner< InstanceType<T>[], T["schema"]>(
+    delete<F extends SingleSourceFilter<T["schema"]>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>[], T["schema"] >{
+        return new DatabaseQueryRunner< EntityWithOptionalProperty<T["schema"], {}>[], T["schema"]>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< T["schema"] > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, true, actionOptions)
                 return result

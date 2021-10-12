@@ -4,8 +4,29 @@ export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefiniti
 import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
-import { ExtractComputeProps, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model } from './Model'
+
+
+// type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
+// type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
+
+export type A = number
+
+export type EntityWithOptionalProperty<S, SSA extends { select?: {}}> = EntityPropertyKeyValues< ExtractFieldProps<S> & Pick<S, keyof SSA["select"]>>
+
+// type VirtualSchemaWithComputed<F extends SingleSourceArg<any>> = EntityFieldPropertyKeyValues< FindSchema<F> > 
+//     & { 
+//         [k in keyof F["select"]]: 
+//             (
+//                 (FindSchema<F>[k] extends ComputeProperty<infer P, any, any, any>? 
+//                 P:
+//                 FindSchema<F>[k] extends FieldProperty<infer P>?
+//                 P:never) extends PropertyTypeDefinition<infer T> ? ExpectedInstance<>
+//             ) 
+
+// }
+
 
 export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
 
@@ -19,8 +40,9 @@ export type ComputePropertyArgsMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg>? 
-                Arg: never
+                E[key] extends ComputeProperty<infer D, infer F>? 
+                    (F extends ComputeFunction<infer Arg, any>?
+                        Arg: never): never
             )
 }
 
@@ -44,7 +66,7 @@ export type SingleSourceFilter<S extends TableSchema> = Expression<
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
-export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
+// export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
 
 
 export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Related extends TableSchema, RelatedName extends string> = {
@@ -74,7 +96,7 @@ export type SelectorMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer D, infer Root, infer rootName, infer Arg>? 
+                E[key] extends ComputeProperty<infer D, infer Arg>? 
                 (
                         CompiledComputeFunction<key, Arg, D>                    
                 ): 
@@ -84,14 +106,35 @@ export type SelectorMap<E> = {
             )
 }
 
-export type ComputeFunction<
-    Root extends Schema, Name extends string, ARG extends any, 
-    R extends PropertyTypeDefinition<any>
-> = (source: Datasource<Root, Name>, arg?: ARG) => Scalarable<R> | Promise<Scalarable<R>>
+export type ComputeFunction<ARG, 
+    P extends PropertyTypeDefinition<any>
+> = (source: Datasource<any, any>, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
 export type CompiledComputeFunction<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
 export type PartialMutationEntityPropertyKeyValues<S> = Partial<MutationEntityPropertyKeyValues<ExtractFieldProps<S>>>
+
+export type EntityFieldPropertyKeyValues<E> = {
+    [key in keyof ExtractFieldProps<E>]:
+        ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
+}
+
+export type EntityPropertyKeyValues<E> = {
+    [key in keyof E]:
+        E[key] extends FieldProperty<infer D>? 
+                (D extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+                (
+                    E[key] extends ComputeProperty<infer P, any>? 
+                    (P extends PropertyTypeDefinition<infer Primitive>? Primitive  : never): 
+                        (
+                            E[key] extends Property<infer P>? 
+                            (P extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+                            never
+                        )
+                    
+                    )
+}
+
 
 
 export type ORMConfig<EntityMap extends {[key:string]: Entity}> = {
@@ -145,14 +188,14 @@ export class Property<D extends PropertyTypeDefinition<any> > {
 
 }
 
-export class ComputeProperty<D extends PropertyTypeDefinition<any>, Root extends Schema, Name extends string, Arg extends any | undefined> extends Property<D> {
+export class ComputeProperty<P extends PropertyTypeDefinition<any>, F extends ComputeFunction<any, any> > extends Property< P > {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
-    compute: ComputeFunction<Root, Name, Arg, D>
+    compute: F
 
     constructor(
-        definition: D,
-        compute:  ComputeFunction<Root, Name, Arg, D>){
+        definition: P,
+        compute:  F){
             super(definition)
             this.compute = compute
         }
@@ -188,11 +231,11 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends P
     }
 }
 
-export class Schema implements ParsableTrait<any>{
+export class Schema<I = any> implements ParsableTrait<I>{
 
-    properties: (ComputeProperty<PropertyTypeDefinition<any>, Schema, string, any> 
+    properties: (ComputeProperty<any, any> 
         | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
-    propertiesMap: {[key:string]: (ComputeProperty<PropertyTypeDefinition<any>, Schema, string, any> 
+    propertiesMap: {[key:string]: (ComputeProperty<any, any> 
         | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)} = {}
     
     // id: PropertyDefinition
@@ -229,49 +272,52 @@ export class Schema implements ParsableTrait<any>{
         }
     }
 
+    parseRaw(rawValue: I, repository: DatabaseRepository<any, any>, prop?: string): I {
+        return this.parseDataBySchema(rawValue, repository) as I
+    }
+    parseProperty(propertyvalue: I, repository: DatabaseRepository<any, any>, prop?: string) {
+        return propertyvalue
+    }
 
-    parseDataBySchema<T>(entityInstance: T, repository: DatabaseRepository<any,any>, row: PartialMutationEntityPropertyKeyValues<any>): T {
+    parseDataBySchema(row: any, repository: DatabaseRepository<any,any>) {
         const schema = this
+        let output = {}
         for (const propName in row) {
-            const propType = schema.propertiesMap[propName].definition
-            
-            /**
-             * it can be boolean, string, number, Object, Array of Object (class)
-             * Depends on the props..
-             */
-            // let start = null
-            // if(metaInfo.propName === 'products'){
-            //     start = new Date()
-            // }
-            let propValue = propType.parseRaw(row[propName], repository, propName) ?? row[propName]
-            
-            // if(metaInfo.propName === 'products'){
-            //     //@ts-ignore
-            //     console.log('parseDataBySchema',  new Date() - start )
-            // }
+            if(schema.propertiesMap[propName]){
 
-            Object.defineProperty(entityInstance, propName, {
-                configurable: true,
-                enumerable: true,
-                writable: true,
-                value: propValue
-            })
+                const propType = schema.propertiesMap[propName].definition
+                /**
+                 * it can be boolean, string, number, Object, Array of Object (class)
+                 * Depends on the props..
+                 */
+                // let start = null
+                // if(metaInfo.propName === 'products'){
+                //     start = new Date()
+                // }
+                let propValue = propType.parseRaw(row[propName], repository, propName) ?? row[propName]
+                
+                // if(metaInfo.propName === 'products'){
+                //     //@ts-ignore
+                //     console.log('parseDataBySchema',  new Date() - start )
+                // }
+    
+                Object.defineProperty(output, propName, {
+                    configurable: true,
+                    enumerable: true,
+                    writable: true,
+                    value: propValue
+                })
+            }
         }
 
         // entityInstance = Object.keys(row).reduce((entityInstance, fieldName) => {
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
         // }, entityInstance)
         
-        return entityInstance
-    }
-
-    parseRaw(rawValue: any, repository: DatabaseRepository<any, any>, prop?: string): any {
-        return this.parseDataBySchema({}, repository, rawValue)
-    }
-    parseProperty(propertyvalue: any, repository: DatabaseRepository<any, any>, prop?: string) {
-        return propertyvalue
+        return output
     }
 }
+
 
 export class Entity {
 
@@ -279,7 +325,7 @@ export class Entity {
     static orm?: ORM<any, any>
     static entityName?: string
 
-    [key: string]: any
+    //[key: string]: any
     // static registeredSchema: TableSchema
     static schema: TableSchema
 
@@ -302,6 +348,7 @@ export class Entity {
     }
 
 }
+
 
 export abstract class TableSchema<E extends typeof Entity = typeof Entity> extends Schema implements ParsableTrait<InstanceType<E>>{
 
@@ -384,15 +431,24 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         }
         return new FieldProperty<D>( new definition() )
     }
+    //D extends PropertyTypeDefinition<any>, Arg, 
 
-    compute<D extends PropertyTypeDefinition<any>, Root extends TableSchema, Arg extends any, R>(
-        this: Root,
-        definition: (new (...args: any[]) => D)  | D, compute: ComputeFunction<Root, 'root', Arg, D>) : ComputeProperty<D, Root, 'root', Arg> {
+    // private isPropertyTypeDefinition(d: any): d is PropertyTypeDefinition<any>{
+    //     return true
+    // }
 
-        if(definition instanceof PropertyTypeDefinition){
-            return new ComputeProperty<D, Root, 'root', Arg>(definition, compute)
+    // private isPropertyTypeDefinitionConstructor(d: any): d is typeof PropertyTypeDefinition{
+    //     return true
+    // }
+
+    compute<P extends PropertyTypeDefinition<any>, F extends ComputeFunction<any, P>>(
+        definition: (new (...args: any[]) => P) | P, compute: F) : ComputeProperty<P, F> {
+
+        if( definition instanceof PropertyTypeDefinition ){
+            return new ComputeProperty(definition, compute)
+        } else{
+            return new ComputeProperty(new definition(), compute)
         }
-        return new ComputeProperty<D, Root, 'root', Arg>(new definition(), compute)
     }
 
     hook(newHook: Hook){
@@ -408,18 +464,20 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         return source
     }
 
-    override parseRaw(rawValue: any, repository: DatabaseRepository<any, any>, prop?: string): InstanceType<E> {
+    parseRaw<T extends TableSchema>(rawValue: any, repository: DatabaseRepository<any, any>, prop?: string): InstanceType<E> {
         const schema = this
-        const entityClass = this.entityClass
+        const entityClass = schema.entityClass
         if(!entityClass){
             throw new Error('Unexpected. Schema not registered.')
         }
-        const instance = new entityClass() as InstanceType<E>
-        return this.parseDataBySchema( instance, repository, rawValue)
+        let o = super.parseRaw(rawValue, repository) // this.parseDataBySchema(instance, repository, rawValue)
+        let instance = new entityClass() as InstanceType<E>
+        instance = Object.assign(instance, o)
+        return instance
     }
     
-    override parseProperty(propertyvalue: InstanceType<E>, repository: DatabaseRepository<any, any>, prop?: string) {
-        return propertyvalue
+    parseProperty<T extends TableSchema>(propertyvalue: InstanceType<E> & EntityPropertyKeyValues<T>, repository: DatabaseRepository<any, any>, prop?: string) {
+        return super.parseProperty(propertyvalue, repository, prop)
     }
 
     hasMany<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
@@ -428,11 +486,14 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         relatedBy: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>), 
         parentKey?: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
-        
-        let computeFn = (parent: Datasource<ParentSchema, any>, 
-            args?: SingleSourceArg<RootSchema> | 
-                SingleSourceArgFunction<RootSchema>
-            ): Scalarable<any> => {
+
+            //| ((root: SelectorMap<RootSchema>) => SSA)
+
+        let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
+            args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
+            ): Scalarable< ArrayType<RootSchema, 
+                EntityWithOptionalProperty<RootSchema, SSA>[]
+            >> => {
 
             let dataset = new Dataset()
 
@@ -487,10 +548,11 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         relatedBy?: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
         
-        let computeFn = (parent: Datasource<ParentSchema, any>, 
-            args?: SingleSourceArg<RootSchema> | 
-                SingleSourceArgFunction<RootSchema>
-            ): Scalarable<any> => {
+        let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
+            args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
+            ): Scalarable< ObjectType<RootSchema,
+                EntityWithOptionalProperty<RootSchema, SSA>
+            >> => {
             
             let dataset = new Dataset()
 
@@ -827,14 +889,14 @@ export type DatabaseActionOptions<T extends TableSchema> = {
 }
 export type DatabaseAction<I, S extends TableSchema> = (executionOptions: ExecutionOptions, options: Partial<DatabaseActionOptions<S> >) => Promise<DatabaseActionResult<I>>
 
-export class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<I>{
+export class DatabaseActionRunnerBase<I, S extends TableSchema> implements PromiseLike<ExpandRecursively<I> >{
     protected execOptions: ExecutionOptions
     protected action: DatabaseAction<I, S>
     protected options: Partial<DatabaseActionOptions<S> > = {}
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(action: DatabaseAction<I, S>){
+    constructor(action: DatabaseAction<I, S>, ){
         // this.beforeAction = beforeAction
         this.execOptions = {}
         this.action = action
@@ -845,14 +907,14 @@ export class DatabaseActionRunnerBase<I, S extends TableSchema> implements Promi
     }
 
     async then<TResult1, TResult2 = never>(
-        onfulfilled: ((value: I) => TResult1 | PromiseLike<TResult1>) | null, 
+        onfulfilled: ((value: ExpandRecursively<I>) => TResult1 | PromiseLike<TResult1>) | null, 
         onrejected: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null)
         : Promise<TResult1 | TResult2> {
 
         try{
-            let result = await this.execAction()
+            let result = await this.execAction() 
             if(onfulfilled){
-                return onfulfilled(result)
+                return onfulfilled( expandRecursively(result))
             } else {
                 return this.then(onfulfilled, onrejected)
             }
@@ -897,6 +959,7 @@ export class DatabaseActionRunnerBase<I, S extends TableSchema> implements Promi
 } 
 
 export class DatabaseQueryRunner<I, S extends TableSchema> extends DatabaseActionRunnerBase<I, S> {
+
 
     async failIfNone<T>(){
         this.options = {

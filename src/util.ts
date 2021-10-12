@@ -1,5 +1,30 @@
 import { ComputeProperty, FieldProperty, Property} from "."
 
+// expands object types one level deep
+export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
+
+// expands object types recursively
+export type ExpandRecursively<T> = T extends object
+  ? T extends infer O ? { [K in keyof O]: ExpandRecursively<O[K]> } : never
+  : T;
+
+
+export function undoExpandRecursively<T>(o: ExpandRecursively<T>): T {
+    return o as any
+}
+
+export function expandRecursively<T>(o: T): ExpandRecursively<T>{
+    return o as any
+}
+
+// export function undoExpandRecursively<T>(o: T): T {
+//     return o as any
+// }
+
+// export function expandRecursively<T>(o: T): T {
+//     return o as any
+// }
+
 
 export type SimpleObject = { [key:string]: any}
 export const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -31,7 +56,7 @@ Pick<E, ({
 
 export type ExtractComputeProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any>? key:
                     never
 })[keyof E]> 
 

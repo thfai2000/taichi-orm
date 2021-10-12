@@ -634,8 +634,7 @@ export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
     }
 }
 
-// type ObjectOfTypeOptions = { }
-export class ObjectType<E extends ParsableTrait<any> > extends ComputePropertyTypeDefinition<E | null>{
+export class ObjectType<E extends ParsableTrait<any>, I = unknown> extends ComputePropertyTypeDefinition<  (I extends unknown? (E extends ParsableTrait<infer D>?D:any):I) | null>{
     // protected options: ObjectOfTypeOptions
     private parsable: E
 
@@ -690,80 +689,7 @@ export class ObjectType<E extends ParsableTrait<any> > extends ComputePropertyTy
     }
 }
 
-// type ArrayOfTypeOptions = {}
-// export class ArrayOfType<T extends PropertyTypeDefinition<any> > extends ComputePropertyTypeDefinition<any>{
-    
-//     // options: ArrayOfTypeOptions
-//     readonly type: T
-//     get propertyValueIsArray(): boolean{
-//         return true
-//     }
-    
-//     constructor(type: T) {
-//         super()
-//         this.type = type
-//     }
-
-//     get nullable() {
-//         return true
-//     }
-
-
-//     transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, repository: EntityRepository<any>, singleColumnName?: string): Knex.Raw<any> {
-//         if(!(rawOrDataset instanceof Dataset)){
-//             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
-//         }
-//         const client = repository.client()
-//         let innerLevelColumnName = 'soleCol'
-//         let objectify =  `${this.type.transformQuery(rawOrDataset, repository, innerLevelColumnName)}`
-        
-//         let jsonify =  `(SELECT coalesce(
-//             ${jsonArrayAgg(client)}(
-//                 ${quote(client, innerLevelColumnName)}), 
-//                 ${jsonArray(client)}
-//             ) AS ${quote(client, singleColumnName ?? 'soleCol')} FROM ${objectify} AS ${quote(client, makeid(5))})`
-
-//         return makeRaw(repository, jsonify)
-//     }
-
-//     parseRaw(rawValue: any, repository: EntityRepository<any>, propName: string): any[] {
-//         let parsed: Array<SimpleObject>
-//         if( rawValue === null){
-//             throw new Error('Null is not expected.')
-//         } else if(typeof rawValue === 'string'){
-//             parsed = JSON.parse(rawValue)
-//         } else if(Array.isArray(rawValue)){
-//             parsed = rawValue
-//         } else {
-//             throw new Error('It is not supported.')
-//         }
-
-//         if( this.type instanceof ParsableFieldPropertyTypeDefinition ||
-//             this.type instanceof ComputePropertyTypeDefinition){
-//             const d = this.type
-//             return parsed.map(raw => {
-//                 return d.parseRaw(raw, repository, propName)
-//             })
-//         } else {
-//             return parsed as any[]
-//         }
-//     }
-//     parseProperty(propertyvalue: any[], repository: EntityRepository<any>, propName: string): any {
-//         // if(!prop.definition.computeFunc){
-//         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
-//         // }
-//         if( this.type instanceof ParsableFieldPropertyTypeDefinition){
-//             const d = this.type
-//             return propertyvalue.map(v => {
-//                 return d.parseRaw(v, repository, propName)
-//             })
-//         } else {
-//             return propertyvalue as any
-//         }
-//     }
-// }
-
-export class ArrayType<E extends ParsableTrait<any>> extends ComputePropertyTypeDefinition< Array<(E extends ParsableTrait<infer D>?D:any)> | null>{
+export class ArrayType<E extends ParsableTrait<any>, I = unknown> extends ComputePropertyTypeDefinition< (I extends unknown? (E extends ParsableTrait<infer D>?D:any)[]:I) | null>{
     
     private parsable: E
 
