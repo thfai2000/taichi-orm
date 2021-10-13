@@ -5,7 +5,7 @@ export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
 // expands object types recursively
 export type ExpandRecursively<T> = T extends object
-  ? T extends infer O ? { [K in keyof O]: ExpandRecursively<O[K]> } : never
+  ? (T extends infer O ? { [K in keyof O]: ExpandRecursively<O[K]> } : never)
   : T;
 
 
@@ -56,7 +56,7 @@ Pick<E, ({
 
 export type ExtractComputeProps<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any, any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
                     never
 })[keyof E]> 
 

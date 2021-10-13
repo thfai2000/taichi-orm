@@ -11,9 +11,6 @@ import { Model } from './Model'
 // type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
 // type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
 
-export type A = number
-
-export type EntityWithOptionalProperty<S, SSA extends { select?: {}}> = EntityPropertyKeyValues< ExtractFieldProps<S> & Pick<S, keyof SSA["select"]>>
 
 // type VirtualSchemaWithComputed<F extends SingleSourceArg<any>> = EntityFieldPropertyKeyValues< FindSchema<F> > 
 //     & { 
@@ -40,7 +37,7 @@ export type ComputePropertyArgsMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer D, infer F>? 
+                E[key] extends ComputeProperty<infer F>? 
                     (F extends ComputeFunction<infer Arg, any>?
                         Arg: never): never
             )
@@ -96,9 +93,10 @@ export type SelectorMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer D, infer Arg>? 
+                E[key] extends ComputeProperty<infer F>? 
                 (
-                        CompiledComputeFunction<key, Arg, D>                    
+                    F extends ComputeFunction<infer Arg, infer D>?
+                        CompiledComputeFunction<key, Arg, D>: unknown                  
                 ): 
                     E[key] extends Property<infer D>? 
                     Column<key, D>:
@@ -110,7 +108,7 @@ export type ComputeFunction<ARG,
     P extends PropertyTypeDefinition<any>
 > = (source: Datasource<any, any>, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
-export type CompiledComputeFunction<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
+export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
 export type PartialMutationEntityPropertyKeyValues<S> = Partial<MutationEntityPropertyKeyValues<ExtractFieldProps<S>>>
 
@@ -124,19 +122,41 @@ export type EntityPropertyKeyValues<E> = {
         E[key] extends FieldProperty<infer D>? 
                 (D extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
                 (
-                    E[key] extends ComputeProperty<infer P, any>? 
-                    (P extends PropertyTypeDefinition<infer Primitive>? Primitive  : never): 
-                        (
-                            E[key] extends Property<infer P>? 
-                            (P extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+                    E[key] extends ComputeProperty<infer F>? 
+
+                        (F extends ComputeFunction<any, infer P>?
+                            
+                            (P extends PropertyTypeDefinition<infer X>? 
+                                (
+                                    X
+                                ): 
+                                never
+                            ): 
                             never
+                            
+                        ): 
+                        (
+                            E[key] extends Property<infer P2>? 
+                            (P2 extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+                            E[key]
                         )
-                    
-                    )
+
+                )                  
 }
 
+type SelectiveArgFunction = ((root: SelectorMap<any>) => {select?:{}} )
 
-
+type ExtractSchemaFromSelectiveComputeProperty<T> = T extends ComputeProperty<ComputeFunction<((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
+    
+type EntityPropertyKeyValues_ExtractFieldProps<S> = EntityPropertyKeyValues< ExtractFieldProps<S>> 
+export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( EntityPropertyKeyValues_ExtractFieldProps<S>
+    & {
+        [k in keyof SSA["select"]]: EntityWithOptionalProperty< 
+            ExtractSchemaFromSelectiveComputeProperty<S[k]>, 
+            (SSA["select"][k] extends SelectiveArgFunction? ReturnType<SSA["select"][k]> :  SSA["select"][k])
+        >
+    })
+    
 export type ORMConfig<EntityMap extends {[key:string]: Entity}> = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
@@ -188,13 +208,13 @@ export class Property<D extends PropertyTypeDefinition<any> > {
 
 }
 
-export class ComputeProperty<P extends PropertyTypeDefinition<any>, F extends ComputeFunction<any, any> > extends Property< P > {
+export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property< (F extends ComputeFunction<any, infer P>?P:unknown)  > {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F
 
     constructor(
-        definition: P,
+        definition: (F extends ComputeFunction<any, infer P>?P:unknown),
         compute:  F){
             super(definition)
             this.compute = compute
@@ -233,11 +253,13 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends P
 
 export class Schema<I = any> implements ParsableTrait<I>{
 
-    properties: (ComputeProperty<any, any> 
-        | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
-    propertiesMap: {[key:string]: (ComputeProperty<any, any> 
-        | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)} = {}
+    // properties: (ComputeProperty<any> 
+    //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
+    // propertiesMap: {[key:string]: (ComputeProperty<any> 
+    //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)} = {}
     
+    properties: (Property<PropertyTypeDefinition<any> >)[] = []
+    propertiesMap: {[key:string]: Property<PropertyTypeDefinition<any> >} = {}
     // id: PropertyDefinition
     // uuid: PropertyDefinition | null
 
@@ -318,7 +340,6 @@ export class Schema<I = any> implements ParsableTrait<I>{
     }
 }
 
-
 export class Entity {
 
     // static repository: EntityRepository<any> | null = null;
@@ -348,7 +369,6 @@ export class Entity {
     }
 
 }
-
 
 export abstract class TableSchema<E extends typeof Entity = typeof Entity> extends Schema implements ParsableTrait<InstanceType<E>>{
 
@@ -441,13 +461,17 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
     //     return true
     // }
 
-    compute<P extends PropertyTypeDefinition<any>, F extends ComputeFunction<any, P>>(
-        definition: (new (...args: any[]) => P) | P, compute: F) : ComputeProperty<P, F> {
+
+
+    compute<F extends ComputeFunction<any, any>>(
+        definition: (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) ) | (F extends ComputeFunction<any, infer P>?P:unknown), compute: F) : ComputeProperty<F> {
 
         if( definition instanceof PropertyTypeDefinition ){
-            return new ComputeProperty(definition, compute)
+            const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
+            return new ComputeProperty(d, compute)
         } else{
-            return new ComputeProperty(new definition(), compute)
+            const d = definition as (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) )
+            return new ComputeProperty(new d(), compute)
         }
     }
 
@@ -487,8 +511,7 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         parentKey?: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
 
-            //| ((root: SelectorMap<RootSchema>) => SSA)
-
+        
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
             ): Scalarable< ArrayType<RootSchema, 

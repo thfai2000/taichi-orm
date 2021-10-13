@@ -1,10 +1,10 @@
-import { Dataset, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
+import { Dataset, Datasource, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { EntityPropertyKeyValues, EntityWithOptionalProperty, FieldProperty, ORM, SingleSourceArg, TableSchema } from "../../../dist"
+import { ComputeFunction, ComputeProperty, EntityPropertyKeyValues, EntityWithOptionalProperty, FieldProperty, ORM, Property, SelectorMap, SingleSourceArg, TableSchema } from "../../../dist"
 import ShopClass, { ShopSchema } from './Shop'
-import ProductClass from './Product'
+import ProductClass, { ProductSchema } from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { Expand, ExtractFieldProps } from "../../../dist/util"
+import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util"
 
 (async() => {
 
@@ -97,12 +97,25 @@ import { Expand, ExtractFieldProps } from "../../../dist/util"
         onSqlRun: console.log
     })
     console.log('xxx', result)
+   
+    // let ss = {
+    //     select: {
+    //         myABC: 5,
+    //         shop: {
+    //             select: {
+    //                 products: {
+    //                     select: {
+    //                         shop: {
 
-    let c: ExtractFieldProps<ShopSchema>
-    let b: Expand<EntityPropertyKeyValues< ExtractFieldProps<ShopSchema>>>
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
 
-    let a: Expand<EntityWithOptionalProperty<ShopSchema, {}>>
-
+    // let a: ExpandRecursively<EntityWithOptionalProperty<ProductSchema, typeof ss>>
 
     let allShops = await Shop.find({
         where: ({root}) => root.name.equals('helloShopx')
@@ -148,13 +161,14 @@ import { Expand, ExtractFieldProps } from "../../../dist/util"
     let r = await dataset()
         .from(Shop.datasource("myShop"))
         .selectProps('name','myShop.id','myShop.products')
-        .toScalar(new ArrayType(Shop.schema))
+        // .toScalar(new ArrayType(Shop.schema))
         .execute({
             onSqlRun: console.log
         })
 
+    console.log('test', r)
 
-    console.log('test groupBy', await dataset()
+    let r2 = await dataset()
         .from(Shop.datasource("myShop"))
         .where(({myShop, And})=> And(
             myShop.hour.equals(myShop.hour),
@@ -163,29 +177,33 @@ import { Expand, ExtractFieldProps } from "../../../dist/util"
         .groupByProps('hour')
         .select(({myShop}) => ({
             h1: myShop.hour,
-            cnt: Scalar.value(`COUNT(?)`, [myShop.hour]),
+            cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
             a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar(NumberNotNullType)
         }))
         .execute({
             onSqlRun: console.log
-        }))
+        })
 
-        //TODO: dynamic result type on 'find'
-        //TODO: dataset api use DatabaseAction chain
+    console.log('test groupBy', r2)
 
-        // TODO: orderBy
-        // TODO: having
-        // TODO: addSelectProps
-        // fix all unit tests
-        // repository.scalar()
-        // EXISTS, NOT, BETWEEN, 
-        // greaterThan, lessThan
-        // equalOrGreaterThan, equalOrLessThan
-        // minus, plus
-        // SUM, MAX, MIN
-        // delete()
-        // Scalar.boolean, Scalar.string
-        // think about migrate issue
-        // handle actionOptions failIfNone
+
+    //TODO: dynamic result type on 'find'
+    //TODO: dataset toScalar ....without ArrayType
+    //TODO: dataset api use DatabaseAction chain
+
+    // TODO: orderBy
+    // TODO: having
+    // TODO: addSelectProps
+    // fix all unit tests
+    // repository.scalar()
+    // EXISTS, NOT, BETWEEN, 
+    // greaterThan, lessThan
+    // equalOrGreaterThan, equalOrLessThan
+    // minus, plus
+    // SUM, MAX, MIN
+    // delete()
+    // Scalar.boolean, Scalar.string
+    // think about migrate issue
+    // handle actionOptions failIfNone
 })();
