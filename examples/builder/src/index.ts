@@ -1,10 +1,29 @@
 import { Dataset, Datasource, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
 import { ComputeFunction, ComputeProperty, EntityPropertyKeyValues, EntityWithOptionalProperty, FieldProperty, ORM, Property, SelectorMap, SingleSourceArg, TableSchema } from "../../../dist"
-import ShopClass, { ShopSchema } from './Shop'
-import ProductClass, { ProductSchema } from './Product'
+import ShopClass from './Shop'
+import ProductClass from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
 import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util"
+
+
+class A {
+    xxx: number
+    constructor(a: number){
+        this.xxx = a
+    }
+    a(){
+        console.log('eeeeeeeeeee', this.xxx)
+    }
+}
+
+class B extends A{
+    b = this.a()
+}
+
+let ccc = new B(5);
+
+
 
 (async() => {
 

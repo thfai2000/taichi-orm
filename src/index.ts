@@ -157,13 +157,13 @@ export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( Entit
         >
     })
     
-export type ORMConfig<EntityMap extends {[key:string]: Entity}> = {
+export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
         connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
     },
     // types: { [key: string]: typeof PropertyDefinition },
-    models: EntityMap
+    models: ModelMap
     // createModels: boolean,
     modelsPath?: string,
     outputSchemaPath?: string,
@@ -257,34 +257,37 @@ export class Schema<I = any> implements ParsableTrait<I>{
     
     properties: (Property<PropertyTypeDefinition<any> >)[] = []
     propertiesMap: {[key:string]: Property<PropertyTypeDefinition<any> >} = {}
-    // id: PropertyDefinition
-    // uuid: PropertyDefinition | null
 
     constructor(){
     }
 
-    init() {
-        // let fields: (ComputeProperty<PropertyTypeDefinition, Schema, string, any[]> |
-        //     FieldProperty<PropertyTypeDefinition>)[] = []
+    register(){
         for (let field in this) {
+            console.log('register field', field)
             this.addField(field)
         }
-    }
-
-    initPostAction() {
-        //@ts-ignore
         let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
-        // for(let x in z){console.log('=>', x)}
         for (let field in z) {
+            console.log('register field', field)
             this.addField(field)
         }
     }
+    // initPostAction() {
+    //     //@ts-ignore
+    //     let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
+    //     // for(let x in z){console.log('=>', x)}
+    //     for (let field in z) {
+    //         this.addField(field)
+    //     }
+    // }
 
     addField(field: string){
         // if (typeof field === 'string') {
         //@ts-ignore
         const actual = this[field]
+        console.log('aaaa', field, actual)
         if (actual instanceof Property) {
+            
             actual.register(field)
             this.propertiesMap[field] = actual
             this.properties.push(actual)
@@ -337,73 +340,35 @@ export class Schema<I = any> implements ParsableTrait<I>{
     }
 }
 
-export class Entity {
+export abstract class TableSchema extends Schema implements ParsableTrait<any>{
 
-    static orm?: ORM<any, any>
-    static entityName?: string
-
-    //[key: string]: any
-    // static registeredSchema: TableSchema
-    static schema: TableSchema
-
-    constructor(){
-    }
-
-    static register(orm: ORM<any, any>, entityName: string) {
-        this.orm = orm
-        this.entityName = entityName
-        if(!this.schema){
-            throw new Error(`There is no schema for Entity ${entityName}`)
-        }
-        let s = this.schema
-        s.initAndRegister(this)
-        this.schema = s 
-    }
-
-    static registerPostAction() {
-        this.schema.registerPostAction()
-    }
-
-}
-
-export abstract class TableSchema<E extends typeof Entity = typeof Entity> extends Schema implements ParsableTrait<InstanceType<E>>{
-
+    #entityName: string
+    #repository: ModelRepository<any>
     abstract id: FieldProperty<PrimaryKeyType>
     uuid?: FieldProperty<StringNotNullType> = undefined
     hooks: Hook[] = []
-    entityClass?: E
+    // entityClass?: E
     overridedTableName?: string
 
-    constructor(){
+    constructor(repository: ModelRepository<any>, entityName: string){
         super()
+        this.#repository = repository
+        this.#entityName = entityName
     }
 
-    initAndRegister(entityClass: E){
-        // console.log('register TableSchema', entityClass)
-        this.entityClass = entityClass
-        super.init()
-        // if(!entityClass.entityName || !this.entityClass?.orm){
-        //     throw new Error('Not yet registered.')
-        // }
-        // const orm = this.entityClass.orm
-    }
-
-    registerPostAction() {
-        super.initPostAction()
+    get modelName(){
+        return this.#entityName
     }
 
     tableName(options?: TableOptions){
         if(this.overridedTableName){
             return this.overridedTableName
         } else {
-            let name = this.entityClass?.entityName
-            const orm = this.entityClass?.orm
-            if(!name || !orm){
-                throw new Error('Not yet registered.')
-            }
+            let name = this.#entityName
             
-            if( orm.ormConfig.entityNameToTableName) {
-                name = orm.ormConfig.entityNameToTableName(name)
+            
+            if( this.#repository.orm.ormConfig.entityNameToTableName) {
+                name = this.#repository.orm.ormConfig.entityNameToTableName(name)
             }
             if(options?.tablePrefix){
                 name = options.tablePrefix + name
@@ -418,23 +383,17 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
     }
 
     createTableStmt(context: DatabaseContext<any, any>, options?: TableOptions){
-        // console.log('xxxx', this.entityClass)
-        if(!this.entityClass || !this.entityClass.orm){
-            throw new Error('Not register yet')
-        }
-        const orm = this.entityClass.orm
+  
         const client = context.client()
         const tableName = this.tableName(options)
-        if(!tableName){
-            throw new Error('Not yet registered')
-        }
+
         let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyTypeDefinition<any>>[]
         
         return `CREATE TABLE IF NOT EXISTS ${quote(client, tableName)} (\n${
             props.map( prop => {
                 let f = prop.definition
                 if(f instanceof FieldPropertyTypeDefinition){
-                    return `${f.create(prop.name, prop.fieldName(orm), context)}`  
+                    return `${f.create(prop.name, prop.fieldName(this.#repository.orm), context)}`  
                 }
                 return ``
             }).flat().join(',\n')}\n)`;
@@ -447,17 +406,6 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         }
         return new FieldProperty<D>( new definition() )
     }
-    //D extends PropertyTypeDefinition<any>, Arg, 
-
-    // private isPropertyTypeDefinition(d: any): d is PropertyTypeDefinition<any>{
-    //     return true
-    // }
-
-    // private isPropertyTypeDefinitionConstructor(d: any): d is typeof PropertyTypeDefinition{
-    //     return true
-    // }
-
-
 
     compute<F extends ComputeFunction<any, any>>(
         definition: (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) ) | (F extends ComputeFunction<any, infer P>?P:unknown), compute: F) : ComputeProperty<F> {
@@ -484,30 +432,23 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         return source
     }
 
-    parseRaw<T extends TableSchema>(rawValue: any, context: DatabaseContext<any, any>, prop?: string): InstanceType<E> {
-        const schema = this
-        const entityClass = schema.entityClass
-        if(!entityClass){
-            throw new Error('Unexpected. Schema not registered.')
-        }
-        let o = super.parseRaw(rawValue, context) // this.parseDataBySchema(instance, repository, rawValue)
-        let instance = new entityClass() as InstanceType<E>
-        instance = Object.assign(instance, o)
-        return instance
+    parseRaw<T extends TableSchema>(rawValue: any, context: DatabaseContext<any, any>, prop?: string): any {
+        return super.parseRaw(rawValue, context) // this.parseDataBySchema(instance, repository, rawValue)
     }
     
-    parseProperty<T extends TableSchema>(propertyvalue: InstanceType<E> & EntityPropertyKeyValues<T>, context: DatabaseContext<any, any>, prop?: string) {
+    parseProperty<T extends TableSchema>(propertyvalue: any & EntityPropertyKeyValues<T>, context: DatabaseContext<any, any>, prop?: string) {
         return super.parseProperty(propertyvalue, context, prop)
     }
 
     hasMany<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
         this: ParentSchema,
-        relatedSchema: RootSchema, 
+        relatedSchemaClass: (new (...args: any[]) => RootSchema), 
         relatedBy: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>), 
         parentKey?: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
 
-        
+        let relatedSchema = this.#repository.context.findRegisteredSchema(relatedSchemaClass)
+
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
             ): Scalarable< ArrayType<RootSchema, 
@@ -562,10 +503,12 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
 
     belongsTo<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
         this: ParentSchema,
-        relatedSchema: RootSchema, 
+        relatedSchemaClass: (new (...args: any[]) => RootSchema),
         parentKey: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>),
         relatedBy?: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
+
+        let relatedSchema = this.#repository.context.findRegisteredSchema(relatedSchemaClass)
         
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
@@ -619,10 +562,10 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
 
 }
 
-export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: ModelRepository<EntityMap[key]>}>{
+export class ORM<ModelMap extends {[key:string]: typeof TableSchema}, ModelRepositoryMap extends {[key in keyof ModelMap]: ModelRepository< ModelMap[key] >}>{
 
     #globalKnexInstance: Knex | null = null
-    #contextMap = new Map<string, DatabaseContext<EntityMap, ModelMap>>()
+    #contextMap = new Map<string, DatabaseContext<ModelMap, ModelRepositoryMap>>()
 
     defaultORMConfig: ORMConfig<any> = {
         // primaryKeyName: 'id',
@@ -637,12 +580,12 @@ export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap exten
         }
     }
 
-    #ormConfig: ORMConfig<EntityMap>
+    #ormConfig: ORMConfig<ModelMap>
     // @ts-ignore
-    #registeredModels: EntityMap = {}
+    #registeredModels: ModelMap = {}
 
-    constructor(newConfig: Partial<ORMConfig<EntityMap>>){
-        let newOrmConfig: ORMConfig<EntityMap> = Object.assign({}, this.defaultORMConfig, newConfig)
+    constructor(newConfig: Partial<ORMConfig<ModelMap>>){
+        let newOrmConfig: ORMConfig<ModelMap> = Object.assign({}, this.defaultORMConfig, newConfig)
         // newOrmConfig.ormContext = Object.assign({}, defaultORMConfig.ormContext, newConfig.ormContext)
         this.#ormConfig = newOrmConfig
         this.register()
@@ -654,18 +597,13 @@ export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap exten
         return Object.assign({}, this.#ormConfig)
     }
 
-    register(){
-        const registerEntity = (entityName: string, entityClass: typeof Entity) => {
-            entityClass.register(this, entityName)
-            // @ts-ignore
-            this.#registeredModels[entityName] = entityClass
-        }
-        
+    private register(){
         //register models 
         if(this.#ormConfig.models){
             let models = this.#ormConfig.models
             Object.keys(models).forEach(key => {
-                registerEntity(key, models[key]);
+                // @ts-ignore
+                this.#registeredModels[key] = models[key]
             })
         }
 
@@ -680,17 +618,20 @@ export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap exten
                     let p = path.split('/')
                     let entityName = p[p.length - 1]
                     let entityClass = require(path)
-                    registerEntity(entityName, entityClass.default);
+                    // registerEntity(entityName, entityClass.default);
+
+                    // @ts-ignore
+                    this.#registeredModels[entityName] = entityClass.default
                 }
             })
         }
 
-        Object.keys(this.#registeredModels).forEach(k => {
-            this.#registeredModels[k].registerPostAction()
-        })
+        // Object.keys(this.#registeredModels).forEach(k => {
+        //     this.#registeredModels[k].registerPostAction()
+        // })
     }
 
-    getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<EntityMap, ModelMap> {
+    getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<ModelMap, ModelRepositoryMap> {
         //!!!important: lazy load, don't always return new object
         const key = JSON.stringify(config)
         let repo = this.#contextMap.get(key)
@@ -741,31 +682,44 @@ export type DatabaseContextConfig = {
 } & TableOptions
 
 //(ModelMap[key] extends Model<infer E>?E:never) 
-export class DatabaseContext<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: ModelRepository<EntityMap[key]>}> {
-    private config: Partial<DatabaseContextConfig> | null = null
+export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}, ModelRepositoryMap extends {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}> {
+    #config: Partial<DatabaseContextConfig> | null = null
     readonly orm
     // private registeredEntities: EntityMap
-    public models: ModelMap
-
-    constructor(orm: ORM<EntityMap, ModelMap>, registeredEntities: EntityMap, config?: Partial<DatabaseContextConfig> ){
-        // this.name = name
+    public models: ModelRepositoryMap
+    #modelClassMap: ModelMap
+    
+    constructor(orm: ORM<ModelMap, ModelRepositoryMap>, modelClassMap: ModelMap, config?: Partial<DatabaseContextConfig> ){
         this.orm = orm
-        this.config = config ?? {}
-        // this.registeredEntities = registeredEntities
+        this.#config = config ?? {}
+        this.#modelClassMap = modelClassMap
 
-        this.models = Object.keys(registeredEntities).reduce( (acc, key) => {
-            acc[key] = new ModelRepository(registeredEntities[key], this)
+        this.models = Object.keys(modelClassMap).reduce( (acc, key) => {
+            let modelClass = modelClassMap[key]
+            acc[key] = new ModelRepository(orm,this, modelClass, key)
             return acc
-        }, {} as {[key:string]: ModelRepository<any>}) as ModelMap
+        }, {} as {[key:string]: ModelRepository<any>}) as ModelRepositoryMap
+    }
+
+    get config(){
+        return this.#config
     }
 
     get tablePrefix(){
-        return this.config?.tablePrefix ?? ''
+        return this.#config?.tablePrefix ?? ''
+    }
+
+    findRegisteredSchema = <T extends typeof TableSchema>(modelClass: T): InstanceType<T> => {
+        let foundKey = Object.keys(this.#modelClassMap).find(key => this.#modelClassMap[key] === modelClass)
+        if(!foundKey){
+            throw new Error('Cannot find model')
+        }
+        return this.models[foundKey].modelClass as unknown as InstanceType<T>
     }
 
     schemaSqls = () => {
         let m = this.models
-        let sqls = Object.keys(m).map(k => m[k].entityClass().schema).map(s => s.createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
+        let sqls = Object.keys(m).map(k => m[k].modelClass).map(s => s.createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
         return sqls
     }
 

@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { rootCertificates } from "tls"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Entity, Property } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
@@ -725,7 +725,6 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 
         //@ts-ignore
         let schema =  Object.assign(new Schema(), propertyMap as SelectProps)
-        schema.init()
         return schema
     }
 
@@ -1016,7 +1015,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
 }
 
 
-export async function resolveEntityProps<T extends typeof Entity, D extends T["schema"]>(source: Datasource<D, "root">, 
+export async function resolveEntityProps<D extends TableSchema>(source: Datasource<D, "root">, 
     props: Partial<ComputePropertyArgsMap<D>> | undefined): Promise<{ [key: string]: Scalar<any> }> {
     
     let computedCols: { [key: string]: Scalar<any> }[] = []
