@@ -11,7 +11,7 @@ abstract class SQLFunction<Props, SourcePropMap> {
     }
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
-    // abstract toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
+    // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(): Scalar<any>
 }
 
@@ -22,7 +22,7 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
     constructor(resolver: ExpressionResolver<Props, SourcePropMap>){
         this.resolver = resolver
     }
-    // abstract toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
+    // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(): Scalar<BooleanNotNullType>
 }
 
@@ -30,7 +30,7 @@ export abstract class AssertionOperator implements Scalarable<any>{
 
     // abstract toRaw(leftOperand: Scalar ): Knex.Raw
     // abstract toScalar(leftOperand: Scalar ): Scalar
-    // abstract toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>
+    // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(): Scalar<BooleanNotNullType>
 }
 
@@ -44,14 +44,14 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
     }
 
     toScalar(): Scalar<BooleanNotNullType>{
-        // const p = this.toRaw(repository, resolver)
-        // return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
+        // const p = this.toRaw(context, resolver)
+        // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
+        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
                 args.map(arg => {
                     const resolved = this.resolver(arg)
-                    return thenResult(resolved, resolved => `${ resolved.toRaw(repository)}`)
+                    return thenResult(resolved, resolved => `${ resolved.toRaw(context)}`)
                 }).join(' AND ')
             ))
         }, new BooleanNotNullType())
@@ -66,20 +66,20 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         this.args = args
         // this.resolver = resolver
     }
-    // toRaw(repository: EntityRepository<any>,resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-    //     return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
+    // toRaw(context: Entitycontext<any>,resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+    //     return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
     //         `(${args.map(arg => `${resolver(arg).toString()}`).join(' OR ')})`
     //     ))
     // }
     
     toScalar(): Scalar<BooleanNotNullType>{
-        // const p = this.toRaw(repository, resolver)
-        // return thenResult(p, r => makeScalar(repository, r, new BooleanType()))
+        // const p = this.toRaw(context, resolver)
+        // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(repository,
+        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
                 args.map(arg => {
-                    return thenResult(this.resolver(arg), resolved => `${ resolved.toRaw(repository)}`)
+                    return thenResult(this.resolver(arg), resolved => `${ resolved.toRaw(context)}`)
                 }).join(' OR ')
             ))
         }, new BooleanNotNullType())
@@ -93,19 +93,19 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         this.arg = arg
     }
 
-    // toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-    //     return thenResult(this.arg, arg => raw(repository, `NOT (${resolver(arg).toString()})`) )
+    // toRaw(context: Entitycontext<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+    //     return thenResult(this.arg, arg => raw(context, `NOT (${resolver(arg).toString()})`) )
     //     // return raw( `NOT (${resolver(this.arg).toString()})`)
     // }
     
     toScalar(): Scalar<BooleanNotNullType> {
-        // const p = this.toRaw(repository, resolver)
-        // return thenResult(p, r => new Scalar(repository, r, new BooleanType()))
+        // const p = this.toRaw(context, resolver)
+        // return thenResult(p, r => new Scalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
 
-        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult(this.resolver(this.arg), scalar => raw(repository, 
-                `NOT (${scalar.toRaw(repository)})`) 
+        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+            return thenResult(this.resolver(this.arg), scalar => raw(context, 
+                `NOT (${scalar.toRaw(context)})`) 
             )
         },new BooleanNotNullType())
     }
@@ -118,17 +118,17 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
         this.arg = arg
     }
 
-    // toRaw(repository: EntityRepository<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
-    //     return thenResult(this.arg, arg => raw(repository, `NOT (${resolver(arg).toString()})`) )
+    // toRaw(context: Entitycontext<any>, resolver: ExpressionResolver<Props, PropMap>): Knex.Raw | Promise<Knex.Raw>{
+    //     return thenResult(this.arg, arg => raw(context, `NOT (${resolver(arg).toString()})`) )
     //     // return raw( `NOT (${resolver(this.arg).toString()})`)
     // }
     
     toScalar(): Scalar<BooleanNotNullType> {
-        // const p = this.toRaw(repository, resolver)
-        // return thenResult(p, r => new Scalar(repository, r, new BooleanType()))
+        // const p = this.toRaw(context, resolver)
+        // return thenResult(p, r => new Scalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((repository): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult(this.arg.toNativeBuilder(repository), scalar => raw(repository, 
+        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+            return thenResult(this.arg.toNativeBuilder(context), scalar => raw(context, 
                 `EXISTS (${scalar.toString()})`) 
             )
         },new BooleanNotNullType())
@@ -145,25 +145,25 @@ export class ContainOperator extends AssertionOperator {
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>): Knex.Raw | Promise<Knex.Raw>{
+    // toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>{
     //     // return  raw( `${leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
-    //     return thenResultArray(this.rightOperands, rightOperands => raw(repository, `${this.leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
+    //     return thenResultArray(this.rightOperands, rightOperands => raw(context, `${this.leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResultArray(this.rightOperands.map(s => s.toRaw(repository) ), rights => {
+            return thenResultArray(this.rightOperands.map(s => s.toRaw(context) ), rights => {
 
-                return thenResult(this.leftOperand.toRaw(repository), left => {
+                return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(repository, `${left} IN (${rights.map(o => '?')})`, [...rights])
+                    return raw(context, `${left} IN (${rights.map(o => '?')})`, [...rights])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         },new BooleanNotNullType())
     }
 }
@@ -178,25 +178,25 @@ export class NotContainOperator extends AssertionOperator {
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>, leftOperand: Scalar){
-    //     return  raw(repository, `${leftOperand} NOT IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+    // toRaw(context: Entitycontext<any>, leftOperand: Scalar){
+    //     return  raw(context, `${leftOperand} NOT IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
     //     // return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResultArray(this.rightOperands.map(s => s.toRaw(repository) ), rights => {
+            return thenResultArray(this.rightOperands.map(s => s.toRaw(context) ), rights => {
 
-                return thenResult(this.leftOperand.toRaw(repository), left => {
+                return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(repository, `${left} NOT IN (${rights.map(o => '?')})`, [...rights])
+                    return raw(context, `${left} NOT IN (${rights.map(o => '?')})`, [...rights])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         },new BooleanNotNullType())
     }
 }
@@ -211,31 +211,31 @@ export class LikeOperator extends AssertionOperator {
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>, leftOperand: Scalar<any>){
-    //     return raw(repository, `${leftOperand} LIKE ?`, [this.rightOperand])
+    // toRaw(context: Entitycontext<any>, leftOperand: Scalar<any>){
+    //     return raw(context, `${leftOperand} LIKE ?`, [this.rightOperand])
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResult(this.rightOperand.toRaw(repository), right => {
+            return thenResult(this.rightOperand.toRaw(context), right => {
 
-                return thenResult(this.leftOperand.toRaw(repository), left => {
+                return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(repository, `${left} LIKE ?`, [right])
+                    return raw(context, `${left} LIKE ?`, [right])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         },new BooleanNotNullType())
     }
     
     // toScalar(): Scalar<BooleanType>{
-    //     return new Scalar(new BooleanType(), (repository) => {
-    //         return raw(repository, `${this.leftOperand} LIKE ?`, [this.rightOperand])
+    //     return new Scalar(new BooleanType(), (context) => {
+    //         return raw(context, `${this.leftOperand} LIKE ?`, [this.rightOperand])
     //     })
     // }
 }
@@ -250,31 +250,31 @@ export class NotLikeOperator extends AssertionOperator {
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>, leftOperand: Scalar<any>){
-    //     return raw(repository, `${leftOperand} LIKE ?`, [this.rightOperand])
+    // toRaw(context: Entitycontext<any>, leftOperand: Scalar<any>){
+    //     return raw(context, `${leftOperand} LIKE ?`, [this.rightOperand])
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResult(this.rightOperand.toRaw(repository), right => {
+            return thenResult(this.rightOperand.toRaw(context), right => {
 
-                return thenResult(this.leftOperand.toRaw(repository), left => {
+                return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(repository, `${left} NOT LIKE ?`, [right])
+                    return raw(context, `${left} NOT LIKE ?`, [right])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         },new BooleanNotNullType())
     }
     
     // toScalar(): Scalar<BooleanType>{
-    //     return new Scalar(new BooleanType(), (repository) => {
-    //         return raw(repository, `${this.leftOperand} NOT LIKE ?`, [this.rightOperand])
+    //     return new Scalar(new BooleanType(), (context) => {
+    //         return raw(context, `${this.leftOperand} NOT LIKE ?`, [this.rightOperand])
     //     })
     // }
 }
@@ -289,25 +289,25 @@ export class EqualOperator extends AssertionOperator{
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>, leftOperand: Scalar<any>){
-    //     return raw(repository, `${leftOperand} LIKE ?`, [this.rightOperand])
+    // toRaw(context: Entitycontext<any>, leftOperand: Scalar<any>){
+    //     return raw(context, `${leftOperand} LIKE ?`, [this.rightOperand])
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(repository)) ?? this.rightOperand, right => {
+            return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(context)) ?? this.rightOperand, right => {
 
-                return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(repository)) ?? this.leftOperand, left => {
+                return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
 
-                    return raw(repository, `${left} = ?`, [right])
+                    return raw(context, `${left} = ?`, [right])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         },new BooleanNotNullType())
     }
 }
@@ -322,25 +322,25 @@ export class NotEqualOperator extends AssertionOperator {
         this.leftOperand = leftOperand
     }
 
-    // toRaw(repository: EntityRepository<any>, leftOperand: Scalar<any>){
-    //     return raw(repository, `${leftOperand} LIKE ?`, [this.rightOperand])
+    // toRaw(context: Entitycontext<any>, leftOperand: Scalar<any>){
+    //     return raw(context, `${leftOperand} LIKE ?`, [this.rightOperand])
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
+        return new Scalar((context) => {
 
-            return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(repository)) ?? this.rightOperand, right => {
+            return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(context)) ?? this.rightOperand, right => {
 
-                return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(repository)) ?? this.leftOperand, left => {
+                return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
 
-                    return raw(repository, `${left} <> ?`, [right])
+                    return raw(context, `${left} <> ?`, [right])
 
                 })
 
             })
-            // return raw(repository, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
+            // return raw(context, `${this.leftOperand} IN (${this.rightOperands.map(o => '?')})`, [...this.rightOperands])
         }, new BooleanNotNullType())
     }
 }
@@ -354,9 +354,9 @@ export class IsNullOperator extends AssertionOperator {
     }
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
-            return thenResult(this.leftOperand.toRaw(repository), left => {
-                return raw(repository, `${left} IS NULL`)
+        return new Scalar((context) => {
+            return thenResult(this.leftOperand.toRaw(context), left => {
+                return raw(context, `${left} IS NULL`)
             })
         }, new BooleanNotNullType())
     }
@@ -371,9 +371,9 @@ export class IsNotNullOperator extends AssertionOperator {
     }
     toScalar(): Scalar<BooleanNotNullType>{
 
-        return new Scalar((repository) => {
-            return thenResult(this.leftOperand.toRaw(repository), left => {
-                return raw(repository, `${left} IS NOT NULL`)
+        return new Scalar((context) => {
+            return thenResult(this.leftOperand.toRaw(context), left => {
+                return raw(context, `${left} IS NOT NULL`)
             })
         }, new BooleanNotNullType())
     }

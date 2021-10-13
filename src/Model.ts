@@ -1,4 +1,4 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, Entity, DatabaseRepository, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, EntityFieldPropertyKeyValues, EntityWithOptionalProperty } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, Entity, DatabaseContext, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, EntityFieldPropertyKeyValues, EntityWithOptionalProperty } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, ExtractFieldProps, ExtractProps, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Datasource, Expression, resolveEntityProps, TableOptions } from "./Builder"
@@ -7,14 +7,14 @@ import { ArrayType, FieldPropertyTypeDefinition } from "./PropertyType"
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
 
-export class Model<T extends typeof Entity>{
+export class ModelRepository<T extends typeof Entity>{
 
     #entityClass: T
-    #repository: DatabaseRepository<any, any>
+    #context: DatabaseContext<any, any>
 
-    constructor(entityClass: T, repository: DatabaseRepository<any, any>){
+    constructor(entityClass: T, context: DatabaseContext<any, any>){
         this.#entityClass = entityClass
-        this.#repository = repository
+        this.#context = context
     }
 
     entityClass(){
@@ -59,24 +59,24 @@ export class Model<T extends typeof Entity>{
     private async _create(executionOptions: ExecutionOptions, values: PartialMutationEntityPropertyKeyValues<T["schema"]>[]) {
         const schema = this.#entityClass.schema
         const actionName = 'create'
-        const repository = this.#repository
+        const context = this.#context
 
-        if(!repository){
+        if(!context){
             throw new Error('Entity is not accessed through Repository')
         }
         
-        let useUuid: boolean = !!repository.orm.ormConfig.enableUuid
-        if (repository.client().startsWith('sqlite')) {
-            if (!repository.orm.ormConfig.enableUuid ){
+        let useUuid: boolean = !!context.orm.ormConfig.enableUuid
+        if (context.client().startsWith('sqlite')) {
+            if (!context.orm.ormConfig.enableUuid ){
                 throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
             }
         }
         
-        const schemaPrimaryKeyFieldName = schema.id.fieldName(repository.orm)
+        const schemaPrimaryKeyFieldName = schema.id.fieldName(context.orm)
         const schemaPrimaryKeyPropName = schema.id.name
         const schemaUUIDPropName = schema.uuid?.name
         
-        let fns = await repository.startTransaction(async (trx) => {
+        let fns = await context.startTransaction(async (trx) => {
 
             //replace the trx
             executionOptions = {...executionOptions, trx: trx}
@@ -92,9 +92,9 @@ export class Model<T extends typeof Entity>{
                     newUuid = uuidv4()
                     propValues[schemaUUIDPropName] = newUuid
                 }
-                let stmt = repository.orm.getKnexInstance()( schema.tableName({tablePrefix: repository.tablePrefix}) ).insert( this.extractRealField(schema, propValues) )
+                let stmt = context.orm.getKnexInstance()( schema.tableName({tablePrefix: context.tablePrefix}) ).insert( this.extractRealField(schema, propValues) )
         
-                if ( repository.client().startsWith('pg')) {
+                if ( context.client().startsWith('pg')) {
                     stmt = stmt.returning( schemaPrimaryKeyFieldName )
                 }
                 let input = {
@@ -107,10 +107,10 @@ export class Model<T extends typeof Entity>{
                 // console.debug('======== INSERT =======')
                 // console.debug(stmt.toString())
                 // console.debug('========================')
-                if (repository.client().startsWith('mysql')) {
+                if (context.client().startsWith('mysql')) {
                     let insertedId: number
                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                    const r = await repository.executeStatement(insertStmt, executionOptions)
+                    const r = await context.executeStatement(insertStmt, executionOptions)
                     insertedId = r[0][0].insertId
                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
        
@@ -123,10 +123,10 @@ export class Model<T extends typeof Entity>{
 
                     let b = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                     return b
-                } else if (repository.client().startsWith('sqlite')) {
+                } else if (context.client().startsWith('sqlite')) {
                     const insertStmt = input.sqlString.toString()
-                    const r = await repository.executeStatement(insertStmt, executionOptions)
-                    if(repository.orm.ormConfig.enableUuid && schema.uuid){
+                    const r = await context.executeStatement(insertStmt, executionOptions)
+                    if(context.orm.ormConfig.enableUuid && schema.uuid){
                         if(input.uuid === null){
                             throw new Error('Unexpected Flow.')
                         } else {
@@ -144,10 +144,10 @@ export class Model<T extends typeof Entity>{
                         throw new Error('Unexpected Flow.')
                     }
 
-                } else if (repository.client().startsWith('pg')) {
+                } else if (context.client().startsWith('pg')) {
                     const insertStmt = input.sqlString.toString()
                     let insertedId: number
-                    const r = await repository.executeStatement(insertStmt, executionOptions)
+                    const r = await context.executeStatement(insertStmt, executionOptions)
                     
                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
                     let record = await this.findOne({
@@ -172,7 +172,7 @@ export class Model<T extends typeof Entity>{
     }
 
     private async _prepareNewData<S extends TableSchema>(data: SimpleObject, schema: S, actionName: MutationName, executionOptions: ExecutionOptions) {
-        const repository = this.#repository
+        const context = this.#context
         if(!schema?.entityClass?.entityName){
             throw new Error('Not yet registered.')
         }
@@ -185,7 +185,7 @@ export class Model<T extends typeof Entity>{
                 throw new Error(`The Property [${propName}] doesn't exist in ${schema.entityClass?.entityName}`)
             }
             const prop = foundProp
-            let propertyValue = prop.definition.parseProperty(data[prop.name], repository, prop.name)
+            let propertyValue = prop.definition.parseProperty(data[prop.name], context, prop.name)
             
             propValues[prop.name] = propertyValue
             return propValues
@@ -202,7 +202,7 @@ export class Model<T extends typeof Entity>{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(repository, record, {
+            record = await h.action(context, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundProp.name,
@@ -215,7 +215,7 @@ export class Model<T extends typeof Entity>{
 
         propValues = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(repository, record, {
+            record = await h.action(context, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
@@ -236,7 +236,7 @@ export class Model<T extends typeof Entity>{
         inputProps: SimpleObject, 
         executionOptions: ExecutionOptions): Promise<R> {
 
-        const repository = this.#repository
+        const context = this.#context
 
         if(!schema?.entityClass?.entityName){
             throw new Error('Not yet registered.')
@@ -268,7 +268,7 @@ export class Model<T extends typeof Entity>{
                 propertyValue = inputProps[foundProp.name]
             }
 
-            record = await h.action(repository, record, {
+            record = await h.action(context, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: foundPropName,
@@ -282,7 +282,7 @@ export class Model<T extends typeof Entity>{
 
         record = await hooks2.reduce( async(recordP, h) => {
             let record = await recordP
-            record = await h.action(repository, record, {
+            record = await h.action(context, record, {
                 hookName: h.name,
                 mutationName: actionName,
                 propertyName: null,
@@ -324,7 +324,7 @@ export class Model<T extends typeof Entity>{
 
     private async _find<F extends SingleSourceArg<T["schema"]>>(executionOptions: ExecutionOptions, applyOptions: F ) {   
         
-        const repository = this.#repository
+        const context = this.#context
         const entityClass = this.#entityClass
 
         let source = entityClass.schema.datasource('root')
@@ -352,7 +352,7 @@ export class Model<T extends typeof Entity>{
             root: dataset.toScalar(new ArrayType(entityClass.schema))
         })
 
-        let resultData = await repository.execute(wrappedDataset, executionOptions)
+        let resultData = await context.execute(wrappedDataset, executionOptions)
 
         let rows = resultData[0].root as Array<  EntityWithOptionalProperty<T["schema"], F> >
         return rows
@@ -383,7 +383,7 @@ export class Model<T extends typeof Entity>{
         actionOptions: Partial<DatabaseActionOptions<T["schema"]>>
        ) {
 
-        const repository = this.#repository
+        const context = this.#context
         const entityClass = this.#entityClass
 
         const schema = entityClass.schema
@@ -411,10 +411,10 @@ export class Model<T extends typeof Entity>{
             entityData: data
         }
 
-        const schemaPrimaryKeyFieldName = schema.id.fieldName(repository.orm)
+        const schemaPrimaryKeyFieldName = schema.id.fieldName(context.orm)
         const schemaPrimaryKeyPropName = schema.id.name
 
-        let fns = await repository.startTransaction(async (trx) => {
+        let fns = await context.startTransaction(async (trx) => {
             if(!input.selectSqlString || !input.entityData){
                 throw new Error('Unexpected Flow.')
             }
@@ -422,13 +422,13 @@ export class Model<T extends typeof Entity>{
             let selectStmt = input.selectSqlString.addNative( qb => qb.select( schemaPrimaryKeyFieldName ) )
             
             let pks: number[] = []
-            if (repository.client().startsWith('pg')) {
+            if (context.client().startsWith('pg')) {
                 let targetResult
                 if(updateStmt){
                     updateStmt = updateStmt.native( qb => qb.returning(schemaPrimaryKeyFieldName) )
-                    targetResult = await repository.executeStatement(updateStmt, executionOptions)
+                    targetResult = await context.executeStatement(updateStmt, executionOptions)
                 } else {
-                    targetResult = await repository.executeStatement(selectStmt, executionOptions)
+                    targetResult = await context.executeStatement(selectStmt, executionOptions)
                 }
                 let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
                     let pkValue = row[ schemaPrimaryKeyFieldName ]
@@ -438,7 +438,7 @@ export class Model<T extends typeof Entity>{
                     }).withOptions(executionOptions)
                     let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                     if(isDelete){
-                        await repository.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+                        await context.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                     }
                     // {
                     //     ...(querySelectAfterMutation? {select: querySelectAfterMutation}: {}),
@@ -451,11 +451,11 @@ export class Model<T extends typeof Entity>{
                 return outputs
             } else {
 
-                if (repository.client().startsWith('mysql')) {
-                    let result = await repository.executeStatement(selectStmt, executionOptions)
+                if (context.client().startsWith('mysql')) {
+                    let result = await context.executeStatement(selectStmt, executionOptions)
                     pks = result[0].map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
-                } else if (repository.client().startsWith('sqlite')) {
-                    let result = await repository.executeStatement(selectStmt, executionOptions)
+                } else if (context.client().startsWith('sqlite')) {
+                    let result = await context.executeStatement(selectStmt, executionOptions)
                     pks = result.map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
                 } else {
                     throw new Error('NYI.')
@@ -470,9 +470,9 @@ export class Model<T extends typeof Entity>{
                 }
     
                 return await Promise.all(pks.flatMap( async (pkValue) => {
-                    if (repository.client().startsWith('mysql')) {
+                    if (context.client().startsWith('mysql')) {
                         if(updateStmt){
-                            let updateResult = await repository.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
+                            let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
                             let numUpdates: number
                             numUpdates = updateResult[0].affectedRows
                             if(numUpdates > 1){
@@ -487,13 +487,13 @@ export class Model<T extends typeof Entity>{
                         }).withOptions(executionOptions)
                         let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                         if(isDelete){
-                            await repository.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+                            await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
                         return finalRecord
                         
-                    } else if (repository.client().startsWith('sqlite')) {
+                    } else if (context.client().startsWith('sqlite')) {
                         if(updateStmt){
-                            let updateResult = await repository.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
+                            let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
                             let found = await this.findOne({
                                 //@ts-ignore
                                 where: {[schemaPrimaryKeyPropName]: pkValue}
@@ -511,7 +511,7 @@ export class Model<T extends typeof Entity>{
                         }).withOptions(executionOptions)
                         let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
                         if(isDelete){
-                            await repository.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+                            await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
                         }
                         return finalRecord
                     } else {
@@ -545,14 +545,14 @@ export class Model<T extends typeof Entity>{
     }
 
     private extractRealField<S extends TableSchema>(schema: S, fieldValues: SimpleObject): any {
-        const repository = this.#repository
+        const context = this.#context
         return Object.keys(fieldValues).reduce( (acc, key) => {
             let prop = schema.properties.find(p => p.name === key)
             if(!prop){
                 throw new Error('Unexpected')
             }
             if(prop instanceof FieldProperty){
-                acc[prop.fieldName(repository.orm)] = fieldValues[key]
+                acc[prop.fieldName(context.orm)] = fieldValues[key]
             }
             return acc
         }, {} as SimpleObject)        

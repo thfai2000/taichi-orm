@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { rootCertificates } from "tls"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseRepository, ORM, Entity, Property } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Entity, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
@@ -80,8 +80,8 @@ export interface Datasource<E extends Schema, alias extends string> {
     schema: E
     selectorMap(): SelectorMap<E>
 
-    toRaw(repository: DatabaseRepository<any, any>): Knex.Raw | Promise<Knex.Raw>
-    realSource(repository: DatabaseRepository<any, any>): SQLString | Promise<SQLString>
+    toRaw(context: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw>
+    realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
@@ -112,7 +112,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
     }
-    abstract realSource(repository: DatabaseRepository<any, any>): SQLString | Promise<SQLString>
+    abstract realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
 
     selectorMap(): SelectorMap<E>{
         const datasource = this
@@ -164,11 +164,11 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Column(name, (entityRepository) => {
-                const orm = entityRepository.orm
-                const client = entityRepository.client()
+            return new Column(name, (context) => {
+                const orm = context.orm
+                const client = context.client()
                 let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
-                return makeRaw(entityRepository, rawTxt)
+                return makeRaw(context, rawTxt)
             }, fieldProp.definition)
         }
     }
@@ -182,7 +182,7 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             const cProp = prop
             return (args?: ARG) => {
             
-                let col = new Column<Name, R>(name, (entityRepository) => {
+                let col = new Column<Name, R>(name, (context) => {
                     const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, args)
                     return thenResult( subquery, scalarable => scalarable.toScalar(cProp.definition) )
                 }, cProp.definition)
@@ -192,10 +192,10 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
         }
     }
     
-    async toRaw(repository: DatabaseRepository<any, any>){
-        const client = repository.client()
-        const sql = await this.realSource(repository)
-        return makeRaw(repository, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
+    async toRaw(context: DatabaseContext<any, any>){
+        const client = context.client()
+        const sql = await this.realSource(context)
+        return makeRaw(context, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
     }
 
 }
@@ -209,14 +209,14 @@ export class TableDatasource<E extends TableSchema, Name extends string> extends
         this.options = options
     }
 
-    realSource(repository: DatabaseRepository<any, any>){
-        const finalOptions = Object.assign({}, {tablePrefix: repository.tablePrefix}, this.options ?? {})
+    realSource(context: DatabaseContext<any, any>){
+        const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
 
         let tableName = this.schema.tableName(finalOptions)
         if(!tableName){
             throw new Error('Not yet registered')
         }
-        return quote(repository.client(), tableName)
+        return quote(context.client(), tableName)
     }
 }
 
@@ -228,8 +228,8 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
         this.dataset = dataset
     }
 
-    async realSource(repository: DatabaseRepository<any, any>){
-        return `(${(await this.dataset.toNativeBuilder(repository))})`
+    async realSource(context: DatabaseContext<any, any>){
+        return `(${(await this.dataset.toNativeBuilder(context))})`
     }
 }
 
@@ -245,13 +245,13 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     #groupByItems: { [key: string]: Scalar<any> } | null = null
     #limit: null | number = null
     #offset: null | number = null
-    #repository: DatabaseRepository<any, any> | null = null
+    #context: DatabaseContext<any, any> | null = null
 
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
-    constructor(repository?: DatabaseRepository<any, any> | null){
+    constructor(context?: DatabaseContext<any, any> | null){
         // this.#fromItem = fromSource
-        this.#repository = repository ?? null
+        this.#context = context ?? null
     }
 
     toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
@@ -281,15 +281,15 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return Object.keys(selectItems).map(key => this.selectItemAlias(key, selectItems[key]) )
     }
 
-    async toNativeBuilder(repo?: DatabaseRepository<any, any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
 
-        const repository = repo ?? this.#repository
+        const context = repo ?? this.#context
 
-        if(!repository){
+        if(!context){
             throw new Error('There is no repository provided.')
         }
 
-        let nativeQB = repository.orm.getKnexInstance().clearSelect()
+        let nativeQB = context.orm.getKnexInstance().clearSelect()
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
@@ -298,7 +298,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#fromItem){
-            const from = await this.#fromItem.toRaw(repository)
+            const from = await this.#fromItem.toRaw(context)
             nativeQB.from(from)
         }
 
@@ -310,25 +310,25 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         
         await this.#joinItems.reduce( async(acc, item) => {
             await acc
-            let finalExpr = await resolver(item.expression).toRaw(repository)
+            let finalExpr = await resolver(item.expression).toRaw(context)
 
             if(item.type === 'inner'){
-                nativeQB.innerJoin( await item.source.toRaw(repository), finalExpr)
+                nativeQB.innerJoin( await item.source.toRaw(context), finalExpr)
             } else if(item.type === 'left'){
-                nativeQB.leftJoin( await item.source.toRaw(repository), finalExpr)
+                nativeQB.leftJoin( await item.source.toRaw(context), finalExpr)
             } else if(item.type === 'right'){
-                nativeQB.rightJoin( await item.source.toRaw(repository), finalExpr)
+                nativeQB.rightJoin( await item.source.toRaw(context), finalExpr)
             }
             return true
         }, Promise.resolve(true))
         
         if(this.#whereRawItem){
-            const where: Knex.Raw = await resolver(this.#whereRawItem).toRaw(repository)
+            const where: Knex.Raw = await resolver(this.#whereRawItem).toRaw(context)
             nativeQB.where( where )
         }
 
         if(this.#groupByItems){
-            const groupByItems = await this.scalarMap2RawArray(this.#groupByItems, repository, false)
+            const groupByItems = await this.scalarMap2RawArray(this.#groupByItems, context, false)
             if(groupByItems.length === 0){
                 throw new Error('No groupByItems')
             }
@@ -350,7 +350,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#selectItems){
-            const selectItems = await this.scalarMap2RawArray(this.#selectItems, repository, true)
+            const selectItems = await this.scalarMap2RawArray(this.#selectItems, context, true)
             if(selectItems.length === 0 && !this.#fromItem){
                 throw new Error('No SELECT and FROM are provided for Dataset')
             }
@@ -358,7 +358,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         }
 
         if(this.#updateItems){
-            const updateItems = await this.scalarMap2RawMap(this.#updateItems, repository)
+            const updateItems = await this.scalarMap2RawMap(this.#updateItems, context)
             if(Object.keys(updateItems).length === 0 && !this.#fromItem){
                 throw new Error('No UPDATE and FROM are provided for Dataset')
             }
@@ -384,7 +384,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     }
 
     toScalar<T extends PropertyTypeDefinition<any> >(type?: T | (new (...args: any[]) => T)): Scalar<T>{
-        return new Scalar(this, type, this.#repository)
+        return new Scalar(this, type, this.#context)
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
@@ -575,8 +575,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return nameMap
     }
 
-    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, repository: DatabaseRepository<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
-        const client = repository.client()
+    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
+        const client = context.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
             // let acc = await accP
@@ -584,20 +584,20 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             if(!scalar){
                 throw new Error(`cannot resolve field ${k}`)
             }
-            const raw: Knex.Raw = await scalar.toRaw(repository)
+            const raw: Knex.Raw = await scalar.toRaw(context)
             let text = raw.toString().trim()
 
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(repository, `${text}${includeAlias?` AS ${quote(client, this.selectItemAlias(k, scalar))}`:''}`)
+            const newRaw = makeRaw(context, `${text}${includeAlias?` AS ${quote(client, this.selectItemAlias(k, scalar))}`:''}`)
 
             return newRaw
         }))
     }
 
-    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, repository: DatabaseRepository<any, any>) {
-        const client = repository.client()
+    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>) {
+        const client = context.client()
         return await Object.keys(nameMap).reduce( async (accP, k) => {
 
             const acc = await accP
@@ -606,13 +606,13 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             if(!scalar){
                 throw new Error(`cannot resolve field ${k}`)
             }
-            const raw: Knex.Raw = await scalar.toRaw(repository)
+            const raw: Knex.Raw = await scalar.toRaw(context)
             let text = raw.toString().trim()
 
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            acc[k] = makeRaw(repository, text)
+            acc[k] = makeRaw(context, text)
             return acc
         }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
     }
@@ -738,19 +738,19 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         SelectProps[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
             // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
                 // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
-    }>(executionOptions?: ExecutionOptions, repo?: DatabaseRepository<any, any>): Promise<R[]>{
-        const repository = repo ?? this.#repository
+    }>(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): Promise<R[]>{
+        const context = repo ?? this.#context
 
-        if(!repository){
+        if(!context){
             throw new Error('There is no repository provided.')
         }
 
-        return repository.execute(this, executionOptions)
+        return context.execute(this, executionOptions)
     }
 }
 
 type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
-type RawExpression = ( (repository: DatabaseRepository<any, any>) => RawUnit) | RawUnit
+type RawExpression = ( (context: DatabaseContext<any, any>) => RawUnit) | RawUnit
 
 export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable<T> {
     // __type: 'Scalar'
@@ -758,13 +758,13 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
     readonly definition: T | PropertyTypeDefinition<any>
     protected expressionOrDataset: RawExpression
-    protected repository: DatabaseRepository<any, any> | null = null
+    protected context: DatabaseContext<any, any> | null = null
     
     // protected dataset:  | null = null
 
     constructor(expressionOrDataset: RawExpression, 
         definition?: T | (new (...args: any[]) => T) | PropertyTypeDefinition<any>,
-        repository?: DatabaseRepository<any, any> | null){
+        context?: DatabaseContext<any, any> | null){
 
         if(!definition){
             this.definition = new PropertyTypeDefinition<any>()
@@ -774,23 +774,23 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
             this.definition = new definition()
         }
         this.expressionOrDataset = expressionOrDataset
-        this.repository = repository ?? null
+        this.context = context ?? null
     }
 
     static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D>{
-        return new Scalar( (repository: DatabaseRepository<any, any>) => {
+        return new Scalar( (context: DatabaseContext<any, any>) => {
             if(!args){
-                return makeRaw(repository, sql)
+                return makeRaw(context, sql)
             } else {
                 const rawArgs = args.map( (arg) => {
                     if(arg instanceof Scalar){
-                        return arg.toRaw(repository)
+                        return arg.toRaw(context)
                     } else if(arg instanceof Dataset){
-                        return arg.toNativeBuilder(repository)
+                        return arg.toNativeBuilder(context)
                     }
                     return arg
                 })
-                return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(repository, sql, rawArgs)) )
+                return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(context, sql, rawArgs)) )
             }
         }, definition)
     }
@@ -818,8 +818,8 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     //     return super.toString()
     // }
 
-    toRaw(repository?: DatabaseRepository<any, any>): Knex.Raw | Promise<Knex.Raw> {
-        const repo = (repository ?? this.repository)
+    toRaw(context?: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw> {
+        const repo = (context ?? this.context)
         if(!repo){
             throw new Error('There is no repository provided')
         }
@@ -858,22 +858,22 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     }
 
     asColumn<Name extends string>(propName: Name): Column<Name, T> {
-        return new Column(propName, this.expressionOrDataset, this.definition, this.repository)
+        return new Column(propName, this.expressionOrDataset, this.definition, this.context)
     }
 
     toScalar<P extends PropertyTypeDefinition<any> = T>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
         const d = definition ??  this.definition
-        return new Scalar(this.toRealRaw(), d, this.repository)
+        return new Scalar(this.toRealRaw(), d, this.context)
     }
 
-    async execute(executionOptions?: ExecutionOptions, repo?: DatabaseRepository<any, any>): 
+    async execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): 
         Promise<T extends PropertyTypeDefinition<infer D>? D: any> {
-        const repository = repo ?? this.repository
+        const context = repo ?? this.context
 
-        if(!repository){
+        if(!context){
             throw new Error('There is no repository provided.')
         }
-        let result = await repository.execute( new Dataset().select({root: this}), executionOptions)
+        let result = await context.execute( new Dataset().select({root: this}), executionOptions)
 
         //@ts-ignore
         return result[0].root as any    
@@ -884,8 +884,8 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, repository?: DatabaseRepository<any, any> | null){
-        super(expressionOrDataset, definition, repository)
+    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, context?: DatabaseContext<any, any> | null){
+        super(expressionOrDataset, definition, context)
         this.alias = alias
         // this.scalarable = scalarable
     }
@@ -901,8 +901,8 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     }
 }
 
-export const makeRaw = (repository: DatabaseRepository<any, any>, sql: any, args?: any[]) => {
-    let r = repository.orm.getKnexInstance().raw(sql, args ?? [])
+export const makeRaw = (context: DatabaseContext<any, any>, sql: any, args?: any[]) => {
+    let r = context.orm.getKnexInstance().raw(sql, args ?? [])
     // @ts-ignore
     r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
     // r.clone = () => {
@@ -924,21 +924,21 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             value = expression
         }
         if( value === null){
-            return new Scalar(repository => makeRaw(repository, '?', [null]))
+            return new Scalar(context => makeRaw(context, '?', [null]))
         } else if (typeof value === 'boolean') {
             const boolValue = value
-            return new Scalar(repository => makeRaw(repository, '?', [boolValue]), new BooleanType())
+            return new Scalar(context => makeRaw(context, '?', [boolValue]), new BooleanType())
         } else if (typeof value === 'string'){
             const stringValue = value
-            return new Scalar(repository => makeRaw(repository, '?', [stringValue]), new StringType())
+            return new Scalar(context => makeRaw(context, '?', [stringValue]), new StringType())
         } else if (typeof value === 'number'){
             const numberValue = value
             //TODO
-            return new Scalar(repository => makeRaw(repository, '?', [numberValue]), new NumberType())
+            return new Scalar(context => makeRaw(context, '?', [numberValue]), new NumberType())
         } else if (value instanceof Date){
             const dateValue = value
             //TODO
-            return new Scalar(repository => makeRaw(repository, '?', [dateValue]), new DateTimeType())
+            return new Scalar(context => makeRaw(context, '?', [dateValue]), new DateTimeType())
         } else if(value instanceof ConditionOperator){
             return value.toScalar()
         } else if(Array.isArray(value)){

@@ -26,7 +26,7 @@ import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util
         createModels,
         dataset, 
         models: {Shop, Product} 
-    } = orm.getRepository()
+    } = orm.getContext()
 
 
     await createModels()
@@ -38,7 +38,7 @@ import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util
     
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
-    const builder = await myShopDS.toNativeBuilder(orm.getRepository())
+    const builder = await myShopDS.toNativeBuilder(orm.getContext())
     console.log('sql1', builder.toString() )
 
     let shop1 = await Shop.createOne({
@@ -93,7 +93,7 @@ import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util
                 })
             ).offset(0).limit(4000)
     
-    let result = await orm.getRepository().execute(dd, {
+    let result = await orm.getContext().execute(dd, {
         onSqlRun: console.log
     })
     console.log('xxx', result)

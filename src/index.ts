@@ -5,7 +5,7 @@ import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, 
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
-import { Model } from './Model'
+import { ModelRepository } from './Model'
 
 
 // type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
@@ -181,7 +181,6 @@ export type ORMConfig<EntityMap extends {[key:string]: Entity}> = {
 }
 
 export class Property<D extends PropertyTypeDefinition<any> > {
-    // private repository?: EntityRepository<any>
     private _name?: string
     readonly definition: D
     // private schema?: Schema
@@ -194,8 +193,6 @@ export class Property<D extends PropertyTypeDefinition<any> > {
             if( /[\.`' ]/.test(name) || name.startsWith('_') || name.endsWith('_') ){
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "'" or startsWith/endsWith '_'.`)
             }
-            // this.schema = schema
-            // this.repository = repository
             this._name = name
             
         }
@@ -294,14 +291,14 @@ export class Schema<I = any> implements ParsableTrait<I>{
         }
     }
 
-    parseRaw(rawValue: I, repository: DatabaseRepository<any, any>, prop?: string): I {
-        return this.parseDataBySchema(rawValue, repository) as I
+    parseRaw(rawValue: I, context: DatabaseContext<any, any>, prop?: string): I {
+        return this.parseDataBySchema(rawValue, context) as I
     }
-    parseProperty(propertyvalue: I, repository: DatabaseRepository<any, any>, prop?: string) {
+    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, prop?: string) {
         return propertyvalue
     }
 
-    parseDataBySchema(row: any, repository: DatabaseRepository<any,any>) {
+    parseDataBySchema(row: any, context: DatabaseContext<any,any>) {
         const schema = this
         let output = {}
         for (const propName in row) {
@@ -316,7 +313,7 @@ export class Schema<I = any> implements ParsableTrait<I>{
                 // if(metaInfo.propName === 'products'){
                 //     start = new Date()
                 // }
-                let propValue = propType.parseRaw(row[propName], repository, propName) ?? row[propName]
+                let propValue = propType.parseRaw(row[propName], context, propName) ?? row[propName]
                 
                 // if(metaInfo.propName === 'products'){
                 //     //@ts-ignore
@@ -342,7 +339,6 @@ export class Schema<I = any> implements ParsableTrait<I>{
 
 export class Entity {
 
-    // static repository: EntityRepository<any> | null = null;
     static orm?: ORM<any, any>
     static entityName?: string
 
@@ -421,13 +417,13 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         return this
     }
 
-    createTableStmt(repository: DatabaseRepository<any, any>, options?: TableOptions){
+    createTableStmt(context: DatabaseContext<any, any>, options?: TableOptions){
         // console.log('xxxx', this.entityClass)
         if(!this.entityClass || !this.entityClass.orm){
             throw new Error('Not register yet')
         }
         const orm = this.entityClass.orm
-        const client = repository.client()
+        const client = context.client()
         const tableName = this.tableName(options)
         if(!tableName){
             throw new Error('Not yet registered')
@@ -438,7 +434,7 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
             props.map( prop => {
                 let f = prop.definition
                 if(f instanceof FieldPropertyTypeDefinition){
-                    return `${f.create(prop.name, prop.fieldName(orm), repository)}`  
+                    return `${f.create(prop.name, prop.fieldName(orm), context)}`  
                 }
                 return ``
             }).flat().join(',\n')}\n)`;
@@ -488,20 +484,20 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
         return source
     }
 
-    parseRaw<T extends TableSchema>(rawValue: any, repository: DatabaseRepository<any, any>, prop?: string): InstanceType<E> {
+    parseRaw<T extends TableSchema>(rawValue: any, context: DatabaseContext<any, any>, prop?: string): InstanceType<E> {
         const schema = this
         const entityClass = schema.entityClass
         if(!entityClass){
             throw new Error('Unexpected. Schema not registered.')
         }
-        let o = super.parseRaw(rawValue, repository) // this.parseDataBySchema(instance, repository, rawValue)
+        let o = super.parseRaw(rawValue, context) // this.parseDataBySchema(instance, repository, rawValue)
         let instance = new entityClass() as InstanceType<E>
         instance = Object.assign(instance, o)
         return instance
     }
     
-    parseProperty<T extends TableSchema>(propertyvalue: InstanceType<E> & EntityPropertyKeyValues<T>, repository: DatabaseRepository<any, any>, prop?: string) {
-        return super.parseProperty(propertyvalue, repository, prop)
+    parseProperty<T extends TableSchema>(propertyvalue: InstanceType<E> & EntityPropertyKeyValues<T>, context: DatabaseContext<any, any>, prop?: string) {
+        return super.parseProperty(propertyvalue, context, prop)
     }
 
     hasMany<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
@@ -623,10 +619,10 @@ export abstract class TableSchema<E extends typeof Entity = typeof Entity> exten
 
 }
 
-export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: Model<EntityMap[key]>}>{
+export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: ModelRepository<EntityMap[key]>}>{
 
     #globalKnexInstance: Knex | null = null
-    #repositoryMap = new Map<string, DatabaseRepository<EntityMap, ModelMap>>()
+    #contextMap = new Map<string, DatabaseContext<EntityMap, ModelMap>>()
 
     defaultORMConfig: ORMConfig<any> = {
         // primaryKeyName: 'id',
@@ -694,13 +690,13 @@ export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap exten
         })
     }
 
-    getRepository(config?: Partial<DatabaseRepositoryConfig>): DatabaseRepository<EntityMap, ModelMap> {
+    getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<EntityMap, ModelMap> {
         //!!!important: lazy load, don't always return new object
         const key = JSON.stringify(config)
-        let repo = this.#repositoryMap.get(key)
+        let repo = this.#contextMap.get(key)
         if(!repo){
-            repo = new DatabaseRepository(this, this.#registeredModels, config)
-            this.#repositoryMap.set(key, repo)
+            repo = new DatabaseContext(this, this.#registeredModels, config)
+            this.#contextMap.set(key, repo)
         }
         return repo
     }
@@ -741,26 +737,26 @@ export class ORM<EntityMap extends {[key:string]: typeof Entity}, ModelMap exten
     // }
 }
 
-export type DatabaseRepositoryConfig = {
+export type DatabaseContextConfig = {
 } & TableOptions
 
 //(ModelMap[key] extends Model<infer E>?E:never) 
-export class DatabaseRepository<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: Model<EntityMap[key]>}> {
-    private config: Partial<DatabaseRepositoryConfig> | null = null
+export class DatabaseContext<EntityMap extends {[key:string]: typeof Entity}, ModelMap extends {[key in keyof EntityMap]: ModelRepository<EntityMap[key]>}> {
+    private config: Partial<DatabaseContextConfig> | null = null
     readonly orm
-    private registeredEntities: EntityMap
+    // private registeredEntities: EntityMap
     public models: ModelMap
 
-    constructor(orm: ORM<EntityMap, ModelMap>, registeredEntities: EntityMap, config?: Partial<DatabaseRepositoryConfig> ){
+    constructor(orm: ORM<EntityMap, ModelMap>, registeredEntities: EntityMap, config?: Partial<DatabaseContextConfig> ){
         // this.name = name
         this.orm = orm
         this.config = config ?? {}
-        this.registeredEntities = registeredEntities
+        // this.registeredEntities = registeredEntities
 
         this.models = Object.keys(registeredEntities).reduce( (acc, key) => {
-            acc[key] = new Model(registeredEntities[key], this)
+            acc[key] = new ModelRepository(registeredEntities[key], this)
             return acc
-        }, {} as {[key:string]: Model<any>}) as ModelMap
+        }, {} as {[key:string]: ModelRepository<any>}) as ModelMap
     }
 
     get tablePrefix(){
@@ -844,13 +840,13 @@ export class DatabaseRepository<EntityMap extends {[key:string]: typeof Entity},
             if(Array.isArray(rows)){
     
                 // console.time('parsing')
-                const repository = this
+                const context = this
                 const len = rows.length
                 let parsedRows = new Array(len) as R[]
                 const schema = dataset.schema()
                 
                 for(let i=0; i <len;i++){
-                    parsedRows[i] = schema.parseRaw(rows[i], repository)
+                    parsedRows[i] = schema.parseRaw(rows[i], context)
                 }
             
                 // console.timeEnd('parsing')
@@ -1032,7 +1028,7 @@ export type HookInfo = {
     rootClassName: string
 }
 
-export type HookAction = <T>(repository: DatabaseRepository<any, any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
+export type HookAction = <T>(context: DatabaseContext<any, any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
 
 
 
