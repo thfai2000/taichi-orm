@@ -723,8 +723,9 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
             return acc
         }, {} as {[key:string]: Property<any>}) 
 
-        //@ts-ignore
-        let schema =  Object.assign(new Schema(), propertyMap as SelectProps)
+        
+        let schema =  Object.assign(new Schema(), propertyMap as unknown as SelectProps)
+        schema.register()
         return schema
     }
 

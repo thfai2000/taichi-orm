@@ -361,7 +361,6 @@ export class ModelRepository<TT extends typeof TableSchema>{
         })
 
         let resultData = await context.execute(wrappedDataset, executionOptions)
-
         let rows = resultData[0].root as Array<  EntityWithOptionalProperty<InstanceType<TT>, F> >
         return rows
     }

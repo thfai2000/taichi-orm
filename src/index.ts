@@ -4,7 +4,7 @@ export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefiniti
 import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, isFunction, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { ModelRepository } from './Model'
 
 
@@ -181,38 +181,65 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
 }
 
 export class Property<D extends PropertyTypeDefinition<any> > {
-    private _name?: string
-    readonly definition: D
+    #name?: string
+    #definitionConstructor: D | (new () => D ) | (() => D)
+    #definition: D | null = null
     // private schema?: Schema
 
-    constructor(definition: D){
-        this.definition = definition
+    constructor(definition: D | (new () => D ) | (() => D)){
+        this.#definitionConstructor = definition
     }
+
     register(
         name: string){
             if( /[\.`' ]/.test(name) || name.startsWith('_') || name.endsWith('_') ){
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "'" or startsWith/endsWith '_'.`)
             }
-            this._name = name
+            this.#name = name
             
         }
+
+    get definition(): D{
+
+        if(!this.#definition){
+            let definition: D | null = null
+            if(this.#definitionConstructor instanceof PropertyTypeDefinition){
+                definition = this.#definitionConstructor
+            } else if( isFunction(this.#definitionConstructor) ){
+                definition = (this.#definitionConstructor as () => D)()
+            } else if(this.#definitionConstructor instanceof Function){
+                const c = (this.#definitionConstructor as (new () => D ))
+                definition = new c()
+            }
+    
+            if(definition instanceof PropertyTypeDefinition){
+                this.#definition = definition
+            }
+            else throw new Error('Invalid parameters')
+        }
+
+        return this.#definition
+    }
+
     get name(){
-        if(!this._name){
+        if(!this.#name){
             throw new Error('Property not yet registered')
         }
-        return this._name
+        return this.#name
     }
 
 }
 
-export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property< (F extends ComputeFunction<any, infer P>?P:unknown)  > {
+export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property< (F extends ComputeFunction<any, infer P>?P:never)  > {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F
 
     constructor(
-        definition: (F extends ComputeFunction<any, infer P>?P:unknown),
-        compute:  F){
+        definition: (F extends ComputeFunction<any, infer P>?P:never) |
+        (new () => (F extends ComputeFunction<any, infer P>?P:never)) |
+        ( () => (F extends ComputeFunction<any, infer P>?P:never))
+        ,compute:  F){
             super(definition)
             this.compute = compute
         }
@@ -223,7 +250,7 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends P
     private _fieldName?: string
 
     constructor(
-        definition: D){
+        definition: D | (new () => D ) | (() => D)){
             super(definition)
         }
 
@@ -263,12 +290,12 @@ export class Schema<I = any> implements ParsableTrait<I>{
 
     register(){
         for (let field in this) {
-            console.log('register field', field)
+            // console.log('register field', field)
             this.addField(field)
         }
         let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
         for (let field in z) {
-            console.log('register field', field)
+            // console.log('register field', field)
             this.addField(field)
         }
     }
@@ -285,7 +312,6 @@ export class Schema<I = any> implements ParsableTrait<I>{
         // if (typeof field === 'string') {
         //@ts-ignore
         const actual = this[field]
-        console.log('aaaa', field, actual)
         if (actual instanceof Property) {
             
             actual.register(field)
@@ -408,15 +434,22 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
     }
 
     compute<F extends ComputeFunction<any, any>>(
-        definition: (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) ) | (F extends ComputeFunction<any, infer P>?P:unknown), compute: F) : ComputeProperty<F> {
+        definition: 
+            (new () => (F extends ComputeFunction<any, infer P>?P:never) ) |
+            (() => (F extends ComputeFunction<any, infer P>?P:never) ) |
+             (F extends ComputeFunction<any, infer P>?P:never)
+             , compute: F) : ComputeProperty<F> {
 
-        if( definition instanceof PropertyTypeDefinition ){
-            const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
-            return new ComputeProperty(d, compute)
-        } else{
-            const d = definition as (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) )
-            return new ComputeProperty(new d(), compute)
-        }
+
+        return new ComputeProperty(definition, compute)
+
+        // if( definition instanceof PropertyTypeDefinition ){
+        //     const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
+        //     return new ComputeProperty(d, compute)
+        // } else{
+        //     const d = definition as (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) )
+        //     return new ComputeProperty(new d(), compute)
+        // }
     }
 
     hook(newHook: Hook){
@@ -447,7 +480,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
         parentKey?: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
 
-        let relatedSchema = this.#repository.context.findRegisteredSchema(relatedSchemaClass)
+        let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
 
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
@@ -457,6 +490,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
 
             let dataset = new Dataset()
 
+            let relatedSchema = relatedSchemaFunc()
             let relatedSource = relatedSchema.datasource('root')
 
             let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema).name  ): undefined ) ?? parent.getFieldProperty("id")
@@ -498,7 +532,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             return newDataset
         }
 
-        return this.compute( new ArrayType(relatedSchema), computeFn )
+        return this.compute( () => new ArrayType(relatedSchemaFunc()), computeFn )
     }
 
     belongsTo<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
@@ -508,7 +542,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
         relatedBy?: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
 
-        let relatedSchema = this.#repository.context.findRegisteredSchema(relatedSchemaClass)
+        let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
         
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
@@ -517,7 +551,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             >> => {
             
             let dataset = new Dataset()
-
+            let relatedSchema = relatedSchemaFunc()
             let relatedSource = relatedSchema.datasource('root')
 
             let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
@@ -557,7 +591,7 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             return newDataset
         }
 
-        return this.compute( new ObjectType(relatedSchema), computeFn )
+        return this.compute( () => new ObjectType(relatedSchemaFunc()), computeFn )
     }
 
 }
@@ -777,7 +811,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
         // console.timeEnd('construct-sql')
         // console.log('nativeSql', nativeSql.toString())
         let data = await this.executeStatement(nativeSql, executionOptions)
-        // console.log('data', data)
+        console.log('data', data)
         let rows: any
         if(this.client().startsWith('mysql')){
             rows = data[0][0]

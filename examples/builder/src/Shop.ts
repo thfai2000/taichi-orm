@@ -7,7 +7,5 @@ export default class Shop extends TableSchema {
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     hour= this.field(NumberType)
-    get products() {
-        return this.hasMany(Product, schema => schema.shopId)
-    }
+    products = this.hasMany(Product, schema => schema.shopId)
 }

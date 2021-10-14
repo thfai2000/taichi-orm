@@ -11,10 +11,8 @@ export default class Product extends TableSchema {
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     shopId = this.field(NumberType)
-    get shop(){
-        return this.belongsTo(Shop, schema => schema.shopId)
-    }
-    myABC = this.compute(NumberType, (root, arg?: number): Scalarable<any> => {
-        return Scalar.value(`5 + ?`, [arg ?? 0])
+    shop = this.belongsTo(Shop, schema => schema.shopId)
+    myABC = this.compute(NumberType, (root, arg?: number) => {
+        return Scalar.number(`5 + ?`, [arg ?? 0])
     })
 }
