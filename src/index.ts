@@ -811,7 +811,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
         // console.timeEnd('construct-sql')
         // console.log('nativeSql', nativeSql.toString())
         let data = await this.executeStatement(nativeSql, executionOptions)
-        console.log('data', data)
+        // console.log('data', data)
         let rows: any
         if(this.client().startsWith('mysql')){
             rows = data[0][0]

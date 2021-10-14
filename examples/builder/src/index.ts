@@ -61,7 +61,7 @@ let ccc = new B(5);
     console.log('sql1', builder.toString() )
 
     let shop1 = await Shop.createOne({
-        name: '333',
+        name: 'shop',
         hour: 5
     })
     
@@ -150,7 +150,7 @@ let ccc = new B(5);
                         select: {
                             products: {}
                         },
-                        where: ({root}) => root.name.equals(P.name)
+                        where: ({root}) => root.name.equals('shop')
                     }
                 }
             })
@@ -207,7 +207,7 @@ let ccc = new B(5);
     console.log('test groupBy', r2)
 
 
-    //TODO: dynamic result type on 'find'
+    //Done: dynamic result type on 'find'
     //TODO: dataset toScalar ....without ArrayType
     //TODO: dataset api use DatabaseAction chain
 
@@ -225,4 +225,5 @@ let ccc = new B(5);
     // Scalar.boolean, Scalar.string
     // think about migrate issue
     // handle actionOptions failIfNone
+    // TODO: avoid re-use same table alias
 })();

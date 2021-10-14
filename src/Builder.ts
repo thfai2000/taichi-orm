@@ -965,7 +965,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     source = [fromSource, ...sources].find(s => s && s.sourceAlias === sourceName)
                 }
                 if(!source){
-                    console.log('sources', sources, sourceName)
+                    // console.log('sources', sources, sourceName)
                     throw new Error(`cannot found source (${sourceName})`)
                 }
 
