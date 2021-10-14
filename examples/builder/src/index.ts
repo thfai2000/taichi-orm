@@ -198,7 +198,7 @@ let ccc = new B(5);
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar(NumberNotNullType)
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toArrayTypeScalar()
         }))
         .execute({
             onSqlRun: console.log

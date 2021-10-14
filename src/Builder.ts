@@ -2,7 +2,7 @@ import { Knex}  from "knex"
 import { rootCertificates } from "tls"
 import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Property } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType } from "./PropertyType"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType } from "./PropertyType"
 import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -383,8 +383,12 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return this
     }
 
-    toScalar<T extends PropertyTypeDefinition<any> >(type?: T | (new (...args: any[]) => T)): Scalar<T>{
-        return new Scalar(this, type, this.#context)
+    toArrayTypeScalar(): Scalar<ArrayType<SelectProps & Schema>> {
+        return new Scalar(this, new ArrayType( this.schema() ), this.#context) //as unknown as Scalar<T> 
+    }
+
+    toScalar<T extends PropertyTypeDefinition<any>>(type?: T | (new (...args: any[]) => T) ): Scalar<T>{
+        return new Scalar(this, type, this.#context) //as T extends PropertyTypeDefinition<any>? Scalar<T>: Scalar< ArrayType<SelectProps & Schema>>
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
