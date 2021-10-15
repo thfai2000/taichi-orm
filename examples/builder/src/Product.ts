@@ -12,7 +12,7 @@ export default class Product extends TableSchema {
     name = this.field(StringType)
     shopId = this.field(NumberType)
     shop = this.belongsTo(Shop, schema => schema.shopId)
-    myABC = this.compute(NumberType, (root, arg?: number) => {
+    myABC = this.compute((root, arg?: number): Scalarable<NumberType> => {
         return Scalar.number(`5 + ?`, [arg ?? 0])
     })
 }

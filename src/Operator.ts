@@ -48,12 +48,18 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
         return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
-                args.map(arg => {
-                    const resolved = this.resolver(arg)
-                    return thenResult(resolved, resolved => `${ resolved.toRaw(context)}`)
-                }).join(' AND ')
-            ))
+
+            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            return thenResultArray(items, items => raw(context, items.join(' AND ') ) )
+   
+            // return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
+            //     args.map(arg => {
+            //         const resolved = this.resolver(arg)
+            //         console.log('AND CASE HERE', resolved.toRaw(context).toString() )
+            //         return `${ resolved.toRaw(context)}`
+
+            //     }).join(' AND ')
+            // ))
         }, new BooleanNotNullType())
     }
 }
@@ -77,11 +83,15 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
         return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
-                args.map(arg => {
-                    return thenResult(this.resolver(arg), resolved => `${ resolved.toRaw(context)}`)
-                }).join(' OR ')
-            ))
+
+            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            return thenResultArray(items, items => raw(context, items.join(' OR ') ) )
+
+            // return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
+            //     args.map(arg => {
+            //         return thenResult(this.resolver(arg), resolved => `${ resolved.toRaw(context)}`)
+            //     }).join(' OR ')
+            // ))
         }, new BooleanNotNullType())
     }
 }
@@ -104,8 +114,8 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         // return makeScalar(p, new BooleanType())
 
         return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult(this.resolver(this.arg), scalar => raw(context, 
-                `NOT (${scalar.toRaw(context)})`) 
+            return thenResult( this.resolver(this.arg).toRaw(context), k => raw(context, 
+                `NOT (${k.toString()})`) 
             )
         },new BooleanNotNullType())
     }
@@ -128,9 +138,13 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
         // return thenResult(p, r => new Scalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
         return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult(this.arg.toNativeBuilder(context), scalar => raw(context, 
-                `EXISTS (${scalar.toString()})`) 
+            // return thenResult(this.arg.toNativeBuilder(context), scalar => raw(context, 
+            //     `EXISTS (${scalar.toString()})`) 
+            // )
+            return thenResult( this.arg.toNativeBuilder(context), k => raw(context, 
+                `EXISTS (${k.toString()})`) 
             )
+
         },new BooleanNotNullType())
     }
 }

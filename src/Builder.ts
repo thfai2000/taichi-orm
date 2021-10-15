@@ -1,9 +1,9 @@
 import { Knex}  from "knex"
 import { rootCertificates } from "tls"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Property } from "."
+import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Property, StrictTypeProperty, ComputeFunction, ScalarProperty } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType } from "./PropertyType"
-import { ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { ExpandRecursively, ExtractFieldProps, ExtractProps, makeid, notEmpty, quote, ScalarMapToKeyValueMap, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -65,13 +65,14 @@ export type AddPrefix<E, k extends string, delimitor extends string = '.'> = {
     [key in keyof E & string as `${k}${delimitor}${key}`]: Prefixed<k, key, E[key]>
 }
 
-type SelectItem = {
-    value: any,
-    actualAlias: string
-}
+// type SelectItem = {
+//     value: any,
+//     actualAlias: string
+// }
 
 export interface Scalarable<T extends PropertyTypeDefinition<any>> {
-    toScalar(type?: T | (new (...args: any[]) => T) ): Scalar<T>
+    toScalar(): Scalar<T>
+    // castToScalar<D extends PropertyTypeDefinition<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
 
@@ -85,7 +86,8 @@ export interface Datasource<E extends Schema, alias extends string> {
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
-    getFieldProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>>    
+    getFieldProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>>
+    getScalarProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>> 
     getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
@@ -127,9 +129,9 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
                     if(prop instanceof ComputeProperty){
                         return datasource.getComputeProperty(sKey)
                     }
-                    // if(prop instanceof Property){
-                    //     return datasource.getProperty(sKey)
-                    // }
+                    if(prop instanceof ScalarProperty){
+                        return datasource.getScalarProperty(sKey)
+                    }
                 }
 
             }
@@ -184,11 +186,22 @@ abstract class DatasourceBase<E extends Schema, Name extends string> implements 
             
                 let col = new Column<Name, R>(name, (context) => {
                     const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, args)
-                    return thenResult( subquery, scalarable => scalarable.toScalar(cProp.definition) )
-                }, cProp.definition)
+                    let r = thenResult( subquery, scalarable => scalarable.toScalar() )
+                    return r
+                }, null)
 
                 return col
             }
+        }
+    }
+
+   getScalarProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
+        let prop = this.schema.propertiesMap[name]
+        if( !(prop instanceof ScalarProperty)){
+            throw new Error(`it is not field property ${name}`)
+        } else {
+            const fieldProp = prop
+            return new Column(name, fieldProp.scalar, null)
         }
     }
     
@@ -220,11 +233,11 @@ export class TableDatasource<E extends TableSchema, Name extends string> extends
     }
 }
 
-export class DerivedDatasource<E extends Schema, Name extends string> extends DatasourceBase<E, Name> {
+export class DerivedDatasource<D extends Dataset<any>, Name extends string> extends DatasourceBase< Schema, Name> {
 
     readonly dataset: Dataset<any, any, any, any>
     constructor(dataset: Dataset<any, any, any, any>, sourceAlias: Name){
-        super(dataset.schema(), sourceAlias)
+        super( dataset.schema(), sourceAlias)
         this.dataset = dataset
     }
 
@@ -233,9 +246,12 @@ export class DerivedDatasource<E extends Schema, Name extends string> extends Da
     }
 }
 
-export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> implements Scalarable<any> {
+export class Dataset<SelectScalars extends {[key:string]: Scalar<any>}, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> implements Scalarable<any> {
+
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
+    #schema: null | Schema = null
+
     #whereRawItem: null |  Expression<any, any> = null
     #selectItems: { [key: string]: Scalar<any> } | null = null
     #updateItems: { [key: string]: Scalar<any> } | null = null
@@ -254,7 +270,11 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         this.#context = context ?? null
     }
 
-    toDataset(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
+    clearSchema() {
+        this.#schema = null
+    }
+
+    toDataset(): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource> {
         return this
     }
     
@@ -372,29 +392,28 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return nativeQB
     }
 
-    native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+    native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource>{
         this.nativeBuilderCallbacks = []
         this.addNative(nativeBuilderCallback)
         return this
     }
     
-    addNative(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+    addNative(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource>{
         this.nativeBuilderCallbacks.push(nativeBuilderCallback)
         return this
     }
 
-    toArrayTypeScalar(): Scalar<ArrayType<SelectProps & Schema>> {
-        return new Scalar(this, new ArrayType( this.schema() ), this.#context) //as unknown as Scalar<T> 
+    toScalar(): Scalar<ArrayType< ScalarMapToKeyValueMap<SelectScalars>[]>> {
+        return new Scalar(this, new ArrayType(this.schema()), this.#context) //as unknown as Scalar<T> 
     }
 
-    toScalar<T extends PropertyTypeDefinition<any>>(type?: T | (new (...args: any[]) => T) ): Scalar<T>{
-        return new Scalar(this, type, this.#context) //as T extends PropertyTypeDefinition<any>? Scalar<T>: Scalar< ArrayType<SelectProps & Schema>>
+    castToScalar<T extends PropertyTypeDefinition<any>>(type: T): Scalar<T> {
+        return new Scalar(this, type, this.#context) //as unknown as Scalar<T> 
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
-            UnionToIntersection<
-            SelectProps |
+            SelectScalars &
             {
                 [key in keyof SourceProps
                     as 
@@ -410,23 +429,34 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
                 ]: 
                     key extends P? (
                             SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            C
+                            (C extends FieldProperty<infer D>?
+                                Scalar<D>:  
+                                (
+                                    C extends ComputeProperty<ComputeFunction<any, infer P>>? 
+                                    Scalar<P>:
+                                    (
+                                         C extends ScalarProperty<infer X>? 
+                                        Scalar<X>:
+                                        never
+                                    )
+                                )
+                            )
                             : 
                             never
                         ): never
             }
-            >
         , 
         SourceProps, SourcePropMap, FromSource>{
        
+        this.clearSchema()
         this.#selectItems = this.propNameArray2ScalarMap(properties as string[])
         return this as any
     }
 
+
     groupByProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
-            UnionToIntersection<
-            SelectProps |
+            SelectScalars &
             {
                 [key in keyof SourceProps
                     as 
@@ -442,12 +472,23 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
                 ]: 
                     key extends P? (
                             SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
-                            C
+                            (C extends FieldProperty<infer D>?
+                                Scalar<D>:  
+                                (
+                                    C extends ComputeProperty<ComputeFunction<any, infer P>>? 
+                                    Scalar<P>:
+                                    (
+                                         C extends ScalarProperty<infer X>? 
+                                        Scalar<X>:
+                                        never
+                                    )
+                                )
+                            )
                             : 
                             never
                         ): never
             }
-            >
+            
         , 
         SourceProps, SourcePropMap, FromSource>{
        
@@ -458,21 +499,13 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     select<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
-            UnionToIntersection<
-            SelectProps
-            | 
-            {
-            [key in keyof S] :
-                S[key] extends Scalar<infer D> ?
-                    D extends PropertyTypeDefinition<any>?
-                    Property<D>
-                    : never
-                : never 
-            }
-            >
+            SelectScalars
+            &
+            S
         , 
         SourceProps, SourcePropMap, FromSource> {
-
+        
+        this.clearSchema()
         const result = this.func2ScalarMap<S, Y>(named)
 
         this.#selectItems = result
@@ -482,18 +515,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     groupBy<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
-            UnionToIntersection<
-            SelectProps
-            | 
-            {
-            [key in keyof S] :
-                S[key] extends Scalar<infer D> ?
-                    D extends PropertyTypeDefinition<any>?
-                    Property<D>
-                    : never
-                : never 
-            }
-            >
+            SelectScalars & S
         , 
         SourceProps, SourcePropMap, FromSource> {
 
@@ -524,7 +546,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
     }
 
     update<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldProps< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractProps<SourceProps>, SourcePropMap> >>
-    (keyValues: S | ((map: Y ) => S )): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+    (keyValues: S | ((map: Y ) => S )): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource>{
         
         let nameMap: { [key: string]: any | Scalar<any> }
         let selectorMap = this.getSelectorMap()
@@ -631,8 +653,8 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return sqlkeywords
     }
 
-    clone(): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
-        const newDataset = new Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>()
+    clone(): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource> {
+        const newDataset = new Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource>()
         newDataset.#fromItem = this.#fromItem
         newDataset.#joinItems = this.#joinItems.map(i => i)
         newDataset.#selectItems = this.#selectItems
@@ -641,18 +663,18 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         return newDataset
     }
 
-    where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource>{
+    where<X extends ExtractProps<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource>{
         //@ts-ignore
         this.#whereRawItem = expression
         return this
     }
 
-    limit(limit: number | null): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
+    limit(limit: number | null): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource> {
         this.#limit = limit
         return this
     }
 
-    offset(offset: number | null): Dataset<SelectProps, SourceProps, SourcePropMap, FromSource> {
+    offset(offset: number | null): Dataset<SelectScalars, SourceProps, SourcePropMap, FromSource> {
         this.#offset = offset
         return this
     }
@@ -670,7 +692,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectProps,X,Y, FromSource>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<SelectScalars,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "inner",
             source,
@@ -683,7 +705,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y, FromSource>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectScalars,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "left",
             source,
@@ -696,7 +718,7 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractProps< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectProps,X,Y, FromSource>{
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<SelectScalars,X,Y, FromSource>{
         this.#joinItems.push( {
             type: "right",
             source,
@@ -707,75 +729,84 @@ export class Dataset<SelectProps ={}, SourceProps ={}, SourcePropMap ={}, FromSo
 
 
 
-    datasource<Name extends string>(name: Name): Datasource<SelectProps & Schema, Name> {
+    datasource<Name extends string>(name: Name): Datasource<any, Name> {
         return new DerivedDatasource(this, name)
     }
 
-    schema(): SelectProps & Schema{
+    schema(): Schema{
         if(!this.#selectItems){
             throw new Error('No selectItems for a schema')
         }
-        const selectItems = this.#selectItems
-        const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
-
-            const d = selectItems[key].definition
-            let referName = this.selectItemAlias(key, selectItems[key])
-
-            acc[key] = new Property(d)
-            acc[key].register(referName)
+        if(!this.#schema){
+            const selectItems = this.#selectItems
+            const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
+    
+                // const d = selectItems[key].definition
+                let referName = this.selectItemAlias(key, selectItems[key])
+    
+                acc[key] = new ScalarProperty(selectItems[key])
+                acc[key].register(referName)
+                
+                return acc
+            }, {} as {[key:string]: ScalarProperty<any>})
+    
             
-            return acc
-        }, {} as {[key:string]: Property<any>}) 
-
-        
-        let schema =  Object.assign(new Schema(), propertyMap as unknown as SelectProps)
-        schema.register()
-        return schema
+            let schema =  Object.assign(new Schema(), propertyMap as unknown as SelectScalars)
+            schema.register()
+            // console.log('register schema', propertyMap)
+            this.#schema = schema
+        }
+        return this.#schema
     }
 
     hasSelectedItems(){
         return Object.keys(this.#selectItems ?? {}).length > 0
     }
 
-    async execute<R extends {
-        [key in keyof ExtractProps<SelectProps>]:
-        SelectProps[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
-            // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
-                // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
-    }>(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): Promise<R[]>{
+    async execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): Promise<
+        ExpandRecursively< Array<
+        {
+            [key in keyof SelectScalars]:
+            SelectScalars[key] extends Scalar<PropertyTypeDefinition<infer D>>? D: never
+                // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
+                    // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
+        }
+        >>
+    >{
         const context = repo ?? this.#context
 
         if(!context){
             throw new Error('There is no repository provided.')
         }
+        const current = this as Dataset<SelectScalars>
 
-        return context.execute(this, executionOptions)
+        return context.execute(current, executionOptions) 
     }
 }
 
-type RawUnit = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<any>> | Scalar<any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
-type RawExpression = ( (context: DatabaseContext<any, any>) => RawUnit) | RawUnit
+type RawUnit<T extends PropertyTypeDefinition<any> = any> = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T>> | Scalar<T> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
+type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any, any>) => RawUnit<T>) | RawUnit<T>
 
 export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable<T> {
     // __type: 'Scalar'
     // __definition: PropertyTypeDefinition | null
 
-    readonly definition: T | PropertyTypeDefinition<any>
-    protected expressionOrDataset: RawExpression
+    // #cachedDefinition: PropertyTypeDefinition<any> | null = null
+    readonly declaredDefinition?: T | null
+    protected expressionOrDataset: RawExpression<T>
     protected context: DatabaseContext<any, any> | null = null
+    #calculatedDefinition: PropertyTypeDefinition<any> | null = null
+    #calculatedRaw: Knex.Raw | null = null
     
     // protected dataset:  | null = null
-
-    constructor(expressionOrDataset: RawExpression, 
-        definition?: T | (new (...args: any[]) => T) | PropertyTypeDefinition<any>,
+    constructor(expressionOrDataset: RawExpression<T>, 
+        definition?: T | (new (...args: any[]) => T) | null,
         context?: DatabaseContext<any, any> | null){
-
-        if(!definition){
-            this.definition = new PropertyTypeDefinition<any>()
-        } else if(definition instanceof PropertyTypeDefinition){
-            this.definition = definition
-        } else {
-            this.definition = new definition()
+        if(definition instanceof PropertyTypeDefinition){
+            this.declaredDefinition = definition
+        } else if(definition)
+        {
+            this.declaredDefinition = new definition()
         }
         this.expressionOrDataset = expressionOrDataset
         this.context = context ?? null
@@ -815,14 +846,41 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         return this.expressionOrDataset
     }
 
-    // toString() {
-    //     if(this.repository){
-    //         return this.toRaw().toString()
-    //     }
-    //     return super.toString()
-    // }
+    definitionForParsing(){
+        return this.#calculatedDefinition ?? this.declaredDefinition ?? new PropertyTypeDefinition()
+    }
 
-    toRaw(context?: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw> {
+    private async calculateDefinition(context?: DatabaseContext<any, any>):  Promise<PropertyTypeDefinition<any>>  {
+        const repo = (context ?? this.context)
+        if(!repo){
+            throw new Error('There is no repository provided')
+        }
+
+        const resolveDefinition = (ex: RawExpression ): PropertyTypeDefinition<any> | Promise<PropertyTypeDefinition<any>>  => {
+            return thenResult(ex, ex => {
+                if(ex instanceof Dataset){
+                    return resolveDefinition(ex.toScalar())
+                } else if(ex instanceof Scalar ){
+
+                    if(ex.declaredDefinition){
+                        return ex.declaredDefinition
+                    }else{
+                        return resolveDefinition(ex.toRealRaw())
+                    }
+                } else if(ex instanceof Function) {
+                    return resolveDefinition(ex(repo))
+                }
+            })
+        }
+        
+        return await resolveDefinition(this)
+        // this.#cachedDefinition = await resolveDefinition(this)
+        // console.log('cacched definition', this.#cachedDefinition)
+        // return this.#cachedDefinition
+    }
+
+    private calculateRaw(context?: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw> {
+        
         const repo = (context ?? this.context)
         if(!repo){
             throw new Error('There is no repository provided')
@@ -850,25 +908,54 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
             })
         }
 
-        return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
-            if(!(rawOrDataset instanceof Dataset)){
-                const next = makeRaw(repo, rawOrDataset.toString())
-                return this.definition.transformQuery(next, repo)
-            } else {
-                return this.definition.transformQuery(rawOrDataset, repo)
-            }
+        let raw = thenResult( this.definition(repo), definition =>  {
+            // if(!definition){
+            //     // console.log('......', this.expressionOrDataset.toString())
+            //     throw new Error('It cannot toRaw because without definition')
+            // }
+            return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
+                
+                if(!(rawOrDataset instanceof Dataset)){
+                    const next = makeRaw(repo, rawOrDataset.toString())
+                    return (definition ?? new PropertyTypeDefinition()).transformQuery(next, repo)
+                } else {
+                    return (definition ?? new PropertyTypeDefinition()).transformQuery(rawOrDataset, repo)
+                }
+            })
+
         })
 
+        // console.log('xxxxxxxx', raw.toString())
+        return raw
+
+    }
+
+    async definition(context?: DatabaseContext<any, any>): Promise<PropertyTypeDefinition<any>>{
+        if(!this.#calculatedDefinition){
+            this.#calculatedDefinition = await this.calculateDefinition(context)
+        }
+        return this.#calculatedDefinition
+    }
+
+    async toRaw(context?: DatabaseContext<any, any>): Promise<Knex.Raw> {
+        if(!this.#calculatedRaw){
+            this.#calculatedRaw = await this.calculateRaw(context)
+        }
+        return this.#calculatedRaw
     }
 
     asColumn<Name extends string>(propName: Name): Column<Name, T> {
-        return new Column(propName, this.expressionOrDataset, this.definition, this.context)
+        return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
     }
 
-    toScalar<P extends PropertyTypeDefinition<any> = T>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
-        const d = definition ??  this.definition
-        return new Scalar(this.toRealRaw(), d, this.context)
+    toScalar(){
+        return this
     }
+
+    // castToScalar<P extends PropertyTypeDefinition<any>>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
+    //     const d = definition ??  this.definition
+    //     return new Scalar(this.toRealRaw(), d, this.context)
+    // }
 
     async execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): 
         Promise<T extends PropertyTypeDefinition<infer D>? D: any> {
@@ -888,7 +975,8 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     alias: Name
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name,  expressionOrDataset: RawExpression| Dataset<any, any, any>, definition?: T | ( new (...args: any[]) => T) | PropertyTypeDefinition<any>, context?: DatabaseContext<any, any> | null){
+    constructor(alias: Name, expressionOrDataset: RawExpression, 
+        definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any, any> | null){
         super(expressionOrDataset, definition, context)
         this.alias = alias
         // this.scalarable = scalarable
@@ -897,11 +985,11 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     value(): { [key in Name]: Scalar<T> } {
         const key = this.alias
         //@ts-ignore
-        return { [key]: new Scalar( this.expressionOrDataset, this.definition) }
+        return { [key]: new Scalar( this.expressionOrDataset, this.declaredDefinition, this.context) }
     }
 
     clone(): Column<Name, T> {
-        return new Column(this.alias, this.expressionOrDataset, this.definition)
+        return new Column(this.alias, this.expressionOrDataset, this.declaredDefinition, this.context)
     }
 }
 
@@ -951,7 +1039,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            return value.toScalar( new ObjectType(new Schema()) )
+            return value.toScalar()
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
@@ -994,10 +1082,10 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     return operator
                 }
                 
-                if(prop instanceof FieldProperty){
+                if(prop instanceof FieldProperty || prop instanceof ScalarProperty){
                     let converted = source.getFieldProperty(propName)
                     scalars.push( makeOperator(converted, dict[key]).toScalar() )
-                } else {
+                } else if(prop instanceof ComputeProperty){
                     let compiled = (source.getComputeProperty(propName))()
                     if(compiled instanceof Promise){
                         throw new Error('Unsupported Async Computed Property in Expression Resolver')

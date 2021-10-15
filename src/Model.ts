@@ -1,6 +1,6 @@
 import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, EntityFieldPropertyKeyValues, EntityWithOptionalProperty, ORM } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, ExtractFieldProps, ExtractProps, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
+import { Expand, ExtractFieldProps, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Datasource, Expression, resolveEntityProps, TableOptions } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition } from "./PropertyType"
 
@@ -196,9 +196,10 @@ export class ModelRepository<TT extends typeof TableSchema>{
                 throw new Error(`The Property [${propName}] doesn't exist in ${entityName}`)
             }
             const prop = foundProp
-            let propertyValue = prop.definition.parseProperty(data[prop.name], context, prop.name)
-            
-            propValues[prop.name] = propertyValue
+            if(prop instanceof FieldProperty){
+                let propertyValue = prop.definition.parseProperty(data[prop.name], context, prop.name)
+                propValues[prop.name] = propertyValue
+            }
             return propValues
         }, {} as SimpleObject)
 
@@ -213,14 +214,16 @@ export class ModelRepository<TT extends typeof TableSchema>{
             if(!foundProp){
                 throw new Error('Unexpected.')
             }
-            record = await h.action(context, record, {
-                hookName: h.name,
-                mutationName: actionName,
-                propertyName: foundProp.name,
-                propertyDefinition: foundProp.definition,
-                propertyValue: record[foundProp.name],
-                rootClassName: entityName
-            }, executionOptions)
+            if(foundProp instanceof FieldProperty){
+                record = await h.action(context, record, {
+                    hookName: h.name,
+                    mutationName: actionName,
+                    propertyName: foundProp.name,
+                    propertyDefinition: foundProp.definition,
+                    propertyValue: record[foundProp.name],
+                    rootClassName: entityName
+                }, executionOptions)
+            }
             return record
         }, Promise.resolve(propValues) )
 
@@ -276,14 +279,16 @@ export class ModelRepository<TT extends typeof TableSchema>{
                 propertyValue = inputProps[foundProp.name]
             }
 
-            record = await h.action(context, record, {
-                hookName: h.name,
-                mutationName: actionName,
-                propertyName: foundPropName,
-                propertyDefinition: foundProp.definition,
-                propertyValue: propertyValue,
-                rootClassName: entityName
-            }, executionOptions)
+            if(foundProp instanceof FieldProperty){
+                record = await h.action(context, record, {
+                    hookName: h.name,
+                    mutationName: actionName,
+                    propertyName: foundPropName,
+                    propertyDefinition: foundProp.definition,
+                    propertyValue: propertyValue,
+                    rootClassName: entityName
+                }, executionOptions)
+            }
 
             return record
         }, Promise.resolve(record) )
@@ -357,7 +362,7 @@ export class ModelRepository<TT extends typeof TableSchema>{
         // console.log('xxxxxxx', dataset.toScalar(new ArrayOfEntity(entityClass)))
 
         let wrappedDataset = new Dataset().select({
-            root: dataset.toScalar(new ArrayType(entityClass))
+            root: dataset.toScalar()
         })
 
         let resultData = await context.execute(wrappedDataset, executionOptions)

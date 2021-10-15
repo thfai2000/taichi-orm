@@ -1,4 +1,6 @@
-import { ComputeProperty, FieldProperty, Property} from "."
+import { ComputeProperty, FieldProperty, Property, ScalarProperty, StrictTypeProperty} from "."
+import { Scalar } from "./Builder";
+import { PropertyTypeDefinition } from "./PropertyType";
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -25,6 +27,8 @@ export function expandRecursively<T>(o: T): ExpandRecursively<T>{
 //     return o as any
 // }
 
+export type ScalarMapToKeyValueMap<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>>? D: never}
+
 
 export type SimpleObject = { [key:string]: any}
 export const SimpleObjectClass = ({} as {[key:string]: any}).constructor
@@ -41,9 +45,9 @@ export type UnionToIntersection<T> =
 export type ExtractProps<E> = 
 Pick<E, ({
     [key in keyof E]: 
-                    // E[key] extends ComputeProperty<any, any, any, any>? key:
-                    // E[key] extends FieldProperty<any>? key:
-                    E[key] extends Property<any>? key:
+                    E[key] extends ComputeProperty<any>? key:
+                    E[key] extends FieldProperty<any>? key:
+                    E[key] extends ScalarProperty<any>? key:
                     never
 })[keyof E]> 
 

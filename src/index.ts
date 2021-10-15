@@ -2,9 +2,9 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
-import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, resolveEntityProps, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
+import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, isFunction, makeid, notEmpty, quote, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, isFunction, makeid, notEmpty, quote, ScalarMapToKeyValueMap, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { ModelRepository } from './Model'
 
 
@@ -37,9 +37,8 @@ export type ComputePropertyArgsMap<E> = {
             E[key] extends undefined?
             never:
             (
-                E[key] extends ComputeProperty<infer F>? 
-                    (F extends ComputeFunction<infer Arg, any>?
-                        Arg: never): never
+                E[key] extends ComputeProperty<ComputeFunction<infer Arg, any>>?
+                        Arg: never
             )
 }
 
@@ -87,21 +86,16 @@ export type TwoSourcesArgFunction<Root extends TableSchema, RootName extends str
     (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => TwoSourcesArg<Root, RootName, Related, RelatedName>
 
 
-
 export type SelectorMap<E> = {
     [key in keyof ExtractProps<E> & string ]:
-            E[key] extends undefined?
-            never:
-            (
-                E[key] extends ComputeProperty<infer F>? 
-                (
-                    F extends ComputeFunction<infer Arg, infer D>?
-                        CompiledComputeFunction<key, Arg, D>: unknown                  
-                ): 
-                    E[key] extends Property<infer D>? 
-                    Column<key, D>:
-                    never
-            )
+            
+        ExtractProps<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, infer P>>? 
+            CompiledComputeFunction<key, Arg, P>              
+        : 
+            ExtractProps<E>[key] extends StrictTypeProperty<infer D>? 
+            Column<key, D>:
+            never
+    
 }
 
 export type ComputeFunction<ARG, 
@@ -114,47 +108,40 @@ export type PartialMutationEntityPropertyKeyValues<S> = Partial<MutationEntityPr
 
 export type EntityFieldPropertyKeyValues<E> = {
     [key in keyof ExtractFieldProps<E>]:
-        ExtractFieldProps<E>[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? Primitive  : never): never
+        ExtractFieldProps<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
 
 export type EntityPropertyKeyValues<E> = {
     [key in keyof E]:
-        E[key] extends FieldProperty<infer D>? 
-                (D extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+        E[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
                 (
-                    E[key] extends ComputeProperty<infer F>? 
-
-                        (F extends ComputeFunction<any, infer P>?
-                            
-                            (P extends PropertyTypeDefinition<infer X>? 
+                    E[key] extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer X>>>? X: 
                                 (
-                                    X
-                                ): 
-                                never
-                            ): 
-                            never
-                            
-                        ): 
-                        (
-                            E[key] extends Property<infer P2>? 
-                            (P2 extends PropertyTypeDefinition<infer Primitive>? Primitive  : never):
+                            E[key] extends StrictTypeProperty<PropertyTypeDefinition<infer Primitive>>? Primitive:
                             E[key]
                         )
-
                 )                  
 }
 
-type SelectiveArgFunction = ((root: SelectorMap<any>) => {select?:{}} )
+type SelectiveArg = {select?:{}}
+type SelectiveArgFunction = ((root: SelectorMap<any>) => SelectiveArg )
 
 type ExtractSchemaFromSelectiveComputeProperty<T> = T extends ComputeProperty<ComputeFunction<((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
+type ExtractValueTypeFromComputeProperty<T> = T extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer D>>>? D : never
     
 type EntityPropertyKeyValues_ExtractFieldProps<S> = EntityPropertyKeyValues< ExtractFieldProps<S>> 
-export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( EntityPropertyKeyValues_ExtractFieldProps<S>
+export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( 
+    EntityPropertyKeyValues_ExtractFieldProps<S>
     & {
-        [k in keyof SSA["select"]]: EntityWithOptionalProperty< 
-            ExtractSchemaFromSelectiveComputeProperty<S[k]>, 
-            (SSA["select"][k] extends SelectiveArgFunction? ReturnType<SSA["select"][k]> :  SSA["select"][k])
-        >
+        [k in keyof SSA["select"]]: 
+            SSA["select"][k] extends SelectiveArgFunction? 
+                EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S[k]>, ReturnType<SSA["select"][k]>>
+                :  (
+                    SSA["select"][k] extends SelectiveArg?
+                    EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S[k]>, SSA["select"][k]>
+                    : never //ExtractValueTypeFromComputeProperty< S[k]>
+                )
+        
     })
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
@@ -180,14 +167,15 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
     uuidPropName: string
 }
 
-export class Property<D extends PropertyTypeDefinition<any> > {
+export abstract class Property {
     #name?: string
-    #definitionConstructor: D | (new () => D ) | (() => D)
-    #definition: D | null = null
-    // private schema?: Schema
+    // #definitionConstructor: D | (new () => D ) | (() => D)
+    // #definition: D | null = null
 
-    constructor(definition: D | (new () => D ) | (() => D)){
-        this.#definitionConstructor = definition
+    constructor(
+        // definition: D | (new () => D ) | (() => D)
+    ){
+        // this.#definitionConstructor = definition
     }
 
     register(
@@ -197,6 +185,47 @@ export class Property<D extends PropertyTypeDefinition<any> > {
             }
             this.#name = name
             
+        }
+
+    // get definition(): D{
+
+    //     if(!this.#definition){
+    //         let definition: D | null = null
+    //         if(this.#definitionConstructor instanceof PropertyTypeDefinition){
+    //             definition = this.#definitionConstructor
+    //         } else if( isFunction(this.#definitionConstructor) ){
+    //             definition = (this.#definitionConstructor as () => D)()
+    //         } else if(this.#definitionConstructor instanceof Function){
+    //             const c = (this.#definitionConstructor as (new () => D ))
+    //             definition = new c()
+    //         }
+    
+    //         if(definition instanceof PropertyTypeDefinition){
+    //             this.#definition = definition
+    //         }
+    //         else throw new Error('Invalid parameters')
+    //     }
+
+    //     return this.#definition
+    // }
+
+    get name(){
+        if(!this.#name){
+            throw new Error('Property not yet registered')
+        }
+        return this.#name
+    }
+
+}
+
+export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends Property {
+    #definitionConstructor: D | (new () => D ) | (() => D)
+    #definition: D | null = null
+
+     constructor(
+        definition: D | (new () => D ) | (() => D)){
+            super()
+            this.#definitionConstructor = definition
         }
 
     get definition(): D{
@@ -220,34 +249,29 @@ export class Property<D extends PropertyTypeDefinition<any> > {
 
         return this.#definition
     }
-
-    get name(){
-        if(!this.#name){
-            throw new Error('Property not yet registered')
-        }
-        return this.#name
-    }
-
 }
 
-export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property< (F extends ComputeFunction<any, infer P>?P:never)  > {
+export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F
 
     constructor(
-        definition: (F extends ComputeFunction<any, infer P>?P:never) |
-        (new () => (F extends ComputeFunction<any, infer P>?P:never)) |
-        ( () => (F extends ComputeFunction<any, infer P>?P:never))
-        ,compute:  F){
-            super(definition)
+        // definition: (F extends ComputeFunction<any, infer P>?P:never) |
+        // (new () => (F extends ComputeFunction<any, infer P>?P:never)) |
+        // ( () => (F extends ComputeFunction<any, infer P>?P:never))
+        // ,
+        compute:  F){
+            super()
             this.compute = compute
         }
 }
-export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends Property<D> {
+
+export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends StrictTypeProperty<D> {
 
     // type: 'FieldProperty' = 'FieldProperty'
     private _fieldName?: string
+
 
     constructor(
         definition: D | (new () => D ) | (() => D)){
@@ -275,15 +299,30 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends P
     }
 }
 
-export class Schema<I = any> implements ParsableTrait<I>{
+export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Property {
+    readonly scalar: Scalar<D>
+
+    constructor(
+        scalar: Scalar<D>){
+            super()
+            this.scalar = scalar
+        }
+}
+
+export class Schema implements ParsableTrait<any>{
 
     // properties: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
     // propertiesMap: {[key:string]: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)} = {}
+
+    // properties: (ComputeProperty<any> 
+    //     | FieldProperty<FieldPropertyTypeDefinition<any>> )[] = []
+    // propertiesMap: {[key:string]: (ComputeProperty<any> 
+    //     | FieldProperty<FieldPropertyTypeDefinition<any>> )} = {}
     
-    properties: (Property<PropertyTypeDefinition<any> >)[] = []
-    propertiesMap: {[key:string]: Property<PropertyTypeDefinition<any> >} = {}
+    properties: (Property)[] = []
+    propertiesMap: {[key:string]: Property} = {}
 
     constructor(){
     }
@@ -299,6 +338,7 @@ export class Schema<I = any> implements ParsableTrait<I>{
             this.addField(field)
         }
     }
+
     // initPostAction() {
     //     //@ts-ignore
     //     let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
@@ -320,10 +360,10 @@ export class Schema<I = any> implements ParsableTrait<I>{
         }
     }
 
-    parseRaw(rawValue: I, context: DatabaseContext<any, any>, prop?: string): I {
-        return this.parseDataBySchema(rawValue, context) as I
+    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): any {
+        return this.parseDataBySchema(rawValue, context)
     }
-    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, prop?: string) {
+    parseProperty(propertyvalue: any, context: DatabaseContext<any, any>, prop?: string) {
         return propertyvalue
     }
 
@@ -331,30 +371,33 @@ export class Schema<I = any> implements ParsableTrait<I>{
         const schema = this
         let output = {}
         for (const propName in row) {
-            if(schema.propertiesMap[propName]){
+            const p = schema.propertiesMap[propName]
+            if(p){
+                if( p instanceof ScalarProperty){
 
-                const propType = schema.propertiesMap[propName].definition
-                /**
-                 * it can be boolean, string, number, Object, Array of Object (class)
-                 * Depends on the props..
-                 */
-                // let start = null
-                // if(metaInfo.propName === 'products'){
-                //     start = new Date()
-                // }
-                let propValue = propType.parseRaw(row[propName], context, propName) ?? row[propName]
-                
-                // if(metaInfo.propName === 'products'){
-                //     //@ts-ignore
-                //     console.log('parseDataBySchema',  new Date() - start )
-                // }
-    
-                Object.defineProperty(output, propName, {
-                    configurable: true,
-                    enumerable: true,
-                    writable: true,
-                    value: propValue
-                })
+                    const propType = p.scalar.definitionForParsing()
+                    /**
+                     * it can be boolean, string, number, Object, Array of Object (class)
+                     * Depends on the props..
+                     */
+                    // let start = null
+                    // if(metaInfo.propName === 'products'){
+                    //     start = new Date()
+                    // }
+                    let propValue = propType.parseRaw(row[propName], context, propName) ?? row[propName]
+                    
+                    // if(metaInfo.propName === 'products'){
+                    //     //@ts-ignore
+                    //     console.log('parseDataBySchema',  new Date() - start )
+                    // }
+        
+                    Object.defineProperty(output, propName, {
+                        configurable: true,
+                        enumerable: true,
+                        writable: true,
+                        value: propValue
+                    })
+                }
             }
         }
 
@@ -364,9 +407,21 @@ export class Schema<I = any> implements ParsableTrait<I>{
         
         return output
     }
+
 }
 
-export abstract class TableSchema extends Schema implements ParsableTrait<any>{
+// export class ParsableSchema<SelectedScalars extends {[key:string]: Scalar<any>}> extends Schema implements ParsableTrait< ScalarMapToKeyValueMap<SelectedScalars> >{
+
+//     override register(){
+//         super.register()
+//         if(!this.properties.every(p => p instanceof ScalarProperty )){
+//             throw new Error('ParsableSchema only accept all FieldProperty')
+//         }
+//     }
+
+// }
+
+export abstract class TableSchema extends Schema {
 
     #entityName: string
     #repository: ModelRepository<any>
@@ -391,7 +446,6 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             return this.overridedTableName
         } else {
             let name = this.#entityName
-            
             
             if( this.#repository.orm.ormConfig.entityNameToTableName) {
                 name = this.#repository.orm.ormConfig.entityNameToTableName(name)
@@ -434,14 +488,15 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
     }
 
     compute<F extends ComputeFunction<any, any>>(
-        definition: 
-            (new () => (F extends ComputeFunction<any, infer P>?P:never) ) |
-            (() => (F extends ComputeFunction<any, infer P>?P:never) ) |
-             (F extends ComputeFunction<any, infer P>?P:never)
-             , compute: F) : ComputeProperty<F> {
+        // definition: 
+        //     (new () => (F extends ComputeFunction<any, infer P>?P:never) ) |
+        //     (() => (F extends ComputeFunction<any, infer P>?P:never) ) |
+        //      (F extends ComputeFunction<any, infer P>?P:never)
+        //      , 
+             compute: F) : ComputeProperty<F> {
 
 
-        return new ComputeProperty(definition, compute)
+        return new ComputeProperty(compute)
 
         // if( definition instanceof PropertyTypeDefinition ){
         //     const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
@@ -465,13 +520,13 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
         return source
     }
 
-    parseRaw<T extends TableSchema>(rawValue: any, context: DatabaseContext<any, any>, prop?: string): any {
-        return super.parseRaw(rawValue, context) // this.parseDataBySchema(instance, repository, rawValue)
-    }
+    // parseRaw<T extends TableSchema>(rawValue: any, context: DatabaseContext<any, any>, prop?: string): any {
+    //     return super.parseRaw(rawValue, context) // this.parseDataBySchema(instance, repository, rawValue)
+    // }
     
-    parseProperty<T extends TableSchema>(propertyvalue: any & EntityPropertyKeyValues<T>, context: DatabaseContext<any, any>, prop?: string) {
-        return super.parseProperty(propertyvalue, context, prop)
-    }
+    // parseProperty<T extends TableSchema>(propertyvalue: any & EntityPropertyKeyValues<T>, context: DatabaseContext<any, any>, prop?: string) {
+    //     return super.parseProperty(propertyvalue, context, prop)
+    // }
 
     hasMany<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
         this: ParentSchema,
@@ -480,16 +535,13 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
         parentKey?: ((schema: ParentSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
 
-        let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
-
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
-            ): Scalarable< ArrayType<RootSchema, 
-                EntityWithOptionalProperty<RootSchema, SSA>[]
-            >> => {
+            ): Scalarable< ArrayType< EntityWithOptionalProperty<RootSchema, SSA>[] > > => {
 
             let dataset = new Dataset()
 
+             let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
             let relatedSchema = relatedSchemaFunc()
             let relatedSource = relatedSchema.datasource('root')
 
@@ -510,7 +562,6 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
                 }
             }
 
-
             if(resolvedArgs?.select){
                 let computed = resolvedArgs.select
                 let computedValues = Object.keys(computed).map(key => {
@@ -529,10 +580,12 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            return newDataset
+            let r = newDataset.toScalar()
+            return r as unknown as Scalarable< ArrayType< EntityWithOptionalProperty<RootSchema, SSA>[] > >
         }
 
-        return this.compute( () => new ArrayType(relatedSchemaFunc()), computeFn )
+        //() => new ArrayType(relatedSchemaFunc())
+        return this.compute( computeFn )
     }
 
     belongsTo<ParentSchema extends TableSchema, RootSchema extends TableSchema>(
@@ -542,15 +595,14 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
         relatedBy?: ((schema: RootSchema) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
 
-        let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
-        
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
-            ): Scalarable< ObjectType<RootSchema,
+            ): Scalarable< ObjectType<
                 EntityWithOptionalProperty<RootSchema, SSA>
             >> => {
             
             let dataset = new Dataset()
+            let relatedSchemaFunc = () => this.#repository.context.findRegisteredSchema(relatedSchemaClass)
             let relatedSchema = relatedSchemaFunc()
             let relatedSource = relatedSchema.datasource('root')
 
@@ -588,10 +640,13 @@ export abstract class TableSchema extends Schema implements ParsableTrait<any>{
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            return newDataset
+            let r = newDataset.castToScalar(new ObjectType(newDataset.schema() ))
+            return r as Scalarable< ObjectType<
+                EntityWithOptionalProperty<RootSchema, SSA>
+            >>
         }
 
-        return this.compute( () => new ObjectType(relatedSchemaFunc()), computeFn )
+        return this.compute( computeFn )
     }
 
 }
@@ -799,19 +854,16 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
             return new Dataset(this)
         }
 
-    execute = async <S, R extends {
-        [key in keyof ExtractProps<S>]: 
-        S[key] extends Property<PropertyTypeDefinition<infer D1>>? D1 : never
-            // S[key] extends FieldProperty<FieldPropertyTypeDefinition<infer D1>>? D1 :
-                // (S[key] extends ComputeProperty<FieldPropertyTypeDefinition<infer D2>, any, any, any>? D2: never)
-    }>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise<R[]> =>
+    execute = async <S extends {[key:string]: Scalar<any>}>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise< 
+        ExpandRecursively< Array<ScalarMapToKeyValueMap<S>>>
+    > =>
      {
         // console.time('construct-sql')
         const nativeSql = await dataset.toNativeBuilder(this)
         // console.timeEnd('construct-sql')
         // console.log('nativeSql', nativeSql.toString())
         let data = await this.executeStatement(nativeSql, executionOptions)
-        // console.log('data', data)
+        console.log('data', data)
         let rows: any
         if(this.client().startsWith('mysql')){
             rows = data[0][0]
@@ -824,25 +876,23 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
         }
         if(!dataset.hasSelectedItems()){
             return []
-        } else {
-            if(Array.isArray(rows)){
+        } else if(Array.isArray(rows)){
     
-                // console.time('parsing')
-                const context = this
-                const len = rows.length
-                let parsedRows = new Array(len) as R[]
-                const schema = dataset.schema()
-                
-                for(let i=0; i <len;i++){
-                    parsedRows[i] = schema.parseRaw(rows[i], context)
-                }
-            
-                // console.timeEnd('parsing')
-                // console.log('parsed', parsedRows)
-                return parsedRows 
+            // console.time('parsing')
+            const context = this
+            const len = rows.length
+            let parsedRows = new Array(len) as ScalarMapToKeyValueMap<S>[]
+            const schema = dataset.schema()
+            // console.log(schema)
+            for(let i=0; i <len;i++){
+                parsedRows[i] = schema.parseRaw(rows[i], context)
             }
-            return rows
+        
+            // console.timeEnd('parsing')
+            // console.log('parsed', parsedRows)
+            return expandRecursively(parsedRows)
         }
+        return rows
     }
 
     client = (): string => this.orm.ormConfig.knexConfig.client.toString()

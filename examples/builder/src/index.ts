@@ -4,7 +4,7 @@ import { ComputeFunction, ComputeProperty, EntityPropertyKeyValues, EntityWithOp
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { Expand, ExpandRecursively, ExtractFieldProps } from "../../../dist/util"
+import { Expand, ExpandRecursively, ExtractFieldProps, UnionToIntersection } from "../../../dist/util"
 
 
 class A {
@@ -23,6 +23,12 @@ class B extends A{
 
 let ccc = new B(5);
 
+
+
+type C = UnionToIntersection<
+            {a: 5}
+            | 
+            {b: 6}>
 
 
 (async() => {
@@ -54,6 +60,8 @@ let ccc = new B(5);
     let s = Shop.datasource('shop')
     
     let p = Product.datasource('product')
+
+    // p.selectorMap().myABC().toScalar()
     
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
@@ -168,7 +176,7 @@ let ccc = new B(5);
     console.timeEnd('simple')
 
 
-    await dataset()
+    let r0 = await dataset()
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .update({
@@ -198,13 +206,13 @@ let ccc = new B(5);
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toArrayTypeScalar()
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar()
         }))
         .execute({
             onSqlRun: console.log
         })
 
-    console.log('test groupBy', r2)
+    console.log('test groupBy', r2[0].a)
 
 
     //Done: dynamic result type on 'find'
