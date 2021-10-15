@@ -92,10 +92,11 @@ export type SelectorMap<E> = {
         ExtractProps<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, infer P>>? 
             CompiledComputeFunction<key, Arg, P>              
         : 
-            ExtractProps<E>[key] extends StrictTypeProperty<infer D>? 
+            ExtractProps<E>[key] extends FieldProperty<infer D>? 
             Column<key, D>:
-            never
-    
+            ExtractProps<E>[key] extends ScalarProperty<infer D>?
+            Column<key, D>:
+            never    
 }
 
 export type ComputeFunction<ARG, 
@@ -117,7 +118,7 @@ export type EntityPropertyKeyValues<E> = {
                 (
                     E[key] extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer X>>>? X: 
                                 (
-                            E[key] extends StrictTypeProperty<PropertyTypeDefinition<infer Primitive>>? Primitive:
+                            E[key] extends ScalarProperty<PropertyTypeDefinition<infer Primitive>>? Primitive:
                             E[key]
                         )
                 )                  
@@ -130,18 +131,20 @@ type ExtractSchemaFromSelectiveComputeProperty<T> = T extends ComputeProperty<Co
 type ExtractValueTypeFromComputeProperty<T> = T extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer D>>>? D : never
     
 type EntityPropertyKeyValues_ExtractFieldProps<S> = EntityPropertyKeyValues< ExtractFieldProps<S>> 
+
+type CheckA<SSA, S> = SSA extends SelectiveArgFunction? 
+                EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
+                :  (
+                    SSA extends SelectiveArg?
+                    EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
+                    : 
+                    ExtractValueTypeFromComputeProperty< S>
+                )
+
 export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( 
     EntityPropertyKeyValues_ExtractFieldProps<S>
     & {
-        [k in keyof SSA["select"]]: 
-            SSA["select"][k] extends SelectiveArgFunction? 
-                EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S[k]>, ReturnType<SSA["select"][k]>>
-                :  (
-                    SSA["select"][k] extends SelectiveArg?
-                    EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S[k]>, SSA["select"][k]>
-                    : never //ExtractValueTypeFromComputeProperty< S[k]>
-                )
-        
+        [k in keyof SSA["select"]]: CheckA<SSA["select"][k], S[k]>
     })
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
