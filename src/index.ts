@@ -4,7 +4,7 @@ export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefiniti
 import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
 import {Dataset, Datasource, TableDatasource, Scalarable, Scalar, Column, TableOptions, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputeProps, ExtractFieldProps, ExtractProps, isFunction, makeid, notEmpty, quote, ScalarMapToKeyValueMap, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropsFromDict, ExtractFieldPropsFromDict, ExtractPropsFromDict, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { ModelRepository } from './Model'
 
 
@@ -33,7 +33,7 @@ export type SelectableProps<E> = {
 
 
 export type ComputePropertyArgsMap<E> = {
-    [key in keyof ExtractComputeProps<E> & string ]:
+    [key in keyof ExtractComputePropsFromDict<E> & string ]:
             E[key] extends undefined?
             never:
             (
@@ -46,10 +46,10 @@ export type ComputePropertyArgsMap<E> = {
 export type SingleSourceArg<S extends TableSchema> = {
     select?: Partial<ComputePropertyArgsMap<S>>,
     where?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropsFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
                 > | ExpressionFunc<
-        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropsFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >         
         >
     limit?: number,
@@ -58,7 +58,7 @@ export type SingleSourceArg<S extends TableSchema> = {
 }
 
 export type SingleSourceFilter<S extends TableSchema> = Expression<
-        UnionToIntersection< AddPrefix< ExtractProps<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropsFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
@@ -69,11 +69,11 @@ export type TwoSourcesArg<Root extends TableSchema, RootName extends string, Rel
 
     props?: Partial<ComputePropertyArgsMap<Related>>,
     filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< ExtractPropsFromDict< Root>, '', ''> | AddPrefix< ExtractPropsFromDict< Root>, RootName> | AddPrefix< ExtractPropsFromDict< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 > | 
                 ExpressionFunc< 
-        UnionToIntersection< AddPrefix< ExtractProps< Root>, '', ''> | AddPrefix< ExtractProps< Root>, RootName> | AddPrefix< ExtractProps< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< ExtractPropsFromDict< Root>, '', ''> | AddPrefix< ExtractPropsFromDict< Root>, RootName> | AddPrefix< ExtractPropsFromDict< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 >
     limit?: number,
@@ -87,14 +87,14 @@ export type TwoSourcesArgFunction<Root extends TableSchema, RootName extends str
 
 
 export type SelectorMap<E> = {
-    [key in keyof ExtractProps<E> & string ]:
+    [key in keyof ExtractPropsFromDict<E> & string ]:
             
-        ExtractProps<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, infer P>>? 
+        ExtractPropsFromDict<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, infer P>>? 
             CompiledComputeFunction<key, Arg, P>              
         : 
-            ExtractProps<E>[key] extends FieldProperty<infer D>? 
+            ExtractPropsFromDict<E>[key] extends FieldProperty<infer D>? 
             Column<key, D>:
-            ExtractProps<E>[key] extends ScalarProperty<infer D>?
+            ExtractPropsFromDict<E>[key] extends ScalarProperty<infer D>?
             Column<key, D>:
             never    
 }
@@ -105,14 +105,15 @@ export type ComputeFunction<ARG,
 
 export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
-export type PartialMutationEntityPropertyKeyValues<S> = Partial<MutationEntityPropertyKeyValues<ExtractFieldProps<S>>>
+export type PartialMutationEntityPropertyKeyValues<S> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropsFromDict<S>>>
 
-export type EntityFieldPropertyKeyValues<E> = {
-    [key in keyof ExtractFieldProps<E>]:
-        ExtractFieldProps<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
+export type ExtractValueTypeDictFromFieldProperties<E> = {
+    [key in keyof ExtractFieldPropsFromDict<E>]:
+        ExtractFieldPropsFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
-
-export type EntityPropertyKeyValues<E> = {
+export type ExtractValueTypeFromComputeProperty<T> = T extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer D>>>? D : never
+   
+export type ExtractValueTypeDictFromPropertyDict<E> = {
     [key in keyof E]:
         E[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
                 (
@@ -127,25 +128,41 @@ export type EntityPropertyKeyValues<E> = {
 type SelectiveArg = {select?:{}}
 type SelectiveArgFunction = ((root: SelectorMap<any>) => SelectiveArg )
 
-type ExtractSchemaFromSelectiveComputeProperty<T> = T extends ComputeProperty<ComputeFunction<((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
-type ExtractValueTypeFromComputeProperty<T> = T extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer D>>>? D : never
-    
-type EntityPropertyKeyValues_ExtractFieldProps<S> = EntityPropertyKeyValues< ExtractFieldProps<S>> 
+type ExtractPropertyDictFromSelectiveComputeProperty<T> = T extends ComputeProperty<ComputeFunction<((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
+ 
+type ExtractValueTypeDictFromPropertyDict_FieldsOnly<S> = ExtractValueTypeDictFromPropertyDict< ExtractFieldPropsFromDict<S>> 
 
-type CheckA<SSA, S> = SSA extends SelectiveArgFunction? 
-                EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
+type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S> = SSA extends SelectiveArgFunction? 
+                ConstructValueTypeDictBySelectiveArg< ExtractPropertyDictFromSelectiveComputeProperty<S>, ReturnType<SSA>>
                 :  (
                     SSA extends SelectiveArg?
-                    EntityWithOptionalProperty< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
+                    ConstructValueTypeDictBySelectiveArg< ExtractPropertyDictFromSelectiveComputeProperty<S>, SSA>
                     : 
                     ExtractValueTypeFromComputeProperty< S>
                 )
 
-export type EntityWithOptionalProperty<S, SSA extends { select?: {}} > = ( 
-    EntityPropertyKeyValues_ExtractFieldProps<S>
+export type ConstructValueTypeDictBySelectiveArg<S, SSA extends { select?: {}} > = ( 
+    ExtractValueTypeDictFromPropertyDict_FieldsOnly<S>
     & {
-        [k in keyof SSA["select"]]: CheckA<SSA["select"][k], S[k]>
+        [k in keyof SSA["select"]]: ConstructValueTypeDictBySelectiveArgAttribute<SSA["select"][k], S[k]>
     })
+
+type ConstructPropertyDictBySelectiveArgAttribute<SSA, S> = SSA extends SelectiveArgFunction? 
+            ConstructPropertyDictBySelectiveArg< ExtractPropertyDictFromSelectiveComputeProperty<S>, ReturnType<SSA>>
+            :  (
+                SSA extends SelectiveArg?
+                ConstructPropertyDictBySelectiveArg< ExtractPropertyDictFromSelectiveComputeProperty<S>, SSA>
+                : 
+                S
+            )
+
+export type ConstructPropertyDictBySelectiveArg<S, SSA extends { select?: {}} > = ( 
+    ExtractFieldPropsFromDict<S>
+    & {
+        [k in keyof SSA["select"]]: ConstructPropertyDictBySelectiveArgAttribute<SSA["select"][k], S[k]>
+    })
+
+
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof TableSchema}> = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -312,7 +329,7 @@ export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Prope
         }
 }
 
-export class Schema implements ParsableTrait<any>{
+export class Schema<Props extends {[key:string]: Property}> implements ParsableTrait<ExtractValueTypeDictFromPropertyDict<Props>>{
 
     // properties: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
@@ -363,14 +380,14 @@ export class Schema implements ParsableTrait<any>{
         }
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): any {
+    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): ExtractValueTypeDictFromPropertyDict<Props> {
         return this.parseDataBySchema(rawValue, context)
     }
-    parseProperty(propertyvalue: any, context: DatabaseContext<any, any>, prop?: string) {
+    parseProperty(propertyvalue: ExtractValueTypeDictFromPropertyDict<Props>, context: DatabaseContext<any, any>, prop?: string) {
         return propertyvalue
     }
 
-    parseDataBySchema(row: any, context: DatabaseContext<any,any>) {
+    parseDataBySchema(row: any, context: DatabaseContext<any,any>): ExtractValueTypeDictFromPropertyDict<Props> {
         const schema = this
         let output = {}
         for (const propName in row) {
@@ -408,7 +425,7 @@ export class Schema implements ParsableTrait<any>{
             // let prop = this.compiledNamedPropertyMap.get(fieldName)
         // }, entityInstance)
         
-        return output
+        return output as any
     }
 
 }
@@ -424,7 +441,7 @@ export class Schema implements ParsableTrait<any>{
 
 // }
 
-export abstract class TableSchema extends Schema {
+export abstract class TableSchema extends Schema<any> {
 
     #entityName: string
     #repository: ModelRepository<any>
@@ -540,7 +557,7 @@ export abstract class TableSchema extends Schema {
 
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
-            ): Scalarable< ArrayType< EntityWithOptionalProperty<RootSchema, SSA>[] > > => {
+            ): Scalarable< ArrayType< Schema<ConstructPropertyDictBySelectiveArg<RootSchema, SSA>> > > => {
 
             let dataset = new Dataset()
 
@@ -583,8 +600,9 @@ export abstract class TableSchema extends Schema {
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            let r = newDataset.toScalar()
-            return r as unknown as Scalarable< ArrayType< EntityWithOptionalProperty<RootSchema, SSA>[] > >
+            let r = newDataset.castToScalar( (ds) => new ArrayType(ds.schema() as Schema<ConstructPropertyDictBySelectiveArg<RootSchema, SSA>>) )
+
+            return r
         }
 
         //() => new ArrayType(relatedSchemaFunc())
@@ -601,7 +619,7 @@ export abstract class TableSchema extends Schema {
         let computeFn = <SSA extends SingleSourceArg<RootSchema>>(parent: Datasource<ParentSchema, any>, 
             args?: SSA | ((root: SelectorMap<RootSchema>) => SSA)
             ): Scalarable< ObjectType<
-                EntityWithOptionalProperty<RootSchema, SSA>
+                Schema< ConstructPropertyDictBySelectiveArg<RootSchema, SSA>>
             >> => {
             
             let dataset = new Dataset()
@@ -643,10 +661,9 @@ export abstract class TableSchema extends Schema {
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            let r = newDataset.castToScalar(new ObjectType(newDataset.schema() ))
-            return r as Scalarable< ObjectType<
-                EntityWithOptionalProperty<RootSchema, SSA>
-            >>
+            let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema()  as Schema<ConstructPropertyDictBySelectiveArg<RootSchema, SSA>> ))
+
+            return r
         }
 
         return this.compute( computeFn )
@@ -852,13 +869,13 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
         return result
     }
 
-    dataset = <S extends Schema, SName extends string>() : Dataset<{},{},{},any> => 
+    dataset = () : Dataset<Schema<{}>,{},{},any> => 
         {
             return new Dataset(this)
         }
 
-    execute = async <S extends {[key:string]: Scalar<any>}>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise< 
-        ExpandRecursively< Array<ScalarMapToKeyValueMap<S>>>
+    execute = async <S extends Schema<any>>(dataset: Dataset<S, any, any>, executionOptions?: ExecutionOptions): Promise< 
+        ExpandRecursively< ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]>
     > =>
      {
         // console.time('construct-sql')
@@ -884,8 +901,8 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof TableSchema}
             // console.time('parsing')
             const context = this
             const len = rows.length
-            let parsedRows = new Array(len) as ScalarMapToKeyValueMap<S>[]
             const schema = dataset.schema()
+            let parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]
             // console.log(schema)
             for(let i=0; i <len;i++){
                 parsedRows[i] = schema.parseRaw(rows[i], context)

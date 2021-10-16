@@ -1,10 +1,10 @@
 import { Dataset, Datasource, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { ComputeFunction, ComputeProperty, EntityPropertyKeyValues, EntityWithOptionalProperty, FieldProperty, ORM, Property, SelectorMap, SingleSourceArg, TableSchema } from "../../../dist"
+import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { Expand, ExpandRecursively, ExtractFieldProps, UnionToIntersection } from "../../../dist/util"
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
+import { UnionToIntersection } from "../../../dist/util"
 
 
 class A {
@@ -206,7 +206,9 @@ type C = UnionToIntersection<
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalar()
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).castToScalar( 
+                (ds) => new ObjectType(ds.schema()) 
+                )
         }))
         .execute({
             onSqlRun: console.log

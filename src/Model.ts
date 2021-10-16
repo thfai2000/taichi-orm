@@ -1,6 +1,6 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, EntityFieldPropertyKeyValues, EntityWithOptionalProperty, ORM } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, ExtractValueTypeDictFromFieldProperties, ConstructValueTypeDictBySelectiveArg, ORM } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, ExtractFieldProps, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
+import { Expand, ExtractFieldPropsFromDict, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Datasource, Expression, resolveEntityProps, TableOptions } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition } from "./PropertyType"
 
@@ -43,28 +43,28 @@ export class ModelRepository<TT extends typeof TableSchema>{
         return this.#orm
     }
 
-    createOne(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>): DatabaseMutationRunner< (EntityFieldPropertyKeyValues<InstanceType<TT>>), InstanceType<TT>>{
+    createOne(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>): DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>), InstanceType<TT>>{
         
-        return new DatabaseMutationRunner< (EntityFieldPropertyKeyValues<InstanceType<TT>>), InstanceType<TT>>(
+        return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>), InstanceType<TT>>(
             async (executionOptions: ExecutionOptions) => {
                 let result = await this._create(executionOptions, [data])
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
-                return result[0] as (EntityFieldPropertyKeyValues<InstanceType<TT>>)
+                return result[0] as (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)
             }
         )
     }
 
-    createEach(arrayOfData: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>[]): DatabaseMutationRunner< (EntityFieldPropertyKeyValues<InstanceType<TT>>)[], InstanceType<TT>>{
-        return new DatabaseMutationRunner< (EntityFieldPropertyKeyValues<InstanceType<TT>>)[], InstanceType<TT> >(
+    createEach(arrayOfData: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>[]): DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)[], InstanceType<TT>>{
+        return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)[], InstanceType<TT> >(
             async (executionOptions: ExecutionOptions) => {
                 let result = await this._create(executionOptions, arrayOfData)
                 return result.map( data => {
                         if(data === null){
                             throw new Error('Unexpected Flow.')
                         }
-                        return data as (EntityFieldPropertyKeyValues<InstanceType<TT>>)
+                        return data as (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)
                     })
             })
     }
@@ -314,8 +314,8 @@ export class ModelRepository<TT extends typeof TableSchema>{
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  EntityWithOptionalProperty<InstanceType<TT>, F> ,  InstanceType<TT> >{        
-        return new DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, F> , InstanceType<TT>>(
+    findOne<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> ,  InstanceType<TT> >{        
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> , InstanceType<TT>>(
         async (executionOptions: ExecutionOptions) => {
             let rows = await this._find(executionOptions, applyFilter?? null)
             return rows[0] ?? null
@@ -327,8 +327,8 @@ export class ModelRepository<TT extends typeof TableSchema>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  Array< EntityWithOptionalProperty<InstanceType<TT>, F> >,  InstanceType<TT> >{
-        return new DatabaseQueryRunner< Array<  EntityWithOptionalProperty<InstanceType<TT>, F> >, InstanceType<TT> >(
+    find<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >,  InstanceType<TT> >{
+        return new DatabaseQueryRunner< Array<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >, InstanceType<TT> >(
             async (executionOptions: ExecutionOptions) => {
                 let rows = await this._find(executionOptions, applyFilter?? null)
                 return rows
@@ -366,12 +366,13 @@ export class ModelRepository<TT extends typeof TableSchema>{
         })
 
         let resultData = await context.execute(wrappedDataset, executionOptions)
-        let rows = resultData[0].root as Array<  EntityWithOptionalProperty<InstanceType<TT>, F> >
+
+        let rows = resultData[0].root as Array<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >
         return rows
     }
 
-    updateOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>, InstanceType<TT>>{
-        return new DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>, InstanceType<TT> >(
+    updateOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT> >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<TT>> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, false,  actionOptions)
                 return result[0] ?? null
@@ -379,8 +380,8 @@ export class ModelRepository<TT extends typeof TableSchema>{
         )
     }
 
-    update<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>[], InstanceType<TT> >{
-        return new DatabaseMutationRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>[], InstanceType<TT> >(
+    update<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >{
+        return new DatabaseMutationRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<TT>> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)
                 return result
@@ -538,8 +539,8 @@ export class ModelRepository<TT extends typeof TableSchema>{
         return fns.filter(notEmpty)
     }
 
-    deleteOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>, InstanceType<TT>>{
-        return new DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>, InstanceType<TT>>(
+    deleteOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<TT> > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, true, actionOptions)
                 return result[0] ?? null
@@ -547,8 +548,8 @@ export class ModelRepository<TT extends typeof TableSchema>{
         )
     }
 
-    delete<F extends SingleSourceFilter<InstanceType<TT>>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>[], InstanceType<TT> >{
-        return new DatabaseQueryRunner< EntityWithOptionalProperty<InstanceType<TT>, {}>[], InstanceType<TT>>(
+    delete<F extends SingleSourceFilter<InstanceType<TT>>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT>>(
             async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<TT> > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, true, actionOptions)
                 return result

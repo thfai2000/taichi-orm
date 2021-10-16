@@ -634,11 +634,11 @@ export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
     }
 }
 
-export class ObjectType<I> extends ComputePropertyTypeDefinition<  I | null>{
+export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableTrait<infer I>? I:never)>{
     // protected options: ObjectOfTypeOptions
-    private parsable: ParsableTrait<any>
+    private parsable: T
 
-    constructor(parsable: ParsableTrait<any>) {
+    constructor(parsable: T) {
         super()
         this.parsable = parsable
         // this.options = { ...options}
@@ -662,7 +662,7 @@ export class ObjectType<I> extends ComputePropertyTypeDefinition<  I | null>{
         })
     }
  
-    override parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName?: string): I {
+    override parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName?: string): (T extends ParsableTrait<infer I>? I:never) {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -678,7 +678,7 @@ export class ObjectType<I> extends ComputePropertyTypeDefinition<  I | null>{
         return this.parsable.parseRaw(parsed, context)
     }
     
-    override parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I:never), context: DatabaseContext<any, any>, propName?: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -689,7 +689,7 @@ export class ObjectType<I> extends ComputePropertyTypeDefinition<  I | null>{
     }
 }
 
-export class ArrayType<I> extends ComputePropertyTypeDefinition< I| null>{
+export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableTrait<infer I>? I[]:never)>{
     
     private parsable: ParsableTrait<any>
 
@@ -716,7 +716,7 @@ export class ArrayType<I> extends ComputePropertyTypeDefinition< I| null>{
         })
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName: string): I {
+    parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName: string): (T extends ParsableTrait<infer I>? I[]:never) {
         // let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -748,7 +748,7 @@ export class ArrayType<I> extends ComputePropertyTypeDefinition< I| null>{
         throw new Error('It is not supported.')
     }
     
-    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, propName: string): any {
+    parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I[]:never), context: DatabaseContext<any, any>, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }

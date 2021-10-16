@@ -27,7 +27,7 @@ export function expandRecursively<T>(o: T): ExpandRecursively<T>{
 //     return o as any
 // }
 
-export type ScalarMapToKeyValueMap<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>>? D: never}
+export type ScalarDictToValueTypeDict<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>>? D: never}
 
 
 export type SimpleObject = { [key:string]: any}
@@ -41,24 +41,23 @@ export type UnionToIntersection<T> =
   (x: infer R) => any ? R : never
 
 
-
-export type ExtractProps<E> = 
+export type ExtractPropsFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: 
                     E[key] extends ComputeProperty<any>? key:
                     E[key] extends FieldProperty<any>? key:
                     E[key] extends ScalarProperty<any>? key:
                     never
-})[keyof E]> 
+})[keyof E]>
 
-export type ExtractFieldProps<E> = 
+export type ExtractFieldPropsFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends FieldProperty<any>? key:
                     never
 })[keyof E]> 
 
 
-export type ExtractComputeProps<E> = 
+export type ExtractComputePropsFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<any>? key:
                     never
@@ -211,7 +210,7 @@ export const parseName = (item: any) => {
 }
 
 
-export function isFunction(funcOrClass: any) {
+export function isFunction(funcOrClass: any): funcOrClass is ((...args: any[]) => any) {
   const propertyNames = Object.getOwnPropertyNames(funcOrClass);
   return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
 }
