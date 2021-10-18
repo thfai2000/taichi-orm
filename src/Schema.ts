@@ -443,7 +443,7 @@ export class DerivedDatasource<D extends Dataset<any>, Name extends string> exte
 
     readonly dataset: D
     constructor(dataset: D, sourceAlias: Name){
-        super( dataset.datasetSchema(), sourceAlias)
+        super( dataset.schema(), sourceAlias)
         this.dataset = dataset
     }
 

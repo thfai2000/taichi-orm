@@ -2,13 +2,12 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayType, ComputePropertyTypeDefinition, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from './PropertyType'
-import {Dataset, Scalar, Column, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, MutationDataset} from './Builder'
+import { FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
+import {Dataset, Scalar, Column, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropsFromDict, ExtractComputePropsFromSchema, ExtractFieldPropsFromDict, ExtractFieldPropsFromSchema, ExtractPropsFromDict, ExtractPropsFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
-import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
-import { threadId } from 'worker_threads'
+import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions } from './Schema'
 
 
 // type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
