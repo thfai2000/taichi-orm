@@ -7,29 +7,6 @@ import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, 
 import { UnionToIntersection } from "../../../dist/util"
 
 
-class A {
-    xxx: number
-    constructor(a: number){
-        this.xxx = a
-    }
-    a(){
-        console.log('eeeeeeeeeee', this.xxx)
-    }
-}
-
-class B extends A{
-    b = this.a()
-}
-
-let ccc = new B(5);
-
-
-
-type C = UnionToIntersection<
-            {a: 5}
-            | 
-            {b: 6}>
-
 
 (async() => {
 

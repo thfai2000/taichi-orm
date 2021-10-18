@@ -1,7 +1,8 @@
-import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Scalarable, Dataset} from './Builder'
+import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Dataset} from './Builder'
 import {Knex} from 'knex'
 import { BooleanNotNullType } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
+import { Scalarable } from '.'
 
 
 abstract class SQLFunction<Props, SourcePropMap> {

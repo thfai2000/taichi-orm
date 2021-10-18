@@ -1,9 +1,10 @@
 import { Knex}  from "knex"
-import { rootCertificates } from "tls"
-import { ComputePropertyArgsMap, TableSchema, SelectorMap, CompiledComputeFunction, FieldProperty, Schema, ComputeProperty, ExecutionOptions, DatabaseContext, ORM, Property, StrictTypeProperty, ComputeFunction, ScalarProperty, ExtractValueTypeDictFromPropertyDict } from "."
+import { v4 as uuidv4 } from 'uuid'
+import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExtractValueTypeDictFromPropertyDict, Scalarable, ExecutionOptions, DatabaseQueryRunner, ExtractValueTypeDictFromSchema, DatabaseMutationRunner } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType } from "./PropertyType"
-import { ExpandRecursively, ExtractFieldPropsFromDict, ExtractPropsFromDict, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./Schema"
+import { expandRecursively, ExpandRecursively, ExtractFieldPropsFromDict, ExtractFieldPropsFromSchema, ExtractPropsFromDict, ExtractPropsFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -102,223 +103,66 @@ export type AddPrefix<E, k extends string, delimitor extends string = '.'> = {
     [key in keyof E & string as `${k}${delimitor}${key}`]: Prefixed<k, key, E[key]>
 }
 
-// type SelectItem = {
-//     value: any,
-//     actualAlias: string
-// }
+abstract class StatementBase {
 
-export interface Scalarable<T extends PropertyTypeDefinition<any>> {
-    toScalar(): Scalar<T>
-    // castToScalar<D extends PropertyTypeDefinition<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
-    // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
-}
-
-export interface Datasource<E extends Schema<any>, alias extends string> {
-    sourceAlias: alias
-    schema: E
-    selectorMap(): SelectorMap<E>
-
-    toRaw(context: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw>
-    realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
-    
-    // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
-    getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
-    getFieldProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>>
-    getScalarProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>> 
-    getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
-    // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
-    // tableAlias: {
-    //     [key in keyof [alias] as alias]: string 
-    // }
-}
-
-export type TableOptions = {
-    tablePrefix?: string
-}
-
-abstract class DatasourceBase<E extends Schema<any>, Name extends string> implements Datasource<E, Name> {
-
-    readonly schema: E
-    readonly sourceAlias: Name
-    readonly sourceAliasAndSalt: string
-
-    constructor(schema: E, sourceAlias: Name){
-        if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
-            throw new Error('alias cannot start with Uppercase letter')
-        }
-
-        this.schema = schema
-        this.sourceAlias = sourceAlias
-        this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
-    }
-    abstract realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
-
-    selectorMap(): SelectorMap<E>{
-        const datasource = this
-        //@ts-ignore
-        const map = new Proxy( datasource, {
-            get: (oTarget: typeof datasource, sKey: string) => {
-                if(typeof sKey === 'string'){
-                    let prop = oTarget.schema.propertiesMap[sKey]
-                    if(prop instanceof FieldProperty){
-                        return datasource.getFieldProperty(sKey)
-                    }
-                    if(prop instanceof ComputeProperty){
-                        return datasource.getComputeProperty(sKey)
-                    }
-                    if(prop instanceof ScalarProperty){
-                        return datasource.getScalarProperty(sKey)
-                    }
-                }
-
-            }
-        }) as SelectorMap<E>
-        return map
-    }
-
-    // getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
-    //     let prop = this.schema.propertiesMap[name]
-    //     if( !(prop instanceof Property)){
-    //         throw new Error('it is not property')
-    //     } else {
-    //         const derivedProp = prop
-    //         return new Column(name, derivedProp.definition, (entityRepository) => {
-    //             const orm = entityRepository.orm
-    //             const client = orm.client()
-    //             let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, derivedProp.name)}`
-    //             return makeRaw(entityRepository, rawTxt)
-    //         })
-    //     }
-    // }
-
-    getAllFieldProperty(): Column<string, PropertyTypeDefinition<any>>[] {
-        return Object.keys(this.schema.propertiesMap)
-        .map(key => (this.schema.propertiesMap[key] instanceof FieldProperty)? this.getFieldProperty(key) :null )
-        .filter(notEmpty)
-    }
-
-    getFieldProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
-        let prop = this.schema.propertiesMap[name]
-        if( !(prop instanceof FieldProperty)){
-            throw new Error(`it is not field property ${name}`)
-        } else {
-            const fieldProp = prop
-            return new Column(name, (context) => {
-                const orm = context.orm
-                const client = context.client()
-                let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
-                return makeRaw(context, rawTxt)
-            }, fieldProp.definition)
-        }
-    }
-
-
-    getComputeProperty<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<Name, ARG, R>{
-        let prop = this.schema.propertiesMap[name]
-        if( !(prop instanceof ComputeProperty)){
-            throw new Error(`Not field property ${name}`)
-        }else{
-            const cProp = prop
-            return (args?: ARG) => {
-            
-                let col = new Column<Name, R>(name, (context) => {
-                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, args)
-                    let r = thenResult( subquery, scalarable => scalarable.toScalar() )
-                    return r
-                }, null)
-
-                return col
-            }
-        }
-    }
-
-   getScalarProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
-        let prop = this.schema.propertiesMap[name]
-        if( !(prop instanceof ScalarProperty)){
-            throw new Error(`it is not field property ${name}`)
-        } else {
-            const fieldProp = prop
-            return new Column(name, fieldProp.scalar, null)
-        }
-    }
-    
-    async toRaw(context: DatabaseContext<any, any>){
-        const client = context.client()
-        const sql = await this.realSource(context)
-        return makeRaw(context, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
-    }
-
-}
-
-export class TableDatasource<E extends TableSchema, Name extends string> extends DatasourceBase<E, Name> {
-
-    readonly options?: TableOptions
-
-    constructor(schema: E, sourceAlias: Name, options?: TableOptions){
-        super(schema, sourceAlias)
-        this.options = options
-    }
-
-    realSource(context: DatabaseContext<any, any>){
-        const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
-
-        let tableName = this.schema.tableName(finalOptions)
-        if(!tableName){
-            throw new Error('Not yet registered')
-        }
-        return quote(context.client(), tableName)
-    }
-}
-
-export class DerivedDatasource<D extends Dataset<any>, Name extends string> extends DatasourceBase< Schema<any>, Name> {
-
-    readonly dataset: Dataset<any, any, any, any>
-    constructor(dataset: Dataset<any, any, any, any>, sourceAlias: Name){
-        super( dataset.schema(), sourceAlias)
-        this.dataset = dataset
-    }
-
-    async realSource(context: DatabaseContext<any, any>){
-        return `(${(await this.dataset.toNativeBuilder(context))})`
-    }
-}
-
-export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> implements Scalarable<any> {
-
-    // parsableType: ParsableTrait<any> | null = null
-    // __type: 'Dataset' = 'Dataset'
-    #schema: null | Schema<any> = null
-
-    #whereRawItem: null |  Expression<any, any> = null
-    #selectItems: { [key: string]: Scalar<any> } | null = null
-    #updateItems: { [key: string]: Scalar<any> } | null = null
-    #fromItem: null | Datasource<Schema<any>, string> = null
-    #joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema<any>, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
-    
-    #groupByItems: { [key: string]: Scalar<any> } | null = null
-    #limit: null | number = null
-    #offset: null | number = null
-    #context: DatabaseContext<any, any> | null = null
-
-    nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
+    protected context?: DatabaseContext<any, any> | null = null
 
     constructor(context?: DatabaseContext<any, any> | null){
-        // this.#fromItem = fromSource
-        this.#context = context ?? null
+        this.context = context
     }
 
-    clearSchema() {
-        this.#schema = null
+    protected sqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>){
+        let sqlkeywords: SQLKeywords<X, Y> = {
+            And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
+            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
+            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition),
+            Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset)
+        }
+        return sqlkeywords
     }
 
-    toDataset(): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
-        return this
-    }
+    protected async scalarMap2RawMap(targetSchema: Schema<any>, nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>) {
+        const client = context.client()
+        return await Object.keys(nameMap).reduce( async (accP, k) => {
+
+            const acc = await accP
+
+            let prop = targetSchema.propertiesMap[k]
+
+            if(prop instanceof FieldProperty){
+                // let acc = await accP
+                let scalar = nameMap[k]
+                if(!scalar){
+                    throw new Error(`cannot resolve field ${k}`)
+                }
+                const raw: Knex.Raw = await scalar.toRaw(context)
+                let text = raw.toString().trim()
     
+                if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                    text = `(${text})`
+                }
+                acc[prop.fieldName(context.orm)] = makeRaw(context, text)
+            }
+
+            return acc
+        }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
+    }
+
+    abstract toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder>
+
+    abstract execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>): any
+}
+
+abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource extends Datasource<any, any> = Datasource<any, any>>  extends StatementBase {
+
+    protected fromItem: null | Datasource<Schema<any>, string> = null
+    protected joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema<any>, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
+    protected whereRawItem: null |  Expression<any, any> = null
+
     getSelectorMap(): SourcePropMap {
-        let sources = this.#joinItems.map(item => item.source)
-        if(this.#fromItem){
-            sources.push(this.#fromItem)
+        let sources = this.joinItems.map(item => item.source)
+        if(this.fromItem){
+            sources.push(this.fromItem)
         }
 
         const sourcePropMap = sources.reduce( (acc, source) => {
@@ -327,106 +171,209 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             return acc
         }, {} as {[key:string]: SelectorMap<any> } )
 
-        return sourcePropMap as unknown as SourcePropMap
+        return sourcePropMap as any
     }
+
+    where<X extends ExtractPropsFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): WhereClauseBase<SourceProps, SourcePropMap, FromSource>{
+        this.whereRawItem = expression
+        return this
+    }
+
+    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+        WhereClauseBase<
+            UnionToIntersection< AddPrefix< ExtractPropsFromDict< S>, '', ''> | AddPrefix< ExtractPropsFromDict< S>, SName> >,
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+        > {
+            this.fromItem = source
+            return this as any
+        }
+
+    innerJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): WhereClauseBase<X,Y, FromSource>{
+        this.joinItems.push( {
+            type: "inner",
+            source,
+            expression
+        })
+        return this as any
+    }
+     
+    leftJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): WhereClauseBase<X,Y, FromSource>{
+        this.joinItems.push( {
+            type: "left",
+            source,
+            expression
+        })
+        return this as any
+    }
+
+    rightJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): WhereClauseBase<X,Y, FromSource>{
+        this.joinItems.push( {
+            type: "right",
+            source,
+            expression
+        })
+        return this as any
+    }
+
+    protected async buildWhereClause(context: DatabaseContext<any, any>, nativeQB: Knex.QueryBuilder<any, unknown[]>) {
+        let selectorMap = this.getSelectorMap()
+
+        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+
+        Object.assign(selectorMap, this.sqlKeywords(resolver))
+
+        await this.joinItems.reduce(async (acc, item) => {
+            await acc
+            let finalExpr = await resolver(item.expression).toRaw(context)
+
+            if (item.type === 'inner') {
+                nativeQB.innerJoin(await item.source.toRaw(context), finalExpr)
+            } else if (item.type === 'left') {
+                nativeQB.leftJoin(await item.source.toRaw(context), finalExpr)
+            } else if (item.type === 'right') {
+                nativeQB.rightJoin(await item.source.toRaw(context), finalExpr)
+            }
+            return true
+        }, Promise.resolve(true))
+
+        if (this.whereRawItem) {
+            const where: Knex.Raw = await resolver(this.whereRawItem).toRaw(context)
+            nativeQB.where(where)
+        }
+    }
+
+}
+
+export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+    extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
+    implements Scalarable<any> {
+
+    // parsableType: ParsableTrait<any> | null = null
+    // __type: 'Dataset' = 'Dataset'
+    protected datasetSchema: null | Schema<any> = null
+
+    #selectItems: { [key: string]: Scalar<any> } | null = null
+   
+    
+    #groupByItems: { [key: string]: Scalar<any> } | null = null
+    #limit: null | number = null
+    #offset: null | number = null
+
+    nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
+
+    constructor(context?: DatabaseContext<any, any> | null){
+        super(context)
+        // this.#fromItem = fromSource
+        this.context = context ?? null
+    }
+
+    // get actionType(): Action{
+    //     if(this.#selectItems && Object.keys(this.#selectItems).length > 0)
+    //         return 'select'
+    //     if(this.#updateItems && Object.keys(this.#updateItems).length > 0)
+    //         return DatasetAction.Update
+    //     throw new Error('NYI')
+    // }
+
+    protected func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractPropsFromDict<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+        let nameMap: { [key: string]: Scalar<any>} 
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+
+        if (named instanceof Function) {
+            Object.assign(selectorMap, this.sqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            nameMap = named(map)
+        } else {
+            nameMap = named
+        }
+
+        const result = Object.keys(nameMap).reduce((acc, key) => {
+            acc[key] = resolver(nameMap[key])
+            return acc
+        }, {} as { [key: string]: Scalar<any>} )
+        return result
+    }
+
+    protected propNameArray2ScalarMap(properties: string[]){
+        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
+        let fields = properties
+        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
+            let [source, field] = key.split('.')
+            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
+            if(!field){
+                field = source
+                if(!this.fromItem){
+                    throw new Error(`There must be a FROM`)
+                }
+                let from = this.fromItem.selectorMap() //as SelectorMap< {[key:string]: any}>
+                item = from[field]
+            }
+            else {
+                item = map[source][field]
+            }
+
+            if(!item){
+                throw new Error('Cannot resolve field')
+            }else if(item instanceof Column){
+                acc = Object.assign({}, acc, item.value() )
+            }else {
+                acc = Object.assign({}, acc, item().value() )    
+            }
+            
+            return acc
+        }, {})
+        return nameMap
+    }
+
+    protected async queryScalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
+        const client = context.client()
+        return await Promise.all(Object.keys(nameMap).map(async (k) => {
+
+            // let acc = await accP
+            let scalar = nameMap[k]
+            if(!scalar){
+                throw new Error(`cannot resolve field ${k}`)
+            }
+            const raw: Knex.Raw = await scalar.toRaw(context)
+            let text = raw.toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            const newRaw = makeRaw(context, `${text}${includeAlias?` AS ${quote(client, k)}`:''}`)
+
+            return newRaw
+        }))
+    }
+
+    protected clearSchema() {
+        this.datasetSchema = null
+    }
+
+    toDataset(): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
+        return this
+    }
+    
 
     selectItemsAlias(): string[]{
         if(!this.#selectItems){
             return []
         }
         const selectItems = this.#selectItems
-        return Object.keys(selectItems).map(key => this.selectItemAlias(key, selectItems[key]) )
-    }
-
-    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
-
-        const context = repo ?? this.#context
-
-        if(!context){
-            throw new Error('There is no repository provided.')
-        }
-
-        let nativeQB = context.orm.getKnexInstance().clearSelect()
-        //@ts-ignore
-        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-
-        if(this.#updateItems && this.#selectItems){
-            throw new Error('Cannot be both select or update statements')
-        }
-
-        if(this.#fromItem){
-            const from = await this.#fromItem.toRaw(context)
-            nativeQB.from(from)
-        }
-
-        let selectorMap = this.getSelectorMap()
-
-        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
-        
-        Object.assign(selectorMap, this.sqlKeywords(resolver) )
-        
-        await this.#joinItems.reduce( async(acc, item) => {
-            await acc
-            let finalExpr = await resolver(item.expression).toRaw(context)
-
-            if(item.type === 'inner'){
-                nativeQB.innerJoin( await item.source.toRaw(context), finalExpr)
-            } else if(item.type === 'left'){
-                nativeQB.leftJoin( await item.source.toRaw(context), finalExpr)
-            } else if(item.type === 'right'){
-                nativeQB.rightJoin( await item.source.toRaw(context), finalExpr)
-            }
-            return true
-        }, Promise.resolve(true))
-        
-        if(this.#whereRawItem){
-            const where: Knex.Raw = await resolver(this.#whereRawItem).toRaw(context)
-            nativeQB.where( where )
-        }
-
-        if(this.#groupByItems){
-            const groupByItems = await this.scalarMap2RawArray(this.#groupByItems, context, false)
-            if(groupByItems.length === 0){
-                throw new Error('No groupByItems')
-            }
-            nativeQB.groupByRaw( groupByItems.map(item => item.toString()).join(',') )
-        }
-
-        if(this.#offset) {
-            if(this.#updateItems){
-                throw new Error('Cannot use limit on update')
-            }
-            nativeQB.offset(this.#offset)
-        }
-
-        if(this.#limit) {
-            if(this.#updateItems){
-                throw new Error('Cannot use limit on update')
-            }
-            nativeQB.limit(this.#limit)
-        }
-
-        if(this.#selectItems){
-            const selectItems = await this.scalarMap2RawArray(this.#selectItems, context, true)
-            if(selectItems.length === 0 && !this.#fromItem){
-                throw new Error('No SELECT and FROM are provided for Dataset')
-            }
-            nativeQB.select( selectItems )
-        }
-
-        if(this.#updateItems){
-            const updateItems = await this.scalarMap2RawMap(this.#updateItems, context)
-            if(Object.keys(updateItems).length === 0 && !this.#fromItem){
-                throw new Error('No UPDATE and FROM are provided for Dataset')
-            }
-            nativeQB.update( updateItems )
-        }
-
-        await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
-            await callback(nativeQB)
-        }))
-        
-        return nativeQB
+        return Object.keys(selectItems)
     }
 
     native(nativeBuilderCallback: (nativeBuilder: Knex.QueryBuilder) => void ): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
@@ -441,7 +388,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     }
 
     toScalar<T extends Dataset<any, any, any, any>>(this: T): Scalar<ArrayType<ExistingSchema>> {
-        return new Scalar(this, new ArrayType(this.schema()), this.#context) //as unknown as Scalar<T> 
+        return new Scalar(this, new ArrayType(this.schema()), this.context) //as unknown as Scalar<T> 
     }
 
     castToScalar<T extends PropertyTypeDefinition<any>>(
@@ -452,12 +399,49 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         ((dataset: typeof this) => T)): Scalar<T> {
 
         if(type instanceof PropertyTypeDefinition){
-            return new Scalar(this, type, this.#context) //as unknown as Scalar<T> 
+            return new Scalar(this, type, this.context) //as unknown as Scalar<T> 
         } else if(isFunction(type)){
-            return new Scalar(this, type(this), this.#context)
+            return new Scalar(this, type(this), this.context)
         } else {
-            return new Scalar(this, new type(), this.#context) 
+            return new Scalar(this, new type(), this.context) 
         }
+    }
+
+    where<X extends ExtractPropsFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
+        return this.where(expression)
+    }
+
+    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+        Dataset< Schema<{}>, 
+            UnionToIntersection< AddPrefix< ExtractPropsFromSchema< S>, '', ''> | AddPrefix< ExtractPropsFromSchema< S>, SName> >,
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+        > {
+            return this.from(source)
+        }
+
+    innerJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<ExistingSchema,X,Y, FromSource>{
+        
+        return this.innerJoin(source, expression)
+    }
+     
+    leftJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
+        return this.leftJoin(source, expression)
+    }
+
+    rightJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
+        return this.rightJoin(source, expression)
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
@@ -474,7 +458,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
 
-    
     groupByProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
             Schema<
@@ -521,32 +504,353 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
     
-    private func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractPropsFromDict<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
-        let nameMap: { [key: string]: Scalar<any>} 
-        let selectorMap = this.getSelectorMap()
-        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
+    //<ExistingSchema, SourceProps, SourcePropMap, FromSource>
+    // clone<T extends typeof Dataset>(d: T): InstanceType<T> {
+    //     const newDataset = new d()
+    //     newDataset.fromItem = this.fromItem
+    //     newDataset.#joinItems = this.#joinItems.map(i => i)
+    //     newDataset.#selectItems = this.#selectItems
+    //     newDataset.whereRawItem = this.whereRawItem
+    //     newDataset.nativeBuilderCallbacks = this.nativeBuilderCallbacks.map(i => i)
+    //     newDataset.#updateItems = this.#updateItems
+    //     newDataset.#groupByItems = this.#groupByItems
+    //     newDataset.#insertItems = this.#insertItems
+    //     newDataset.#insertToSchema = this.#insertToSchema
+    //     newDataset.#uuidForInsertion = this.#uuidForInsertion
+    //     return newDataset as any
+    // }
 
-        if (named instanceof Function) {
-            Object.assign(selectorMap, this.sqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
-            nameMap = named(map)
-        } else {
-            nameMap = named
-        }
 
-        const result = Object.keys(nameMap).reduce((acc, key) => {
-            acc[key] = resolver(nameMap[key])
-            return acc
-        }, {} as { [key: string]: Scalar<any>} )
-        return result
+    limit(limit: number | null): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
+        this.#limit = limit
+        return this
     }
 
+    offset(offset: number | null): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
+        this.#offset = offset
+        return this
+    }
+
+    datasource<Name extends string>(name: Name): Datasource<any, Name> {
+        return new DerivedDatasource(this, name)
+    }
+
+    schema(): ExistingSchema {
+        if(!this.#selectItems){
+            throw new Error('No selectItems for a schema')
+        }
+        if(!this.datasetSchema){
+            const selectItems = this.#selectItems
+            const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
+                acc[key] = new ScalarProperty(selectItems[key])
+                return acc
+            }, {} as {[key:string]: ScalarProperty<any>})
+            
+            let schema = new Schema(propertyMap)
+            this.datasetSchema = schema
+        }
+        return this.datasetSchema as ExistingSchema
+    }
+
+    hasSelectedItems(){
+        return Object.keys(this.#selectItems ?? {}).length > 0
+    }
+
+    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
+
+        const context = repo ?? this.context
+
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+
+        let nativeQB = context.orm.getKnexInstance().clearSelect()
+        //@ts-ignore
+        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+
+
+        if(this.#selectItems){
+            throw new Error('Cannot be both select or update statements')
+        }
+
+        if(this.fromItem){
+            const from = await this.fromItem.toRaw(context)
+            nativeQB.from(from)
+        }
+
+        await this.buildWhereClause(context, nativeQB)
+
+        if(this.#groupByItems){
+            const groupByItems = await this.queryScalarMap2RawArray(this.#groupByItems, context, false)
+            if(groupByItems.length === 0){
+                throw new Error('No groupByItems')
+            }
+            nativeQB.groupByRaw( groupByItems.map(item => item.toString()).join(',') )
+        }
+
+        if(this.#offset) {
+            nativeQB.offset(this.#offset)
+        }
+
+        if(this.#limit) {
+            nativeQB.limit(this.#limit)
+        }
+
+        if(this.#selectItems){
+            const selectItems = await this.queryScalarMap2RawArray(this.#selectItems, context, true)
+            if(selectItems.length === 0 && !this.fromItem){
+                throw new Error('No SELECT and FROM are provided for Dataset')
+            }
+            nativeQB.select( selectItems )
+        }
+    
+        await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
+            await callback(nativeQB)
+        }))
+
+        return nativeQB
+    }
+
+    execute<S extends Schema<any>>(this: Dataset<S, any, any, any>, repo?: DatabaseContext<any, any>): 
+        DatabaseQueryRunner<ExpandRecursively< ExtractValueTypeDictFromSchema<S>[] >>
+    {
+        const context = repo ?? this.context
+
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+        const current = this
+
+        return new DatabaseQueryRunner<ExpandRecursively< ExtractValueTypeDictFromSchema<S>[] >>(
+
+                async (executionOptions: ExecutionOptions) => {
+
+                    const nativeSql = await current.toNativeBuilder(context)
+
+                    let data = await context.executeStatement(nativeSql, executionOptions)
+        
+                    console.log('data', data)
+                    let rows: any
+                    if(context.client().startsWith('mysql')){
+                        rows = data[0][0]
+                    } else if(context.client().startsWith('sqlite')){
+                        rows = data
+                    } else if(context.client().startsWith('pg')){
+                        rows = data.rows[0]
+                    } else {
+                        throw new Error('Unsupport client.')
+                    }
+
+                    if(!Array.isArray(rows)){
+                        throw new Error('Unexpected.')
+                    }
+            
+                    const len = rows.length
+                    const schema = current.schema()
+                    let parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]
+                    // console.log(schema)
+                    for(let i=0; i <len;i++){
+                        parsedRows[i] = schema.parseRaw(rows[i], context)
+                    }
+                
+                    // console.timeEnd('parsing')
+                    // console.log('parsed', parsedRows)
+                    return expandRecursively(parsedRows)
+                })
+    }
+}
+
+export class InsertStatement<T extends TableSchema<any>> 
+    extends StatementBase {
+
+    #insertToSchema: T
+    #insertItems: { [key: string]: Scalar<any> } | null = null
+    #uuidForInsertion: string | null = null
+
+    constructor(insertToSchema: T){
+        super()
+        this.#insertToSchema = insertToSchema
+    }
+
+    insertInfo(){
+        return {
+            schema: this.#insertToSchema,
+            uuid: this.#uuidForInsertion
+        }
+    }
+
+    values<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropsFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
+    (keyValues: S | ((map: Y ) => S )): InsertStatement<T>{
+        
+        let nameMap: { [key: string]: any | Scalar<any> }
+        let selectorMap = {}
+        let resolver = makeExpressionResolver(null, [], selectorMap)
+        
+        if(keyValues instanceof Function){    
+            Object.assign(selectorMap, this.sqlKeywords(resolver) )
+            const map = Object.assign({}, this.sqlKeywords<any, any>(resolver)) as Y
+            nameMap = keyValues(map)
+        } else {
+            nameMap = keyValues
+        }
+
+        this.#insertItems = Object.keys(nameMap).reduce( (acc, key) => {
+            acc[key] = resolver(nameMap[key])
+            return acc
+        }, {} as { [key: string]: Scalar<any> } )
+
+
+        return this
+    }
+
+    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
+
+        const context = repo ?? this.context
+
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+
+        let nativeQB = context.orm.getKnexInstance().from(this.#insertToSchema.tableName(context))
+        //@ts-ignore
+        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+
+    
+        if(!this.#insertItems){
+            throw new Error('No insert Items')
+        }
+
+        let targetSchema = this.#insertToSchema
+        const schemaPrimaryKeyFieldName = targetSchema.id.fieldName(context.orm)
+        const schemaPrimaryKeyPropName = targetSchema.id.name
+        const schemaUUIDPropName = targetSchema.uuid?.name
+        const schemaUUIDFieldName = targetSchema.uuid?.fieldName(context.orm)
+
+        let useUuid: boolean = !!context.orm.ormConfig.enableUuid
+        if (context.client().startsWith('sqlite')) {
+            if (!context.orm.ormConfig.enableUuid ){
+                throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
+            }
+        }
+
+        let additionalFields = {}
+        if(useUuid){
+            if(!schemaUUIDPropName) {
+                throw new Error('No UUID')
+            }
+            this.#uuidForInsertion = uuidv4()
+            additionalFields = {[schemaUUIDPropName]: this.#uuidForInsertion}
+        }
+
+        const insertItems = await this.scalarMap2RawMap(this.#insertToSchema, Object.assign({}, this.#insertItems, additionalFields), context)
+     
+        nativeQB.insert( insertItems )
+
+        if ( context.client().startsWith('pg')) {
+            nativeQB = nativeQB.returning(schemaPrimaryKeyFieldName)
+        }
+
+        return nativeQB        
+    }
+
+    executeInsert = <D extends InsertDataset<any, any, any, any>>(dataset: D) =>
+     {
+        return new DatabaseQueryRunner( async(executionOptions) => {
+            let fns: number = await this.startTransaction(async (trx) => {
+                executionOptions = {...executionOptions, trx}
+                if(!(dataset instanceof InsertDataset)){
+                    throw new Error('Only For Insert')
+                } else{
+                    const ds = dataset as InsertDataset<any>
+                    if(ds.isInsert() ){
+                        let id = this.insert(ds, executionOptions)
+                        let info = ds.insertInfo()
+                        let findStmt
+                        if(id === null){
+                            findStmt = this.orm.getKnexInstance().from(info.schema!.tableName(this)).select('id').where({[info.schema!.uuid!.fieldName(this.orm)]: info.uuid})
+                            return await this.executeStatement(findStmt, executionOptions)
+                        } else {
+                            return id
+                            // findStmt = this.orm.getKnexInstance().from(info.schema!.tableName(this)).where({[info.schema!.id!.fieldName(this.orm)]: id})
+                        }
+                    }
+    
+                }
+            }, executionOptions.trx)
+            return fns
+        })
+    }
+
+    private async insert(ds: Dataset<any, any>, executionOptions: ExecutionOptions) {
+        // const schema = this.#modelClass.schema()
+        const context = this
+        const queryBuilder = ds.toNativeBuilder(this)
+
+        let fns = await context.startTransaction(async (trx) => {
+
+            //replace the trx
+            executionOptions = {...executionOptions, trx: trx}
+
+            // let afterMutationHooks = schema.hooks.filter()
+
+            // console.debug('======== INSERT =======')
+            // console.debug(stmt.toString())
+            // console.debug('========================')
+            if (context.client().startsWith('mysql')) {
+                let insertedId: number
+                const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
+                const r = await context.executeStatement(insertStmt, executionOptions)
+                insertedId = r[0][0].id
+                // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
+    
+                return insertedId
+            } else if (context.client().startsWith('sqlite')) {
+                const insertStmt = queryBuilder.toString()
+                const r = await context.executeStatement(insertStmt, executionOptions)
+
+                return null
+
+            } else if (context.client().startsWith('pg')) {
+                const insertStmt = queryBuilder.toString()
+                let insertedId: number
+                const r = await context.executeStatement(insertStmt, executionOptions)
+                
+                insertedId = Object.keys(r.rows[0]).map(k => r.rows[0][k])[0]
+                return insertedId
+                // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+
+            } else {
+                throw new Error('Unsupport client')
+            }
+            
+        }, executionOptions.trx)
+
+        return fns
+    }
+
+    execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>) {
+        return new DatabaseMutationRunner(
+            async (executionOptions: ExecutionOptions) => {
+                const nativeSql = await dataset.toNativeBuilder(this)
+                let data = await this.executeStatement(nativeSql, executionOptions)
+                return data
+            })
+    }
+
+}
+
+export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+    extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
+    {
+
+    #updateItems: { [key: string]: Scalar<any> } | null = null
+
     update<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropsFromDict< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropsFromDict<SourceProps>, SourcePropMap> >>
-    (keyValues: S | ((map: Y ) => S )): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
+    (keyValues: S | ((map: Y ) => S )): UpdateStatement<SourceProps, SourcePropMap, FromSource>{
         
         let nameMap: { [key: string]: any | Scalar<any> }
         let selectorMap = this.getSelectorMap()
-        let resolver = makeExpressionResolver(this.#fromItem, this.#joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
         
         if(keyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
@@ -560,218 +864,52 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             acc[key] = resolver(nameMap[key])
             return acc
         }, {} as { [key: string]: Scalar<any> } )
-        return this as any
-    }
-    private selectItemAlias(name: string, scalar: Scalar<any>){
-        return name
-    }
 
-    private propNameArray2ScalarMap(properties: string[]){
-        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
-        let fields = properties
-        let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
-            let [source, field] = key.split('.')
-            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
-            if(!field){
-                field = source
-                if(!this.#fromItem){
-                    throw new Error(`There must be a FROM`)
-                }
-                let from = this.#fromItem.selectorMap() as SelectorMap< {[key:string]: any}>
-                item = from[field]
-            }
-            else {
-                item = map[source][field]
-            }
 
-            if(!item){
-                throw new Error('Cannot resolve field')
-            }else if(item instanceof Column){
-                acc = Object.assign({}, acc, item.value() )
-            }else {
-                acc = Object.assign({}, acc, item().value() )    
-            }
-            
-            return acc
-        }, {})
-        return nameMap
-    }
-
-    private async scalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
-        const client = context.client()
-        return await Promise.all(Object.keys(nameMap).map(async (k) => {
-
-            // let acc = await accP
-            let scalar = nameMap[k]
-            if(!scalar){
-                throw new Error(`cannot resolve field ${k}`)
-            }
-            const raw: Knex.Raw = await scalar.toRaw(context)
-            let text = raw.toString().trim()
-
-            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
-                text = `(${text})`
-            }
-            const newRaw = makeRaw(context, `${text}${includeAlias?` AS ${quote(client, this.selectItemAlias(k, scalar))}`:''}`)
-
-            return newRaw
-        }))
-    }
-
-    private async scalarMap2RawMap(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>) {
-        const client = context.client()
-        return await Object.keys(nameMap).reduce( async (accP, k) => {
-
-            const acc = await accP
-            // let acc = await accP
-            let scalar = nameMap[k]
-            if(!scalar){
-                throw new Error(`cannot resolve field ${k}`)
-            }
-            const raw: Knex.Raw = await scalar.toRaw(context)
-            let text = raw.toString().trim()
-
-            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
-                text = `(${text})`
-            }
-            acc[k] = makeRaw(context, text)
-            return acc
-        }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
-    }
-
-    sqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>){
-        let sqlkeywords: SQLKeywords<X, Y> = {
-            And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
-            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
-            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition),
-            Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset)
-        }
-        return sqlkeywords
-    }
-
-    clone(): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
-        const newDataset = new Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>()
-        newDataset.#fromItem = this.#fromItem
-        newDataset.#joinItems = this.#joinItems.map(i => i)
-        newDataset.#selectItems = this.#selectItems
-        newDataset.#whereRawItem = this.#whereRawItem
-        newDataset.nativeBuilderCallbacks = this.nativeBuilderCallbacks.map(i => i)
-        return newDataset
-    }
-
-    where<X extends ExtractPropsFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
-        //@ts-ignore
-        this.#whereRawItem = expression
         return this
     }
 
-    limit(limit: number | null): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
-        this.#limit = limit
-        return this
-    }
+    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
 
-    offset(offset: number | null): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> {
-        this.#offset = offset
-        return this
-    }
-
-    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
-        Dataset< Schema<{}>, 
-            UnionToIntersection< AddPrefix< ExtractPropsFromDict< S>, '', ''> | AddPrefix< ExtractPropsFromDict< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
-        > {
-            this.#fromItem = source
-            return this as any
-        }
-
-    innerJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
-        >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<ExistingSchema,X,Y, FromSource>{
-        this.#joinItems.push( {
-            type: "inner",
-            source,
-            expression
-        })
-        return this as any
-    }
-     
-    leftJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
-        >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
-        this.#joinItems.push( {
-            type: "left",
-            source,
-            expression
-        })
-        return this as any
-    }
-
-    rightJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
-        >(source: Datasource<S, SName>, 
-        expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
-        this.#joinItems.push( {
-            type: "right",
-            source,
-            expression
-        })
-        return this as any
-    }
-
-
-
-    datasource<Name extends string>(name: Name): Datasource<any, Name> {
-        return new DerivedDatasource(this, name)
-    }
-
-    schema(): ExistingSchema {
-        if(!this.#selectItems){
-            throw new Error('No selectItems for a schema')
-        }
-        if(!this.#schema){
-            const selectItems = this.#selectItems
-            const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
-    
-                // const d = selectItems[key].definition
-                let referName = this.selectItemAlias(key, selectItems[key])
-    
-                acc[key] = new ScalarProperty(selectItems[key])
-                acc[key].register(referName)
-                
-                return acc
-            }, {} as {[key:string]: ScalarProperty<any>})
-    
-            
-            let schema =  Object.assign(new Schema(), propertyMap)
-            schema.register()
-            // console.log('register schema', propertyMap)
-            this.#schema = schema
-        }
-        return this.#schema as ExistingSchema
-    }
-
-    hasSelectedItems(){
-        return Object.keys(this.#selectItems ?? {}).length > 0
-    }
-
-    async execute<S extends Schema<any>>(this: Dataset<S, any, any, any>,executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): Promise<
-        ExpandRecursively< ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]>
-    >{
-        const context = repo ?? this.#context
+        const context = repo ?? this.context
 
         if(!context){
             throw new Error('There is no repository provided.')
         }
-        const current = this //as Dataset<ExistingSchema>
+                
+        if(!this.#updateItems){
+            throw new Error('No update items')
+        }
+        if(!this.fromItem){
+            throw new Error('No from item')
+        }
+        const from = await this.fromItem.toRaw(context)
+        let nativeQB = context.orm.getKnexInstance().from(from)
+        //@ts-ignore
+        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
-        return context.execute(current, executionOptions) 
+        await this.buildWhereClause(context, nativeQB)
+
+        const updateItems = await this.scalarMap2RawMap(this.fromItem.schema, this.#updateItems, context)
+        if(Object.keys(updateItems).length === 0 && !this.fromItem){
+            throw new Error('No UPDATE and FROM are provided for Dataset')
+        }
+        nativeQB.update( updateItems )
+    
     }
+
+
+    execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>) {
+        return new DatabaseMutationRunner(
+            async (executionOptions: ExecutionOptions) => {
+                const nativeSql = await dataset.toNativeBuilder(this)
+                let data = await this.executeStatement(nativeSql, executionOptions)
+                return data
+            })
+    }
+
 }
+
 
 type RawUnit<T extends PropertyTypeDefinition<any> = any> = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T>> | Scalar<T> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
 type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any, any>) => RawUnit<T>) | RawUnit<T>
@@ -946,17 +1084,24 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     //     return new Scalar(this.toRealRaw(), d, this.context)
     // }
 
-    async execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): 
-        Promise<T extends PropertyTypeDefinition<infer D>? D: any> {
+    execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): 
+        DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >> {
         const context = repo ?? this.context
 
         if(!context){
             throw new Error('There is no repository provided.')
         }
-        let result = await context.execute( new Dataset().select({root: this}), executionOptions)
 
-        //@ts-ignore
-        return result[0].root as any    
+        return new DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >>(
+            async (executionOptions: ExecutionOptions) => {
+                let result = await context.execute( new Dataset().select({root: this}), executionOptions)
+
+                //@ts-ignore
+                return result[0].root as any  
+            }
+        )
+
+
     }
 }
 
@@ -1095,28 +1240,3 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
 
     return resolver
 }
-
-
-export async function resolveEntityProps<D extends TableSchema>(source: Datasource<D, "root">, 
-    props: Partial<ComputePropertyArgsMap<D>> | undefined): Promise<{ [key: string]: Scalar<any> }> {
-    
-    let computedCols: { [key: string]: Scalar<any> }[] = []
-    if(props){
-        computedCols = Object.keys(props).map( (propName) => {
-            //@ts-ignore
-            const args = props[propName]
-            let call = source.getComputeProperty(propName)
-            
-            let col = call(args) as Column<any, any>
-            let colDict = col.value()
-
-            return colDict
-
-        })
-    }
-    let fieldCols = source.schema.properties.filter(prop => !(prop instanceof ComputeProperty) )
-        .map(prop => source.getFieldProperty(prop.name).value() )
-    let r = Object.assign({}, ...fieldCols, ...computedCols)
-    return r as { [key: string]: Scalar<any> }
-}
-

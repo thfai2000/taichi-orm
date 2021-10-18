@@ -1,26 +1,241 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, FieldProperty, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, TableSchema, ExtractValueTypeDictFromFieldProperties, ConstructValueTypeDictBySelectiveArg, ORM } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, Scalarable, ConstructPropertyDictBySelectiveArg, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, ExtractFieldPropsFromDict, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
-import { Dataset, Datasource, Expression, resolveEntityProps, TableOptions } from "./Builder"
-import { ArrayType, FieldPropertyTypeDefinition } from "./PropertyType"
+import { Expand, ExtractFieldPropsFromDict, ExtractPropsFromDict, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
+import { Dataset, Expression, Scalar } from "./Builder"
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
+import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
+export type ExtractSchemaFromModel<M extends Model> = TableSchema< ExtractPropsFromDict<M> >
+export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaFromModel<InstanceType<MT>>
 
-export class ModelRepository<TT extends typeof TableSchema>{
+export abstract class Model {
+
+    #entityName: string
+    #repository: ModelRepository<any>
+    #schema: TableSchema<any> | null = null
+
+    abstract id: FieldProperty<PrimaryKeyType>
+    uuid?: FieldProperty<StringNotNullType> = undefined
+
+    
+    constructor(repository: ModelRepository<any>, entityName: string){
+        this.#repository = repository
+        this.#entityName = entityName
+    }
+
+    get modelName(){
+        return this.#entityName
+    }
+
+    field<D extends FieldPropertyTypeDefinition<any> >(definition: (new (...args: any[]) => D) | D  ) {
+
+        if(definition instanceof FieldPropertyTypeDefinition){
+            return new FieldProperty<D>(definition)
+        }
+        return new FieldProperty<D>( new definition() )
+    }
+
+    compute<F extends ComputeFunction<any, any>>(
+        // definition: 
+        //     (new () => (F extends ComputeFunction<any, infer P>?P:never) ) |
+        //     (() => (F extends ComputeFunction<any, infer P>?P:never) ) |
+        //      (F extends ComputeFunction<any, infer P>?P:never)
+        //      , 
+             compute: F) : ComputeProperty<F> {
+
+
+        return new ComputeProperty(compute)
+
+        // if( definition instanceof PropertyTypeDefinition ){
+        //     const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
+        //     return new ComputeProperty(d, compute)
+        // } else{
+        //     const d = definition as (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) )
+        //     return new ComputeProperty(new d(), compute)
+        // }
+    }
+
+    hook(newHook: Hook){
+        //TODO:
+        // this.hooks.push(newHook)
+    }
+
+    schema<T extends Model>(this: T): ExtractSchemaFromModel<T> {
+
+        if(!this.#schema){
+
+            let props = {} as {[key:string]: Property}
+            for (let field in this) {
+                if(this[field] instanceof Property){
+                    props[field] = this[field] as unknown as Property
+                }
+            }
+            let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
+            for (let field in z) {
+                if(z[field] instanceof Property){
+                    props[field] = z[field] as Property
+                }
+            }
+
+            let schema = new TableSchema(this.#entityName, props, this.id, this.uuid)
+            // schema.uuid = this.uuid
+            // schema.id = this.id
+            
+            this.#schema = schema
+        }
+        return this.#schema
+    }
+
+    /**
+     * Selector is used for locating the table name / field names / computed functions
+     * field pointers
+     * @returns 
+     */
+    datasource<T extends Model, Name extends string>(this: T, name: Name, options?: TableOptions) : Datasource<ExtractSchemaFromModel<T>, Name>{
+        const source = new TableDatasource(this.schema(), name, options)
+        return source
+    }
+
+
+    hasMany<ParentModel extends Model, RootModelType extends typeof Model>(
+        this: ParentModel,
+        relatedModelType: RootModelType, 
+        relatedBy: ((schema: ExtractSchemaFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>), 
+        parentKey?: ((schema: ExtractSchemaFromModel<ParentModel>) => FieldProperty<FieldPropertyTypeDefinition<any>>)
+        ) {
+
+        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(parent: Datasource< ExtractSchemaFromModel<ParentModel>, any>, 
+            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
+            ): Scalarable< ArrayType< Schema<
+                ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+            > > > => {
+
+            let dataset = new Dataset()
+
+            let relatedModel = this.#repository.context.findRegisteredModel(relatedModelType)
+            let relatedSource = relatedModel.datasource('root')
+
+            let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema ).name  ): undefined ) ?? parent.getFieldProperty("id")
+            let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  )
+        
+            let newDataset = dataset.from(relatedSource)
+
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+
+            let resolvedArgs: SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
+            if(resolvedArgs?.select){
+                let computed = resolvedArgs.select
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.select(Object.assign(props, computedValues))
+            }else {
+                dataset.select(props)
+            }
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.where){
+               filters.push( resolvedArgs.where as any )
+            }
+            newDataset.where( ({And}) => And(...filters) )
+
+            let r = newDataset.castToScalar( (ds) => new ArrayType(ds.datasetSchema() )) //as Schema<ConstructPropertyDictBySelectiveArg<RootModel, SSA>>) )
+
+            return r
+        }
+
+        //() => new ArrayType(relatedSchemaFunc())
+        return this.compute( computeFn )
+    }
+
+    belongsTo<ParentModel extends Model, RootModelType extends typeof Model>(
+        this: ParentModel,
+        relatedModelType: RootModelType,
+        parentKey: ((schema: ExtractSchemaFromModel<ParentModel>) => FieldProperty<FieldPropertyTypeDefinition<any>>),
+        relatedBy?: ((schema: ExtractSchemaFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
+        ) {
+
+        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(parent: Datasource< ExtractSchemaFromModel<ParentModel>, any>, 
+            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
+            ): Scalarable< ObjectType<Schema<
+                ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+            >> > => {
+            
+            let dataset = new Dataset()
+            let relatedSchema = this.#repository.context.findRegisteredModel(relatedModelType)
+            let relatedSource = relatedSchema.datasource('root')
+
+            let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
+            let parentColumn = parent.getFieldProperty( parentKey(parent.schema).name  )
+        
+            let newDataset = dataset.from(relatedSource)
+
+            let resolvedArgs: SingleSourceArg<ExtractSchemaFromModelType<RootModelType>> | undefined
+            
+            if(args){
+                if(args instanceof Function){
+                    resolvedArgs = args(relatedSource.selectorMap())
+                } else {
+                    resolvedArgs = args
+                }
+            }
+
+            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+            if(resolvedArgs?.select){
+                let computed = resolvedArgs.select
+                let computedValues = Object.keys(computed).map(key => {
+                    //@ts-ignore
+                    let arg = computed[key]
+                    return relatedSource.getComputeProperty(key)(arg).value()
+                }).reduce( (acc,v) => Object.assign(acc, v), {})
+
+                dataset.select(Object.assign(props, computedValues))
+            }else {
+                dataset.select(props)
+            }
+            let filters = [parentColumn.equals( relatedByColumn )]
+            if(resolvedArgs?.where){
+               filters.push( resolvedArgs.where as any )
+            }
+            newDataset.where( ({And}) => And(...filters) )
+
+            let r = newDataset.castToScalar( (ds) => new ObjectType(ds.datasetSchema() )
+
+            return r
+        }
+
+        return this.compute( computeFn )
+    }
+}
+
+
+export class ModelRepository<MT extends typeof Model>{
 
     #orm: ORM<any, any>
-    #modelClass: InstanceType<TT>
+    #modelClass: InstanceType<MT>
     #context: DatabaseContext<any, any>
 
-    constructor(orm: ORM<any, any>, context: DatabaseContext<any, any>, modelClass: TT, modelName: string){
+    constructor(orm: ORM<any, any>, context: DatabaseContext<any, any>, modelClass: MT, modelName: string){
         this.#orm = orm
         this.#context = context
 
         //must be the last statement because the creation of schema may require context
         //@ts-ignore
-        this.#modelClass = new modelClass(this as ModelRepository<TT>, modelName)
-        this.#modelClass.register()
+        this.#modelClass = new modelClass(this as ModelRepository<MT>, modelName)
+        // this.#modelClass.register()
     }
 
     get modelClass(){
@@ -31,295 +246,61 @@ export class ModelRepository<TT extends typeof TableSchema>{
         return this.#context
     }
 
-    datasource<Name extends string>(name: Name, options?: TableOptions) : Datasource<InstanceType<TT>, Name>{
+    datasource<Name extends string>(name: Name, options?: TableOptions) : Datasource<ExtractSchemaFromModelType<MT>, Name>{
         return this.#modelClass.datasource(name, options)
     }
 
     get schema() {
-        return this.#modelClass
+        return this.#modelClass.schema
     }
 
     get orm(){
         return this.#orm
     }
 
-    createOne(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>): DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>), InstanceType<TT>>{
+    createOne(data: PartialMutationEntityPropertyKeyValues<ExtractSchemaFromModelType<MT>>) {
         
-        return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>), InstanceType<TT>>(
+        return new DatabaseMutationRunner<(ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)>(
             async (executionOptions: ExecutionOptions) => {
-                let result = await this._create(executionOptions, [data])
+                let ds = this.context.dataset().insert(this.#modelClass.schema()).values(data)
+                let id = this.context.executeAndReturn(ds)
+
+                let result = await this.context.dataset().from(this.#modelClass.datasource('root')).select(({root})=> root.all).execute()
+
+                // let result = await this._create(executionOptions, [data])
                 if(!result[0]){
                     throw new Error('Unexpected Error. Cannot find the entity after creation.')
                 }
-                return result[0] as (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)
+                return result[0] as (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)
             }
         )
     }
 
-    createEach(arrayOfData: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>[]): DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)[], InstanceType<TT>>{
-        return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)[], InstanceType<TT> >(
-            async (executionOptions: ExecutionOptions) => {
-                let result = await this._create(executionOptions, arrayOfData)
-                return result.map( data => {
-                        if(data === null){
-                            throw new Error('Unexpected Flow.')
-                        }
-                        return data as (ExtractValueTypeDictFromFieldProperties<InstanceType<TT>>)
-                    })
-            })
-    }
+    // createEach(arrayOfData: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>[]): DatabaseMutationRunner< (ConstructValueTypeDictBySelectiveArg<>)[], ExtractSchemaFromModelType<MT>>{
+    //     return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)[], ExtractSchemaFromModelType<MT> >(
+    //         async (executionOptions: ExecutionOptions) => {
+    //             let result = await this._create(executionOptions, arrayOfData)
+    //             return result.map( data => {
+    //                     if(data === null){
+    //                         throw new Error('Unexpected Flow.')
+    //                     }
+    //                     return data as (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)
+    //                 })
+    //         })
+    // }
 
-    private async _create(executionOptions: ExecutionOptions, values: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>[]) {
-        const schema = this.#modelClass
-        const actionName = 'create'
-        const context = this.#context
-
-        if(!context){
-            throw new Error('Entity is not accessed through Repository')
-        }
-        
-        let useUuid: boolean = !!context.orm.ormConfig.enableUuid
-        if (context.client().startsWith('sqlite')) {
-            if (!context.orm.ormConfig.enableUuid ){
-                throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
-            }
-        }
-        
-        const schemaPrimaryKeyFieldName = schema.id.fieldName(context.orm)
-        const schemaPrimaryKeyPropName = schema.id.name
-        const schemaUUIDPropName = schema.uuid?.name
-        
-        let fns = await context.startTransaction(async (trx) => {
-
-            //replace the trx
-            executionOptions = {...executionOptions, trx: trx}
-
-            let allResults = await Promise.all(values.map(async (value) => {
-
-                let propValues = await this._prepareNewData(value, schema, actionName, {trx})
-                let newUuid = null
-                if(useUuid){
-                    if(!schemaUUIDPropName){
-                        throw new Error('Not UUID field is setup')
-                    }
-                    newUuid = uuidv4()
-                    propValues[schemaUUIDPropName] = newUuid
-                }
-                let stmt = context.orm.getKnexInstance()( schema.tableName({tablePrefix: context.tablePrefix}) ).insert( this.extractRealField(schema, propValues) )
-        
-                if ( context.client().startsWith('pg')) {
-                    stmt = stmt.returning( schemaPrimaryKeyFieldName )
-                }
-                let input = {
-                    sqlString: stmt,
-                    uuid: newUuid
-                }
-
-                // let afterMutationHooks = schema.hooks.filter()
-
-                // console.debug('======== INSERT =======')
-                // console.debug(stmt.toString())
-                // console.debug('========================')
-                if (context.client().startsWith('mysql')) {
-                    let insertedId: number
-                    const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                    const r = await context.executeStatement(insertStmt, executionOptions)
-                    insertedId = r[0][0].insertId
-                    // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
-       
-                    let record = await this.findOne({
-                        where: {
-                            //@ts-ignore
-                            id: insertedId
-                        }
-                    }).withOptions(executionOptions)
-
-                    let b = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
-                    return b
-                } else if (context.client().startsWith('sqlite')) {
-                    const insertStmt = input.sqlString.toString()
-                    const r = await context.executeStatement(insertStmt, executionOptions)
-                    if(context.orm.ormConfig.enableUuid && schema.uuid){
-                        if(input.uuid === null){
-                            throw new Error('Unexpected Flow.')
-                        } else {
-                            let uuid = input.uuid
-                            let record = await this.findOne({
-                                //@ts-ignore
-                                where: ({root}) => root.uuid.equals(uuid)
-                            }).withOptions(executionOptions)
-
-                            // console.log('create findOne', record)
-
-                            return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
-                        }
-                    } else {
-                        throw new Error('Unexpected Flow.')
-                    }
-
-                } else if (context.client().startsWith('pg')) {
-                    const insertStmt = input.sqlString.toString()
-                    let insertedId: number
-                    const r = await context.executeStatement(insertStmt, executionOptions)
-                    
-                    insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
-                    let record = await this.findOne({
-                        where: {
-                            //@ts-ignore
-                            id: insertedId
-                        }
-                    }).withOptions(executionOptions)
-
-                    return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
-
-                } else {
-                    throw new Error('Unsupport client')
-                }
-                
-            }))
-            return allResults
-
-        }, executionOptions.trx)
-
-        return fns
-    }
-
-    private async _prepareNewData<S extends TableSchema>(data: SimpleObject, schema: S, actionName: MutationName, executionOptions: ExecutionOptions) {
-        const context = this.#context
-
-        const entityName = schema.modelName
-        let propValues = Object.keys(data).reduce(( propValues, propName ) => {
-            let foundProp = schema.properties.find(p => {
-                return p.name === propName
-            })
-            if (!foundProp) {
-                throw new Error(`The Property [${propName}] doesn't exist in ${entityName}`)
-            }
-            const prop = foundProp
-            if(prop instanceof FieldProperty){
-                let propertyValue = prop.definition.parseProperty(data[prop.name], context, prop.name)
-                propValues[prop.name] = propertyValue
-            }
-            return propValues
-        }, {} as SimpleObject)
-
-        let hooks1 = schema.hooks.filter(h => h.name === 'beforeMutation' && h.propName && Object.keys(propValues).includes(h.propName) )
-        let hooks2 = schema.hooks.filter(h => h.name === 'beforeMutation' && !h.propName )
-
-        propValues = await hooks1.reduce( async (recordP, h) => {
-            let record = await recordP
-            let foundProp = schema.properties.find(p => {
-                return p.name === h.propName
-            })
-            if(!foundProp){
-                throw new Error('Unexpected.')
-            }
-            if(foundProp instanceof FieldProperty){
-                record = await h.action(context, record, {
-                    hookName: h.name,
-                    mutationName: actionName,
-                    propertyName: foundProp.name,
-                    propertyDefinition: foundProp.definition,
-                    propertyValue: record[foundProp.name],
-                    rootClassName: entityName
-                }, executionOptions)
-            }
-            return record
-        }, Promise.resolve(propValues) )
-
-        propValues = await hooks2.reduce( async(recordP, h) => {
-            let record = await recordP
-            record = await h.action(context, record, {
-                hookName: h.name,
-                mutationName: actionName,
-                propertyName: null,
-                propertyDefinition: null,
-                propertyValue: null,
-                rootClassName: entityName
-            }, executionOptions)
-            return record
-        }, Promise.resolve(propValues))
-        
-        return propValues
-    }
-
-    private async afterMutation<R>(
-        record: R, 
-        schema: TableSchema,
-        actionName: MutationName,
-        inputProps: SimpleObject, 
-        executionOptions: ExecutionOptions): Promise<R> {
-
-        const context = this.#context
-
-        const entityName = schema.modelName
-
-        Object.keys(inputProps).forEach( key => {
-            if( !(key in record) ){
-                record = Object.assign(record, { [key]: inputProps[key]})
-            }
-        })
-
-        const hooks1 = schema.hooks.filter(h => h.name === 'afterMutation' && h.propName && Object.keys(inputProps).includes(h.propName) )
-        const hooks2 = schema.hooks.filter(h => h.name === 'afterMutation' && !h.propName )
-
-        record = await hooks1.reduce( async (recordP, h) => {
-            let record = await recordP
-            let foundProp = schema.properties.find(p => {
-                return p.name === h.propName
-            })
-            if(!foundProp){
-                throw new Error('Unexpected.')
-            }
-            const foundPropName = foundProp.name
-            let propertyValue
-            if( foundPropName in record){
-                propertyValue = (record as {[key:string]: any})[foundPropName]
-            } else {
-                propertyValue = inputProps[foundProp.name]
-            }
-
-            if(foundProp instanceof FieldProperty){
-                record = await h.action(context, record, {
-                    hookName: h.name,
-                    mutationName: actionName,
-                    propertyName: foundPropName,
-                    propertyDefinition: foundProp.definition,
-                    propertyValue: propertyValue,
-                    rootClassName: entityName
-                }, executionOptions)
-            }
-
-            return record
-        }, Promise.resolve(record) )
-
-        record = await hooks2.reduce( async(recordP, h) => {
-            let record = await recordP
-            record = await h.action(context, record, {
-                hookName: h.name,
-                mutationName: actionName,
-                propertyName: null,
-                propertyDefinition: null,
-                propertyValue: null,
-                rootClassName: entityName
-            }, executionOptions)
-            return record
-        }, Promise.resolve(record))
-
-        return record
-    }
 
     /**
      * find one record
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> ,  InstanceType<TT> >{        
-        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> , InstanceType<TT>>(
-        async (executionOptions: ExecutionOptions) => {
-            let rows = await this._find(executionOptions, applyFilter?? null)
-            return rows[0] ?? null
-        })
+    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(applyFilter?: F): DatabaseQueryRunner<  ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> >{        
+        return new DatabaseQueryRunner(
+            async (executionOptions: ExecutionOptions) => {
+                let rows = await this._find(executionOptions, applyFilter)
+                return rows[0] ?? null
+            })
     }
 
     /**
@@ -327,73 +308,61 @@ export class ModelRepository<TT extends typeof TableSchema>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg<InstanceType<TT>>>(applyFilter: F = {} as F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >,  InstanceType<TT> >{
-        return new DatabaseQueryRunner< Array<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >, InstanceType<TT> >(
+    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(applyFilter?: F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> > >{
+        return new DatabaseQueryRunner(
             async (executionOptions: ExecutionOptions) => {
-                let rows = await this._find(executionOptions, applyFilter?? null)
+                let rows = await this._find(executionOptions, applyFilter)
                 return rows
         })
     }
 
-    private async _find<F extends SingleSourceArg<InstanceType<TT>>>(executionOptions: ExecutionOptions, applyOptions: F ) {   
+    private async _find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(executionOptions: ExecutionOptions, applyOptions?: F ) {   
         
         const context = this.#context
         const entityClass = this.#modelClass
 
         let source = entityClass.datasource('root')
 
-        // let options: SingleSourceQueryOptions<D> | null
-        // if(applyFilter instanceof Function){
-        //     const f = applyFilter
-        //     options = applyFilter(existingContext, source)
-        // }else {
-        //     options = applyFilter
-        // }
         let dataset = new Dataset()
-            .select( await resolveEntityProps(source, applyOptions?.select ) )
+            .select( await resolveEntityProps(source, applyOptions?.select) )
             .from(source)
             // .type(new ArrayOfEntity(entityClass))
 
         dataset = applyOptions?.where ? dataset.where(applyOptions?.where as Expression<any,any>) : dataset
-        // console.debug("========== FIND ================")
-        // console.debug(sqlString.toString())
-        // console.debug("================================")
-
-        // console.log('xxxxxxx', dataset.toScalar(new ArrayOfEntity(entityClass)))
 
         let wrappedDataset = new Dataset().select({
             root: dataset.toScalar()
         })
 
-        let resultData = await context.execute(wrappedDataset, executionOptions)
+        let resultData = await context.execute(wrappedDataset).withOptions()
 
-        let rows = resultData[0].root as Array<  ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, F> >
+        let rows = resultData[0].root as Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> >
         return rows
     }
 
-    updateOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>{
-        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT> >(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<TT>> > ) => {
+    updateOne<F extends SingleSourceFilter<InstanceType<MT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT>>{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT> >(
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<MT>> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, false,  actionOptions)
                 return result[0] ?? null
             }
         )
     }
 
-    update<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >{
-        return new DatabaseMutationRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<TT>> > ) => {
+    update<F extends SingleSourceFilter<InstanceType<MT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>[], InstanceType<MT> >{
+        return new DatabaseMutationRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>[], InstanceType<MT> >(
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions<InstanceType<MT>> > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)
                 return result
             }
         )
     }
 
-    private async _update<F extends SingleSourceFilter<InstanceType<TT>>>(executionOptions: ExecutionOptions, data: SimpleObject,  
+    private async _update<F extends SingleSourceFilter<InstanceType<MT>>>(executionOptions: ExecutionOptions, data: SimpleObject,  
         applyFilter: F | null, 
         isOneOnly: boolean,
         isDelete: boolean,
-        actionOptions: Partial<DatabaseActionOptions<InstanceType<TT>>>
+        actionOptions: Partial<DatabaseActionOptions<InstanceType<MT>>>
        ) {
 
         const context = this.#context
@@ -539,18 +508,18 @@ export class ModelRepository<TT extends typeof TableSchema>{
         return fns.filter(notEmpty)
     }
 
-    deleteOne<F extends SingleSourceFilter<InstanceType<TT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<TT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>{
-        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>, InstanceType<TT>>(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<TT> > > ) => {
+    deleteOne<F extends SingleSourceFilter<InstanceType<MT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT>>{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT>>(
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<MT> > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, true, true, actionOptions)
                 return result[0] ?? null
             }
         )
     }
 
-    delete<F extends SingleSourceFilter<InstanceType<TT>>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT> >{
-        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<TT>, {}>[], InstanceType<TT>>(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<TT> > > ) => {
+    delete<F extends SingleSourceFilter<InstanceType<MT>>>(data: SimpleObject, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>[], InstanceType<MT> >{
+        return new DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>[], InstanceType<MT>>(
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions< InstanceType<MT> > > ) => {
                 let result = await this._update(executionOptions, data, applyFilter??null, false, true, actionOptions)
                 return result
             }
@@ -571,3 +540,274 @@ export class ModelRepository<TT extends typeof TableSchema>{
         }, {} as SimpleObject)        
     }
 }
+
+
+
+export async function resolveEntityProps<D extends Schema<any>>(source: Datasource<D, "root">, 
+    props?: Partial<ConstructComputePropertyArgsDictFromSchema<D>>): Promise<{ [key: string]: Scalar<any> }> {
+    
+    let computedCols: { [key: string]: Scalar<any> }[] = []
+    if(props){
+        const castedProps = props as {[key:string]: any}
+        computedCols = Object.keys(castedProps).map( (propName) => {
+ 
+            const args = castedProps[propName]
+            let call = source.getComputeProperty(propName)
+            
+            let col = call(args)
+            let colDict = col.value()
+
+            return colDict
+
+        })
+    }
+    let fieldCols = source.schema.properties.filter(prop => !(prop instanceof ComputeProperty) )
+        .map(prop => source.getFieldProperty(prop.name).value() )
+    let r = Object.assign({}, ...fieldCols, ...computedCols)
+    return r as { [key: string]: Scalar<any> }
+}
+
+
+
+
+// private async _create(executionOptions: ExecutionOptions, values: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>[]) {
+//         const schema = this.#modelClass.schema()
+//         const actionName = 'create'
+//         const context = this.#context
+
+//         if(!context){
+//             throw new Error('Entity is not accessed through Repository')
+//         }
+        
+//         let useUuid: boolean = !!context.orm.ormConfig.enableUuid
+//         if (context.client().startsWith('sqlite')) {
+//             if (!context.orm.ormConfig.enableUuid ){
+//                 throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
+//             }
+//         }
+        
+//         const schemaPrimaryKeyFieldName = schema.id.fieldName(context.orm)
+//         const schemaPrimaryKeyPropName = schema.id.name
+//         const schemaUUIDPropName = schema.uuid?.name
+        
+//         let fns = await context.startTransaction(async (trx) => {
+
+//             //replace the trx
+//             executionOptions = {...executionOptions, trx: trx}
+
+//             let allResults = await Promise.all(values.map(async (value) => {
+
+//                 let propValues = await this._prepareNewData(value, schema, actionName, {trx})
+//                 let newUuid = null
+//                 if(useUuid){
+//                     if(!schemaUUIDPropName){
+//                         throw new Error('Not UUID field is setup')
+//                     }
+//                     newUuid = uuidv4()
+//                     propValues[schemaUUIDPropName] = newUuid
+//                 }
+//                 let stmt = context.orm.getKnexInstance()( schema.tableName({tablePrefix: context.tablePrefix}) ).insert( this.extractRealField(schema, propValues) )
+        
+//                 if ( context.client().startsWith('pg')) {
+//                     stmt = stmt.returning( schemaPrimaryKeyFieldName )
+//                 }
+//                 let input = {
+//                     sqlString: stmt,
+//                     uuid: newUuid
+//                 }
+
+//                 // let afterMutationHooks = schema.hooks.filter()
+
+//                 // console.debug('======== INSERT =======')
+//                 // console.debug(stmt.toString())
+//                 // console.debug('========================')
+//                 if (context.client().startsWith('mysql')) {
+//                     let insertedId: number
+//                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
+//                     const r = await context.executeStatement(insertStmt, executionOptions)
+//                     insertedId = r[0][0].insertId
+//                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
+       
+//                     let record = await this.findOne({
+//                         where: {
+//                             //@ts-ignore
+//                             id: insertedId
+//                         }
+//                     }).withOptions(executionOptions)
+
+//                     let b = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+//                     return b
+//                 } else if (context.client().startsWith('sqlite')) {
+//                     const insertStmt = input.sqlString.toString()
+//                     const r = await context.executeStatement(insertStmt, executionOptions)
+//                     if(context.orm.ormConfig.enableUuid && schema.uuid){
+//                         if(input.uuid === null){
+//                             throw new Error('Unexpected Flow.')
+//                         } else {
+//                             let uuid = input.uuid
+//                             let record = await this.findOne({
+//                                 //@ts-ignore
+//                                 where: ({root}) => root.uuid.equals(uuid)
+//                             }).withOptions(executionOptions)
+
+//                             // console.log('create findOne', record)
+
+//                             return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+//                         }
+//                     } else {
+//                         throw new Error('Unexpected Flow.')
+//                     }
+
+//                 } else if (context.client().startsWith('pg')) {
+//                     const insertStmt = input.sqlString.toString()
+//                     let insertedId: number
+//                     const r = await context.executeStatement(insertStmt, executionOptions)
+                    
+//                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
+//                     let record = await this.findOne({
+//                         where: {
+//                             //@ts-ignore
+//                             id: insertedId
+//                         }
+//                     }).withOptions(executionOptions)
+
+//                     return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+
+//                 } else {
+//                     throw new Error('Unsupport client')
+//                 }
+                
+//             }))
+//             return allResults
+
+//         }, executionOptions.trx)
+
+//         return fns
+//     }
+
+
+
+//  private async _prepareNewData<S extends TableSchema>(data: SimpleObject, schema: S, actionName: MutationName, executionOptions: ExecutionOptions) {
+//         const context = this.#context
+
+//         const entityName = schema.modelName
+//         let propValues = Object.keys(data).reduce(( propValues, propName ) => {
+//             let foundProp = schema.properties.find(p => {
+//                 return p.name === propName
+//             })
+//             if (!foundProp) {
+//                 throw new Error(`The Property [${propName}] doesn't exist in ${entityName}`)
+//             }
+//             const prop = foundProp
+//             if(prop instanceof FieldProperty){
+//                 let propertyValue = prop.definition.parseProperty(data[prop.name], context, prop.name)
+//                 propValues[prop.name] = propertyValue
+//             }
+//             return propValues
+//         }, {} as SimpleObject)
+
+//         let hooks1 = schema.hooks.filter(h => h.name === 'beforeMutation' && h.propName && Object.keys(propValues).includes(h.propName) )
+//         let hooks2 = schema.hooks.filter(h => h.name === 'beforeMutation' && !h.propName )
+
+//         propValues = await hooks1.reduce( async (recordP, h) => {
+//             let record = await recordP
+//             let foundProp = schema.properties.find(p => {
+//                 return p.name === h.propName
+//             })
+//             if(!foundProp){
+//                 throw new Error('Unexpected.')
+//             }
+//             if(foundProp instanceof FieldProperty){
+//                 record = await h.action(context, record, {
+//                     hookName: h.name,
+//                     mutationName: actionName,
+//                     propertyName: foundProp.name,
+//                     propertyDefinition: foundProp.definition,
+//                     propertyValue: record[foundProp.name],
+//                     rootClassName: entityName
+//                 }, executionOptions)
+//             }
+//             return record
+//         }, Promise.resolve(propValues) )
+
+//         propValues = await hooks2.reduce( async(recordP, h) => {
+//             let record = await recordP
+//             record = await h.action(context, record, {
+//                 hookName: h.name,
+//                 mutationName: actionName,
+//                 propertyName: null,
+//                 propertyDefinition: null,
+//                 propertyValue: null,
+//                 rootClassName: entityName
+//             }, executionOptions)
+//             return record
+//         }, Promise.resolve(propValues))
+        
+//         return propValues
+//     }
+
+//     private async afterMutation<R>(
+//         record: R, 
+//         schema: TableSchema,
+//         actionName: MutationName,
+//         inputProps: SimpleObject, 
+//         executionOptions: ExecutionOptions): Promise<R> {
+
+//         const context = this.#context
+
+//         const entityName = schema.modelName
+
+//         Object.keys(inputProps).forEach( key => {
+//             if( !(key in record) ){
+//                 record = Object.assign(record, { [key]: inputProps[key]})
+//             }
+//         })
+
+//         const hooks1 = schema.hooks.filter(h => h.name === 'afterMutation' && h.propName && Object.keys(inputProps).includes(h.propName) )
+//         const hooks2 = schema.hooks.filter(h => h.name === 'afterMutation' && !h.propName )
+
+//         record = await hooks1.reduce( async (recordP, h) => {
+//             let record = await recordP
+//             let foundProp = schema.properties.find(p => {
+//                 return p.name === h.propName
+//             })
+//             if(!foundProp){
+//                 throw new Error('Unexpected.')
+//             }
+//             const foundPropName = foundProp.name
+//             let propertyValue
+//             if( foundPropName in record){
+//                 propertyValue = (record as {[key:string]: any})[foundPropName]
+//             } else {
+//                 propertyValue = inputProps[foundProp.name]
+//             }
+
+//             if(foundProp instanceof FieldProperty){
+//                 record = await h.action(context, record, {
+//                     hookName: h.name,
+//                     mutationName: actionName,
+//                     propertyName: foundPropName,
+//                     propertyDefinition: foundProp.definition,
+//                     propertyValue: propertyValue,
+//                     rootClassName: entityName
+//                 }, executionOptions)
+//             }
+
+//             return record
+//         }, Promise.resolve(record) )
+
+//         record = await hooks2.reduce( async(recordP, h) => {
+//             let record = await recordP
+//             record = await h.action(context, record, {
+//                 hookName: h.name,
+//                 mutationName: actionName,
+//                 propertyName: null,
+//                 propertyDefinition: null,
+//                 propertyValue: null,
+//                 rootClassName: entityName
+//             }, executionOptions)
+//             return record
+//         }, Promise.resolve(record))
+
+//         return record
+//     }

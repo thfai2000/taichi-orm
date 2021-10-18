@@ -1,6 +1,6 @@
-import { ComputeProperty, FieldProperty, Property, ScalarProperty, StrictTypeProperty} from "."
 import { Scalar } from "./Builder";
 import { PropertyTypeDefinition } from "./PropertyType";
+import { ComputeProperty, FieldProperty, ScalarProperty, Schema } from "./Schema";
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -40,6 +40,18 @@ export type UnionToIntersection<T> =
   (T extends any ? (x: T) => any : never) extends 
   (x: infer R) => any ? R : never
 
+
+export type ExtractFieldPropsFromSchema<S extends Schema<any>> = ExtractFieldPropsFromDict<
+    S extends Schema<infer PropertyDict>? PropertyDict: never
+>
+
+export type ExtractPropsFromSchema<S extends Schema<any>> = ExtractPropsFromDict<
+    S extends Schema<infer PropertyDict>? PropertyDict: never
+>
+
+export type ExtractComputePropsFromSchema<S extends Schema<any>> = ExtractComputePropsFromDict<
+    S extends Schema<infer PropertyDict>? PropertyDict: never
+>
 
 export type ExtractPropsFromDict<E> = 
 Pick<E, ({
@@ -115,6 +127,7 @@ export const quote = (client: string, name: string) => {
     }
     throw new Error('Unsupport client')
 }
+
 
 
 // export const META_FIELD_DELIMITER = '___'
