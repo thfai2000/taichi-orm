@@ -26,6 +26,8 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
     let {
         createModels,
         dataset, 
+        insert,
+        update,
         models: {Shop, Product} 
     } = orm.getContext()
 
@@ -44,15 +46,17 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
     console.log('sql1', builder.toString() )
 
-    let shop1 = await Shop.createOne({
+
+    let shop1 = await insert(Shop.schema).values({
         name: 'shop',
         hour: 5
-    })
-    
+    }).executeAndReturn()
+
     console.log('finished-1', shop1)
     
-    for (let i = 0; i < 5; i++) {      
-        await Product.createOne({
+    for (let i = 0; i < 5; i++) {    
+        
+        await insert(Product.schema).values({
             ddd: 5,
             name: 'hello',
             shopId: shop1.id
@@ -61,7 +65,7 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
 
     console.log('finished')
 
-    let dd = new Dataset()
+    let result = await new Dataset()
             .from(s)
             .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id))
             // .innerJoin(p, ({And}) => And({"product.id": 5}) )
@@ -69,12 +73,6 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
             // .innerJoin(
             //     myShop,
             //     ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
-            // )
-            // .filter(
-            //     ({And, product, shop}) => And({
-            //         "shop.id": 5,
-            //         "shop.name": "ssss"
-            //     }, product.name.equals(shop.name) )
             // )
             .selectProps(
                 "shop.id",
@@ -88,76 +86,25 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
             )
             .select(
                 ({shop, product}) => ({
+                    ...shop.$allFields,
                     ...shop.hour.value(),
                     ...product.shopId.equals(10).asColumn('nini').value(),
                     ...product.ddd.value(),
                     test: Scalar.number(` 5 + ?`, [3]),
                     ...shop.products().value()
                 })
-            ).offset(0).limit(4000)
-    
-    let result = await orm.getContext().execute(dd, {
-        onSqlRun: console.log
-    })
-    console.log('xxx', result)
-   
-    // let ss = {
-    //     select: {
-    //         myABC: 5,
-    //         shop: {
-    //             select: {
-    //                 products: {
-    //                     select: {
-    //                         shop: {
-
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
-    // let a: ExpandRecursively<EntityWithOptionalProperty<ProductSchema, typeof ss>>
-
-    let allShops = await Shop.find({
-        where: ({root}) => root.name.equals('helloShopx')
-    })
-    console.log('aaa', allShops[0])
-    console.time('simple')
-    let allShopsX = await Shop.find({
-        select: {
-            products: (P) => ({
-                select: {
-                    myABC: 5,
-                    shop: {
-                        select: {
-                            products: {}
-                        },
-                        where: ({root}) => root.name.equals('shop')
-                    }
-                }
+            ).offset(0).limit(4000).execute(orm.getContext()).withOptions({
+                onSqlRun: console.log
             })
-        },
-        where: ({root, Exists}) => Exists(
-            new Dataset().from(
-                Product.datasource('product')
-            ).where( ({product}) => root.id.equals(product.shopId) )
-        ),
-        offset: 0,
-        limit: 5000
-    })
+    
+    console.log('xxx', result)
 
-    console.log('aaaa', allShopsX[0])
-    console.timeEnd('simple')
-
-
-    let r0 = await dataset()
+    let r0 = await update()
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
-        .update({
+        .set({
             name: Scalar.value(`?`,['hello'])
-        }).execute({
+        }).execute().withOptions({
             onSqlRun: console.log
         })
 
@@ -165,7 +112,7 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
         .from(Shop.datasource("myShop"))
         .selectProps('name','myShop.id','myShop.products')
         // .toScalar(new ArrayType(Shop.schema))
-        .execute({
+        .execute().withOptions({
             onSqlRun: console.log
         })
 
@@ -186,7 +133,7 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
                 (ds) => new ObjectType(ds.schema()) 
                 )
         }))
-        .execute({
+        .execute().withOptions({
             onSqlRun: console.log
         })
 
@@ -212,4 +159,37 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
     // think about migrate issue
     // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
+
+
+
+    // let allShops = await Shop.find({
+    //     where: ({root}) => root.name.equals('helloShopx')
+    // })
+    // console.log('aaa', allShops[0])
+    // console.time('simple')
+    // let allShopsX = await Shop.find({
+    //     select: {
+    //         products: (P) => ({
+    //             select: {
+    //                 myABC: 5,
+    //                 shop: {
+    //                     select: {
+    //                         products: {}
+    //                     },
+    //                     where: ({root}) => root.name.equals('shop')
+    //                 }
+    //             }
+    //         })
+    //     },
+    //     where: ({root, Exists}) => Exists(
+    //         new Dataset().from(
+    //             Product.datasource('product')
+    //         ).where( ({product}) => root.id.equals(product.shopId) )
+    //     ),
+    //     offset: 0,
+    //     limit: 5000
+    // })
+
+    // console.log('aaaa', allShopsX[0])
+    // console.timeEnd('simple')
 })();

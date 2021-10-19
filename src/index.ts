@@ -3,11 +3,11 @@ import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import {Dataset, Scalar, Column, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement} from './Builder'
+import {Dataset, Scalar, Column, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
-import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions } from './Schema'
+import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
 
 import {ExtractComputePropDictFromSchema} from './util'
 
@@ -98,10 +98,10 @@ export type SelectorMap<E extends Schema<any>> = {
             never    
 } & {
     $allFields: {
-        [key in keyof ExtractComputePropDictFromSchema<E> & string ]:
+        [key in keyof ExtractFieldPropDictFromSchema<E> & string ]:
             
-        ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
-            Column<key, D>:
+        ExtractFieldPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
+            Scalar<D>:
             never
     }
 }
@@ -317,7 +317,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryM
     }
 
     // async executeStatement(stmt: SQLString, executionOptions: ExecutionOptions): Promise<any> {
-    //     return this.getRepository().executeStatement(stmt, executionOptions)
+    //     return this.getRepository().executeStatement(stmt, {}, executionOptions)
     // }
 
     // async execute<S>(dataset: Dataset<S, any, any>, executionOptions: ExecutionOptions) {
@@ -384,14 +384,14 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
         }) )
     }
 
-    executeStatement = async (stmt: SQLString, executionOptions?: ExecutionOptions): Promise<any> => {
+    executeStatement = async (stmt: SQLString, variables: {[key:string]: any}, executionOptions: ExecutionOptions): Promise<any> => {
 
         const sql = stmt.toString()
         if(executionOptions?.onSqlRun) {
             executionOptions.onSqlRun(sql)
         }
         // console.log('sql', sql)
-        let KnexStmt = this.orm.getKnexInstance().raw(sql)
+        let KnexStmt = this.orm.getKnexInstance().raw(sql, variables)
         if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
@@ -411,10 +411,13 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
         return new Dataset(this)
     }
 
-    update = (from: Datasource<any, any>) => {
-        return new UpdateStatement(from, this)
+    update = () => {
+        return new UpdateStatement(this)
     }
 
+    insert = <T extends TableSchema<any>>(into: T): InsertStatement<T> => {
+        return new InsertStatement(into, this)
+    }
 
     client = (): string => this.orm.ormConfig.knexConfig.client.toString()
 
@@ -505,7 +508,7 @@ export class DatabaseActionRunnerBase<I> implements PromiseLike<ExpandRecursivel
         }
     }
 
-    async exec(){
+    protected async exec(){
         let result = await this.execAction()
         return result
     }

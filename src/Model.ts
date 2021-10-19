@@ -161,7 +161,7 @@ export abstract class Model {
     belongsTo<ParentModel extends Model, RootModelType extends typeof Model>(
         this: ParentModel,
         relatedModelType: RootModelType,
-        parentKey: ((fieldPropDict: Expand<ExtractFieldPropDictFromDict<ParentModel>>) => FieldProperty<FieldPropertyTypeDefinition<any>>),
+        parentKey: FieldProperty<FieldPropertyTypeDefinition<any>>,
         relatedBy?: ((fieldPropDict: ExtractFieldPropDictFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
 
@@ -176,7 +176,7 @@ export abstract class Model {
             let relatedSource = relatedSchema.datasource('root')
 
             let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema.propertiesMap).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
-            let parentColumn = parent.getFieldProperty( parentKey(expand( parent.schema.propertiesMap) ).name  )
+            let parentColumn = parent.getFieldProperty( parentKey.name  )
         
             let newDataset = dataset.from(relatedSource)
 
@@ -248,7 +248,7 @@ export class ModelRepository<MT extends typeof Model>{
     }
 
     get schema() {
-        return this.#modelClass.schema
+        return this.#modelClass.schema()
     }
 
     get orm(){
@@ -405,9 +405,9 @@ export class ModelRepository<MT extends typeof Model>{
     //             let targetResult
     //             if(updateStmt){
     //                 updateStmt = updateStmt.native( qb => qb.returning(schemaPrimaryKeyFieldName) )
-    //                 targetResult = await context.executeStatement(updateStmt, executionOptions)
+    //                 targetResult = await context.executeStatement(updateStmt, {}, executionOptions)
     //             } else {
-    //                 targetResult = await context.executeStatement(selectStmt, executionOptions)
+    //                 targetResult = await context.executeStatement(selectStmt, {}, executionOptions)
     //             }
     //             let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
     //                 let pkValue = row[ schemaPrimaryKeyFieldName ]
@@ -417,7 +417,7 @@ export class ModelRepository<MT extends typeof Model>{
     //                 }).withOptions(executionOptions)
     //                 let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
     //                 if(isDelete){
-    //                     await context.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+    //                     await context.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), {}, executionOptions)
     //                 }
     //                 // {
     //                 //     ...(querySelectAfterMutation? {select: querySelectAfterMutation}: {}),
@@ -431,10 +431,10 @@ export class ModelRepository<MT extends typeof Model>{
     //         } else {
 
     //             if (context.client().startsWith('mysql')) {
-    //                 let result = await context.executeStatement(selectStmt, executionOptions)
+    //                 let result = await context.executeStatement(selectStmt, {}, executionOptions)
     //                 pks = result[0].map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
     //             } else if (context.client().startsWith('sqlite')) {
-    //                 let result = await context.executeStatement(selectStmt, executionOptions)
+    //                 let result = await context.executeStatement(selectStmt, {}, executionOptions)
     //                 pks = result.map( (r: SimpleObject) => r[schemaPrimaryKeyFieldName])
     //             } else {
     //                 throw new Error('NYI.')
@@ -451,7 +451,7 @@ export class ModelRepository<MT extends typeof Model>{
     //             return await Promise.all(pks.flatMap( async (pkValue) => {
     //                 if (context.client().startsWith('mysql')) {
     //                     if(updateStmt){
-    //                         let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
+    //                         let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), {}, executionOptions)
     //                         let numUpdates: number
     //                         numUpdates = updateResult[0].affectedRows
     //                         if(numUpdates > 1){
@@ -466,13 +466,13 @@ export class ModelRepository<MT extends typeof Model>{
     //                     }).withOptions(executionOptions)
     //                     let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
     //                     if(isDelete){
-    //                         await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+    //                         await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), {}, executionOptions)
     //                     }
     //                     return finalRecord
                         
     //                 } else if (context.client().startsWith('sqlite')) {
     //                     if(updateStmt){
-    //                         let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), executionOptions)
+    //                         let updateResult = await context.executeStatement(updateStmt.clone().addNative( qb => qb.andWhereRaw('?? = ?', [schemaPrimaryKeyFieldName, pkValue]) ), {}, executionOptions)
     //                         let found = await this.findOne({
     //                             //@ts-ignore
     //                             where: {[schemaPrimaryKeyPropName]: pkValue}
@@ -490,7 +490,7 @@ export class ModelRepository<MT extends typeof Model>{
     //                     }).withOptions(executionOptions)
     //                     let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
     //                     if(isDelete){
-    //                         await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), executionOptions)
+    //                         await context.executeStatement( new Dataset().from(schema.datasource('root')).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), {}, executionOptions)
     //                     }
     //                     return finalRecord
     //                 } else {
@@ -622,7 +622,7 @@ export class ModelRepository<MT extends typeof Model>{
 //                 if (context.client().startsWith('mysql')) {
 //                     let insertedId: number
 //                     const insertStmt = input.sqlString.toString() + '; SELECT LAST_INSERT_ID() AS id '
-//                     const r = await context.executeStatement(insertStmt, executionOptions)
+//                     const r = await context.executeStatement(insertStmt, {}, executionOptions)
 //                     insertedId = r[0][0].insertId
 //                     // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
        
@@ -637,7 +637,7 @@ export class ModelRepository<MT extends typeof Model>{
 //                     return b
 //                 } else if (context.client().startsWith('sqlite')) {
 //                     const insertStmt = input.sqlString.toString()
-//                     const r = await context.executeStatement(insertStmt, executionOptions)
+//                     const r = await context.executeStatement(insertStmt, {}, executionOptions)
 //                     if(context.orm.ormConfig.enableUuid && schema.uuid){
 //                         if(input.uuid === null){
 //                             throw new Error('Unexpected Flow.')
@@ -659,7 +659,7 @@ export class ModelRepository<MT extends typeof Model>{
 //                 } else if (context.client().startsWith('pg')) {
 //                     const insertStmt = input.sqlString.toString()
 //                     let insertedId: number
-//                     const r = await context.executeStatement(insertStmt, executionOptions)
+//                     const r = await context.executeStatement(insertStmt, {}, executionOptions)
                     
 //                     insertedId = r.rows[0][ schemaPrimaryKeyFieldName ]
 //                     let record = await this.findOne({

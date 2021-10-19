@@ -10,9 +10,7 @@ export default class Product extends Model {
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     shopId = this.field(NumberType)
-    get shop(){
-        return this.belongsTo(Shop, fields => fields.)
-    }
+    shop = this.belongsTo(Shop, this.shopId)
     myABC = this.compute((root, arg?: number): Scalarable<NumberType> => {
         return Scalar.number(`5 + ?`, [arg ?? 0])
     })

@@ -159,7 +159,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
     protected joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema<any>, string>, expression: Expression<any, any> | ExpressionFunc<any, any>  }> = []
     protected whereRawItem: null |  Expression<any, any> = null
 
-    getSelectorMap(): SourcePropMap {
+    protected getSelectorMap(): SourcePropMap {
         let sources = this.joinItems.map(item => item.source)
         if(this.fromItem){
             sources.push(this.fromItem)
@@ -174,12 +174,12 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return sourcePropMap as any
     }
 
-    baseWhere<X extends ExtractPropDictFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): WhereClauseBase<SourceProps, SourcePropMap, FromSource>{
+    protected baseWhere<X extends ExtractPropDictFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): WhereClauseBase<SourceProps, SourcePropMap, FromSource>{
         this.whereRawItem = expression
         return this
     }
 
-    baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+    protected baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         WhereClauseBase<
             UnionToIntersection< AddPrefix< ExtractPropDictFromDict< S>, '', ''> | AddPrefix< ExtractPropDictFromDict< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
@@ -188,7 +188,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
             return this as any
         }
 
-    baseInnerJoin<S extends Schema<any>, SName extends string, 
+    protected baseInnerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
@@ -201,7 +201,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return this as any
     }
      
-    baseLeftJoin<S extends Schema<any>, SName extends string, 
+    protected baseLeftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
@@ -214,7 +214,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return this as any
     }
 
-    baseRightJoin<S extends Schema<any>, SName extends string, 
+    protected baseRightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
@@ -552,9 +552,9 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this.datasetSchema as ExistingSchema
     }
 
-    hasSelectedItems(){
-        return Object.keys(this.#selectItems ?? {}).length > 0
-    }
+    // hasSelectedItems(){
+    //     return Object.keys(this.#selectItems ?? {}).length > 0
+    // }
 
     async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
 
@@ -569,8 +569,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
 
-        if(this.#selectItems){
-            throw new Error('Cannot be both select or update statements')
+        if(!this.#selectItems || Object.keys(this.#selectItems).length === 0){
+            throw new Error('Not selectItems')
         }
 
         if(this.fromItem){
@@ -627,7 +627,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
                     const nativeSql = await current.toNativeBuilder(context)
 
-                    let data = await context.executeStatement(nativeSql, executionOptions)
+                    let data = await context.executeStatement(nativeSql, {}, executionOptions)
         
                     console.log('data', data)
                     let rows: any
@@ -663,18 +663,18 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 export class InsertStatement<T extends TableSchema<any>> 
     extends StatementBase {
 
-    #insertToSchema: T
+    #insertIntoSchema: T
     #insertItems: { [key: string]: Scalar<any> } | null = null
     #uuidForInsertion: string | null = null
 
-    constructor(insertToSchema: T){
-        super()
-        this.#insertToSchema = insertToSchema
+    constructor(insertToSchema: T, context?: DatabaseContext<any, any> | null){
+        super(context)
+        this.#insertIntoSchema = insertToSchema
     }
 
     insertInfo(){
         return {
-            schema: this.#insertToSchema,
+            schema: this.#insertIntoSchema,
             uuid: this.#uuidForInsertion
         }
     }
@@ -711,7 +711,7 @@ export class InsertStatement<T extends TableSchema<any>>
             throw new Error('There is no repository provided.')
         }
 
-        let nativeQB = context.orm.getKnexInstance().from(this.#insertToSchema.tableName(context))
+        let nativeQB = context.orm.getKnexInstance().from(this.#insertIntoSchema.tableName(context))
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
@@ -720,7 +720,7 @@ export class InsertStatement<T extends TableSchema<any>>
             throw new Error('No insert Items')
         }
 
-        let targetSchema = this.#insertToSchema
+        let targetSchema = this.#insertIntoSchema
         const schemaPrimaryKeyFieldName = targetSchema.id.fieldName(context.orm)
         const schemaPrimaryKeyPropName = targetSchema.id.name
         const schemaUUIDPropName = targetSchema.uuid?.name
@@ -738,11 +738,10 @@ export class InsertStatement<T extends TableSchema<any>>
             if(!schemaUUIDPropName) {
                 throw new Error('No UUID')
             }
-            this.#uuidForInsertion = uuidv4()
-            additionalFields = {[schemaUUIDPropName]: this.#uuidForInsertion}
+            additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`)}
         }
 
-        const insertItems = await this.scalarMap2RawMap(this.#insertToSchema, Object.assign({}, this.#insertItems, additionalFields), context)
+        const insertItems = await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, this.#insertItems, additionalFields), context)
      
         nativeQB.insert( insertItems )
 
@@ -766,25 +765,32 @@ export class InsertStatement<T extends TableSchema<any>>
                 executionOptions = {...executionOptions, trx}
                 
                 const ds = this
-                let id = await ds.execute(context).withOptions(executionOptions)
+                let {id, uuid} = await ds.execute(context).withOptions(executionOptions)
 
                 
                 if(id === null){
-                    let info = ds.insertInfo()
-                    const schema = this.#insertToSchema as TableSchema<{uuid: FieldProperty<any>}>
+                    if(!uuid){
+                        throw new Error('Unexpected.')
+                    }
+                    // let info = ds.insertInfo()
+                    const schema = this.#insertIntoSchema as TableSchema<{uuid: FieldProperty<any>}>
                     
-                    return await context.dataset()
+                    let result = await context.dataset()
                         .from(schema.datasource('root'))
-                        .where( ({root}) => root.uuid.equals(info.uuid))
-                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions)
+                        .where( ({root}) => root.uuid.equals(uuid))
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions) as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>[]
+
+                    return result[0]
 
                 } else {
-                    const schema = this.#insertToSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
+                    const schema = this.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
 
-                    return await context.dataset()
+                    let result = await context.dataset()
                         .from(schema.datasource('root'))
                         .where( ({root}) => root.id.equals(id))
-                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions)
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions) as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>[]
+                    
+                    return result[0]
                 }
                 
             }, executionOptions.trx)
@@ -817,24 +823,25 @@ export class InsertStatement<T extends TableSchema<any>>
                     if (context.client().startsWith('mysql')) {
                         let insertedId: number
                         const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                        const r = await context.executeStatement(insertStmt, executionOptions)
+                        const r = await context.executeStatement(insertStmt, {}, executionOptions)
                         insertedId = r[0][0].id
                         // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
             
-                        return insertedId
+                        return {id: insertedId}
                     } else if (context.client().startsWith('sqlite')) {
                         const insertStmt = queryBuilder.toString()
-                        const r = await context.executeStatement(insertStmt, executionOptions)
-        
-                        return null
+                        let uuid = uuidv4()
+                        const r = await context.executeStatement(insertStmt, {uuid}, executionOptions)
+    
+                        return {id: null, uuid}
         
                     } else if (context.client().startsWith('pg')) {
                         const insertStmt = queryBuilder.toString()
                         let insertedId: number
-                        const r = await context.executeStatement(insertStmt, executionOptions)
+                        const r = await context.executeStatement(insertStmt, {}, executionOptions)
                         
                         insertedId = Object.keys(r.rows[0]).map(k => r.rows[0][k])[0]
-                        return insertedId
+                        return {id: insertedId}
                         // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
         
                     } else {
@@ -855,12 +862,49 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     #updateItems: { [key: string]: Scalar<any> } | null = null
 
-    constructor(from: FromSource, repo?: DatabaseContext<any, any>){
+    constructor(repo?: DatabaseContext<any, any>){
         super(repo)
-        this.fromItem = from
     }
 
-    set<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromDict< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>
+    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+        UpdateStatement< 
+            UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+        > {
+            return this.baseFrom(source) as any
+        }
+
+    where<X extends ExtractPropDictFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): UpdateStatement<SourceProps, SourcePropMap, FromSource>{
+        return this.baseWhere(expression) as any
+    }
+
+    innerJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y >): UpdateStatement<X,Y, FromSource>{
+        
+        return this.baseInnerJoin(source, expression) as any
+    }
+     
+    leftJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): UpdateStatement<X,Y, FromSource>{
+        return this.baseLeftJoin(source, expression) as any
+    }
+
+    rightJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y> | ExpressionFunc<X, Y>): UpdateStatement<X,Y, FromSource>{
+        return this.baseRightJoin(source, expression) as any
+    }
+
+    set<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema< (FromSource extends Datasource<infer DS, any>?DS:never)>>> , 
+        Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>
     (keyValues: S | ((map: Y ) => S )): UpdateStatement<SourceProps, SourcePropMap, FromSource>{
         
         let nameMap: { [key: string]: any | Scalar<any> }
@@ -925,7 +969,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         return new DatabaseMutationRunner(
             async (executionOptions: ExecutionOptions) => {
                 const nativeSql = await this.toNativeBuilder(context)
-                let data = await context.executeStatement(nativeSql, executionOptions)
+                let data = await context.executeStatement(nativeSql, {}, executionOptions)
                 return data
             })
     }
