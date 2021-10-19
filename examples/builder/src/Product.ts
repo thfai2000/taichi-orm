@@ -1,17 +1,18 @@
-import { TableSchema } from "../../../dist"
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/PropertyType"
-// import { belongsTo, hasMany } from "../../../dist/Relation"
-import { Scalar, Scalarable } from "../../../dist/Builder"
-// import { Shop } from "./orm"
+import { Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
+import { Model } from "../../../dist/Model"
+import { Scalarable } from "../../../dist"
 
-export default class Product extends TableSchema {
+export default class Product extends Model {
     id = this.field(PrimaryKeyType)
     ddd = this.field(NumberType)
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     shopId = this.field(NumberType)
-    shop = this.belongsTo(Shop, schema => schema.shopId)
+    get shop(){
+        return this.belongsTo(Shop, fields => fields.)
+    }
     myABC = this.compute((root, arg?: number): Scalarable<NumberType> => {
         return Scalar.number(`5 + ?`, [arg ?? 0])
     })
