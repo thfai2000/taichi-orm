@@ -115,7 +115,7 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 
 export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
-> = (source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+> = (context: DatabaseContext<any, any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
 export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
@@ -356,7 +356,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
         return this.#config?.tablePrefix ?? ''
     }
 
-    findRegisteredModel = <T extends typeof Model>(modelClass: T): InstanceType<T> => {
+    findModelInstance = <T extends typeof Model>(modelClass: T): InstanceType<T> => {
         let foundKey = Object.keys(this.#modelClassMap).find(key => this.#modelClassMap[key] === modelClass)
         if(!foundKey){
             throw new Error('Cannot find model')

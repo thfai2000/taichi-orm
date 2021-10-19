@@ -35,7 +35,7 @@ export abstract class Model {
         return new FieldProperty<D>( new definition() )
     }
 
-    compute<M, F extends ComputeFunction<Datasource<ExtractSchemaFromModel<M>, any>, any, any>>(
+    static compute<M extends typeof Model, F extends ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any>>(
             this: M,
             compute: F) 
             : ComputeProperty<F> {
@@ -92,22 +92,25 @@ export abstract class Model {
         return this.schema().datasource(name, options)
     }
 
-    hasMany<ParentModel extends Model, RootModelType extends typeof Model>(
-        this: ParentModel,
+    static hasMany<ParentModelType extends typeof Model, RootModelType extends typeof Model>(
+        this: ParentModelType,
         relatedModelType: RootModelType, 
         relatedBy: ((fieldPropDict: ExtractFieldPropDictFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>), 
-        parentKey?: ((fieldPropDict: ExtractFieldPropDictFromModel<ParentModel> ) => FieldProperty<FieldPropertyTypeDefinition<any>>)
+        parentKey?: ((fieldPropDict: ExtractFieldPropDictFromModelType<ParentModelType> ) => FieldProperty<FieldPropertyTypeDefinition<any>>)
         ) {
 
-        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(parent: Datasource< ExtractSchemaFromModel<ParentModel>, any>, 
+        let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(
+            context: DatabaseContext<any, any>,
+            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
             ): Scalarable< ArrayType< Schema<
                 ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-            > > > => {
+            > > >{
+
 
             let dataset = new Dataset()
 
-            let relatedModel = this.#repository.context.findRegisteredModel(relatedModelType)
+            let relatedModel = context.findModelInstance(relatedModelType)
             let relatedSource = relatedModel.datasource('root')
 
             let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema.propertiesMap).name  ): undefined ) ?? parent.getFieldProperty("id")
@@ -154,21 +157,23 @@ export abstract class Model {
         return this.compute( computeFn )
     }
 
-    belongsTo<ParentModel extends Model, RootModelType extends typeof Model>(
-        this: ParentModel,
+    static belongsTo<ParentModelType extends typeof Model, RootModelType extends typeof Model>(
+        this: ParentModelType,
         relatedModelType: RootModelType,
         parentKey: FieldProperty<FieldPropertyTypeDefinition<any>>,
         relatedBy?: ((fieldPropDict: ExtractFieldPropDictFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
         ) {
 
-        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(parent: Datasource< ExtractSchemaFromModel<ParentModel>, any>, 
-            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
+        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(
+            context: DatabaseContext<any, any>,
+            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
             ): Scalarable< ObjectType<Schema<
                 ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             >> > => {
             
             let dataset = new Dataset()
-            let relatedSchema = this.#repository.context.findRegisteredModel(relatedModelType)
+            let relatedSchema = context.findModelInstance(relatedModelType)
             let relatedSource = relatedSchema.datasource('root')
 
             let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema.propertiesMap).name  ): undefined ) ?? relatedSource.getFieldProperty("id")

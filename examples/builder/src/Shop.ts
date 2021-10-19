@@ -6,5 +6,5 @@ export default class Shop extends Model {
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     hour= this.field(NumberType)
-    products = this.hasMany(Product, fields => fields.shopId)
+    products = Shop.hasMany(Product)
 }

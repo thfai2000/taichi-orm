@@ -403,7 +403,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             return (args?: ARG) => {
             
                 let col = new Column<Name, R>(name, (context) => {
-                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, this, args)
+                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, context, this, args)
                     let r = thenResult( subquery, scalarable => scalarable.toScalar() )
                     return r
                 }, null)
