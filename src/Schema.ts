@@ -90,7 +90,7 @@ export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends P
     }
 }
 
-export class ComputeProperty<F extends ComputeFunction<any, any> > extends Property {
+export class ComputeProperty<F extends ComputeFunction<any, any, any> > extends Property {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F

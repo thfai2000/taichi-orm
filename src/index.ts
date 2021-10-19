@@ -37,7 +37,7 @@ export type SelectableProps<E> = {
 
 export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = {
     [key in keyof ExtractComputePropDictFromSchema<E> & string ]:
-        ExtractComputePropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, any>>?
+        ExtractComputePropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
                 Arg: never           
 }
 
@@ -88,7 +88,7 @@ export type TwoSourcesArgFunction<Root extends Schema<any>, RootName extends str
 export type SelectorMap<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
             
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<infer Arg, infer P>>? 
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>? 
             CompiledComputeFunction<key, Arg, P>              
         : 
             ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
@@ -113,9 +113,9 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 }
 
 
-export type ComputeFunction<ARG, 
+export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
-> = (source: Datasource<any, any>, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+> = (source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
 export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
@@ -125,13 +125,13 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
-export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer D>>>? D : never
+export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, PropertyTypeDefinition<infer D>>>? D : never
    
 export type ExtractValueTypeDictFromPropertyDict<E> = {
     [key in keyof E]:
         E[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
                 (
-                    E[key] extends ComputeProperty<ComputeFunction<any, PropertyTypeDefinition<infer X>>>? X: 
+                    E[key] extends ComputeProperty<ComputeFunction<any, any, PropertyTypeDefinition<infer X>>>? X: 
                                 (
                             E[key] extends ScalarProperty<PropertyTypeDefinition<infer Primitive>>? Primitive:
                             E[key]
@@ -144,7 +144,7 @@ export type ExtractValueTypeDictFromSchema<S extends Schema<any>> = ExtractValue
 type SelectiveArg = {select?:{}}
 type SelectiveArgFunction = ((root: SelectorMap<Schema<any>>) => SelectiveArg )
 
-type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
+type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
  
 type ExtractValueTypeDictFromPropertyDict_FieldsOnly<S> = ExtractValueTypeDictFromPropertyDict< ExtractFieldPropDictFromDict<S>> 
 

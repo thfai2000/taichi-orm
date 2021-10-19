@@ -35,14 +35,10 @@ export abstract class Model {
         return new FieldProperty<D>( new definition() )
     }
 
-    compute<F extends ComputeFunction<any, any>>(
-        // definition: 
-        //     (new () => (F extends ComputeFunction<any, infer P>?P:never) ) |
-        //     (() => (F extends ComputeFunction<any, infer P>?P:never) ) |
-        //      (F extends ComputeFunction<any, infer P>?P:never)
-        //      , 
-             compute: F) : ComputeProperty<F> {
-
+    compute<M, F extends ComputeFunction<Datasource<ExtractSchemaFromModel<M>, any>, any, any>>(
+            this: M,
+            compute: F) 
+            : ComputeProperty<F> {
 
         return new ComputeProperty(compute)
 

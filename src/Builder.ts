@@ -51,7 +51,7 @@ type SelectedPropsToScalarDict<SourceProps, P> = {
                             (C extends FieldProperty<infer D>?
                                 ScalarProperty<D>:  
                                 (
-                                    C extends ComputeProperty<ComputeFunction<any, infer P>>? 
+                                    C extends ComputeProperty<ComputeFunction<any, any, infer P>>? 
                                     ScalarProperty<P>:
                                     (
                                         C extends ScalarProperty<any>? 
