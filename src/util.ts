@@ -1,6 +1,7 @@
 import { Scalar } from "./Builder";
-import { PropertyTypeDefinition } from "./PropertyType";
-import { ComputeProperty, FieldProperty, ScalarProperty, Schema } from "./Schema";
+import { Model } from "./Model";
+import { PrimaryKeyType, PropertyTypeDefinition } from "./PropertyType";
+import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./Schema";
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -16,6 +17,10 @@ export function undoExpandRecursively<T>(o: ExpandRecursively<T>): T {
 }
 
 export function expandRecursively<T>(o: T): ExpandRecursively<T>{
+    return o as any
+}
+
+export function expand<T>(o: T): Expand<T>{
     return o as any
 }
 
@@ -41,19 +46,28 @@ export type UnionToIntersection<T> =
   (x: infer R) => any ? R : never
 
 
-export type ExtractFieldPropsFromSchema<S extends Schema<any>> = ExtractFieldPropsFromDict<
+export type ExtractSchemaFromModel<M> = TableSchema< ExtractPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
+export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaFromModel<InstanceType<MT>>
+
+
+export type ExtractFieldPropDictFromModel<M> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModel<M> >
+
+export type ExtractFieldPropDictFromModelType<MT extends typeof Model> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModelType<MT> >
+
+
+export type ExtractFieldPropDictFromSchema<S extends Schema<any>> = ExtractFieldPropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
-export type ExtractPropsFromSchema<S extends Schema<any>> = ExtractPropsFromDict<
+export type ExtractPropDictFromSchema<S extends Schema<any>> = ExtractPropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
-export type ExtractComputePropsFromSchema<S extends Schema<any>> = ExtractComputePropsFromDict<
+export type ExtractComputePropDictFromSchema<S extends Schema<any>> = ExtractComputePropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
-export type ExtractPropsFromDict<E> = 
+export type ExtractPropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: 
                     E[key] extends ComputeProperty<any>? key:
@@ -62,14 +76,14 @@ Pick<E, ({
                     never
 })[keyof E]>
 
-export type ExtractFieldPropsFromDict<E> = 
+export type ExtractFieldPropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends FieldProperty<any>? key:
                     never
 })[keyof E]> 
 
 
-export type ExtractComputePropsFromDict<E> = 
+export type ExtractComputePropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<any>? key:
                     never

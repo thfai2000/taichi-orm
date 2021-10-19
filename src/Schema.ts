@@ -161,15 +161,18 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> )} = {}
     
     properties: (Property)[] = []
-    propertiesMap: {[key:string]: Property} = {}
+    propertiesMap: PropertyDict
 
     constructor(props: PropertyDict){
-        Object.keys(props).forEach( key => {
+        this.propertiesMap = {} as PropertyDict
+        Object.keys(props).forEach( (key: keyof PropertyDict) => {
             const prop = props[key]
             if (prop instanceof Property) {
-                prop.register(key)
+                prop.register(key as string);
                 this.propertiesMap[key] = prop
                 this.properties.push(prop)
+            } else {
+                throw new Error('Not expected')
             }
         })
     }
@@ -277,6 +280,11 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
                 return ``
             }).flat().join(',\n')}\n)`;
     }
+
+    datasource<T extends TableSchema<any>, Name extends string>(this: T, name: Name, options?: TableOptions) : TableDatasource<T, Name>{
+        const source = new TableDatasource(this, name, options)
+        return source
+    }
 }
 
 
@@ -328,15 +336,19 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         const map = new Proxy( datasource, {
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
-                    let prop = oTarget.schema.propertiesMap[sKey]
-                    if(prop instanceof FieldProperty){
-                        return datasource.getFieldProperty(sKey)
-                    }
-                    if(prop instanceof ComputeProperty){
-                        return datasource.getComputeProperty(sKey)
-                    }
-                    if(prop instanceof ScalarProperty){
-                        return datasource.getScalarProperty(sKey)
+                    if(sKey === '$allFields'){
+                        throw new Error('FYI')
+                    } else {
+                        let prop = oTarget.schema.propertiesMap[sKey]
+                        if(prop instanceof FieldProperty){
+                            return datasource.getFieldProperty(sKey)
+                        }
+                        if(prop instanceof ComputeProperty){
+                            return datasource.getComputeProperty(sKey)
+                        }
+                        if(prop instanceof ScalarProperty){
+                            return datasource.getScalarProperty(sKey)
+                        }
                     }
                 }
 

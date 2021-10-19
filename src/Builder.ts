@@ -2,9 +2,9 @@ import { Knex}  from "knex"
 import { v4 as uuidv4 } from 'uuid'
 import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExtractValueTypeDictFromPropertyDict, Scalarable, ExecutionOptions, DatabaseQueryRunner, ExtractValueTypeDictFromSchema, DatabaseMutationRunner } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType } from "./PropertyType"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType, PrimaryKeyType } from "./PropertyType"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./Schema"
-import { expandRecursively, ExpandRecursively, ExtractFieldPropsFromDict, ExtractFieldPropsFromSchema, ExtractPropsFromDict, ExtractPropsFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -174,22 +174,22 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return sourcePropMap as any
     }
 
-    where<X extends ExtractPropsFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): WhereClauseBase<SourceProps, SourcePropMap, FromSource>{
+    baseWhere<X extends ExtractPropDictFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): WhereClauseBase<SourceProps, SourcePropMap, FromSource>{
         this.whereRawItem = expression
         return this
     }
 
-    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+    baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         WhereClauseBase<
-            UnionToIntersection< AddPrefix< ExtractPropsFromDict< S>, '', ''> | AddPrefix< ExtractPropsFromDict< S>, SName> >,
+            UnionToIntersection< AddPrefix< ExtractPropDictFromDict< S>, '', ''> | AddPrefix< ExtractPropDictFromDict< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
         > {
             this.fromItem = source
             return this as any
         }
 
-    innerJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+    baseInnerJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y >): WhereClauseBase<X,Y, FromSource>{
@@ -201,8 +201,8 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return this as any
     }
      
-    leftJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+    baseLeftJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): WhereClauseBase<X,Y, FromSource>{
@@ -214,8 +214,8 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return this as any
     }
 
-    rightJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+    baseRightJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): WhereClauseBase<X,Y, FromSource>{
@@ -287,7 +287,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     //     throw new Error('NYI')
     // }
 
-    protected func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractPropsFromDict<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+    protected func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractPropDictFromDict<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: { [key: string]: Scalar<any>} 
         let selectorMap = this.getSelectorMap()
         let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
@@ -407,41 +407,41 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
     }
 
-    where<X extends ExtractPropsFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
-        return this.where(expression)
+    where<X extends ExtractPropDictFromDict<SourceProps>, Y extends SourcePropMap & SQLKeywords< X, SourcePropMap >  >(expression: Expression< X, Y> | ExpressionFunc<X, Y> ): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
+        return this.baseWhere(expression) as any
     }
 
     from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         Dataset< Schema<{}>, 
-            UnionToIntersection< AddPrefix< ExtractPropsFromSchema< S>, '', ''> | AddPrefix< ExtractPropsFromSchema< S>, SName> >,
+            UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
             UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
         > {
-            return this.from(source)
+            return this.baseFrom(source) as any
         }
 
     innerJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y >): Dataset<ExistingSchema,X,Y, FromSource>{
         
-        return this.innerJoin(source, expression)
+        return this.baseInnerJoin(source, expression) as any
     }
      
     leftJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
-        return this.leftJoin(source, expression)
+        return this.baseLeftJoin(source, expression) as any
     }
 
     rightJoin<S extends Schema<any>, SName extends string, 
-        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropsFromDict< S>, SName>>,
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromDict< S>, SName>>,
         Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y> | ExpressionFunc<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
-        return this.rightJoin(source, expression)
+        return this.baseRightJoin(source, expression) as any
     }
     
     selectProps<P extends keyof SourceProps>(...properties: P[]): 
@@ -471,7 +471,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
 
-    select<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropsFromDict<SourceProps>, SourcePropMap> >>(named: S | 
+    select<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
             Schema<
@@ -488,7 +488,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
 
-    groupBy<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropsFromDict<SourceProps>, SourcePropMap> >>(named: S | 
+    groupBy<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
             Schema<
@@ -679,7 +679,7 @@ export class InsertStatement<T extends TableSchema<any>>
         }
     }
 
-    values<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropsFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
+    values<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
     (keyValues: S | ((map: Y ) => S )): InsertStatement<T>{
         
         let nameMap: { [key: string]: any | Scalar<any> }
@@ -753,87 +753,97 @@ export class InsertStatement<T extends TableSchema<any>>
         return nativeQB        
     }
 
-    executeInsert = <D extends InsertDataset<any, any, any, any>>(dataset: D) =>
+    executeAndReturn(repo?: DatabaseContext<any, any>)
      {
+        const context = repo ?? this.context
+
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+        
         return new DatabaseQueryRunner( async(executionOptions) => {
-            let fns: number = await this.startTransaction(async (trx) => {
+            let fns = await context.startTransaction(async (trx) => {
                 executionOptions = {...executionOptions, trx}
-                if(!(dataset instanceof InsertDataset)){
-                    throw new Error('Only For Insert')
-                } else{
-                    const ds = dataset as InsertDataset<any>
-                    if(ds.isInsert() ){
-                        let id = this.insert(ds, executionOptions)
-                        let info = ds.insertInfo()
-                        let findStmt
-                        if(id === null){
-                            findStmt = this.orm.getKnexInstance().from(info.schema!.tableName(this)).select('id').where({[info.schema!.uuid!.fieldName(this.orm)]: info.uuid})
-                            return await this.executeStatement(findStmt, executionOptions)
-                        } else {
-                            return id
-                            // findStmt = this.orm.getKnexInstance().from(info.schema!.tableName(this)).where({[info.schema!.id!.fieldName(this.orm)]: id})
-                        }
-                    }
-    
+                
+                const ds = this
+                let id = await ds.execute(context).withOptions(executionOptions)
+
+                
+                if(id === null){
+                    let info = ds.insertInfo()
+                    const schema = this.#insertToSchema as TableSchema<{uuid: FieldProperty<any>}>
+                    
+                    return await context.dataset()
+                        .from(schema.datasource('root'))
+                        .where( ({root}) => root.uuid.equals(info.uuid))
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions)
+
+                } else {
+                    const schema = this.#insertToSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
+
+                    return await context.dataset()
+                        .from(schema.datasource('root'))
+                        .where( ({root}) => root.id.equals(id))
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions)
                 }
+                
             }, executionOptions.trx)
             return fns
         })
     }
 
-    private async insert(ds: Dataset<any, any>, executionOptions: ExecutionOptions) {
-        // const schema = this.#modelClass.schema()
-        const context = this
-        const queryBuilder = ds.toNativeBuilder(this)
+    execute(repo?: DatabaseContext<any, any>) {
+        const context = repo ?? this.context
 
-        let fns = await context.startTransaction(async (trx) => {
-
-            //replace the trx
-            executionOptions = {...executionOptions, trx: trx}
-
-            // let afterMutationHooks = schema.hooks.filter()
-
-            // console.debug('======== INSERT =======')
-            // console.debug(stmt.toString())
-            // console.debug('========================')
-            if (context.client().startsWith('mysql')) {
-                let insertedId: number
-                const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                const r = await context.executeStatement(insertStmt, executionOptions)
-                insertedId = r[0][0].id
-                // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
-    
-                return insertedId
-            } else if (context.client().startsWith('sqlite')) {
-                const insertStmt = queryBuilder.toString()
-                const r = await context.executeStatement(insertStmt, executionOptions)
-
-                return null
-
-            } else if (context.client().startsWith('pg')) {
-                const insertStmt = queryBuilder.toString()
-                let insertedId: number
-                const r = await context.executeStatement(insertStmt, executionOptions)
-                
-                insertedId = Object.keys(r.rows[0]).map(k => r.rows[0][k])[0]
-                return insertedId
-                // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
-
-            } else {
-                throw new Error('Unsupport client')
-            }
-            
-        }, executionOptions.trx)
-
-        return fns
-    }
-
-    execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>) {
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
         return new DatabaseMutationRunner(
+
             async (executionOptions: ExecutionOptions) => {
-                const nativeSql = await dataset.toNativeBuilder(this)
-                let data = await this.executeStatement(nativeSql, executionOptions)
-                return data
+                const queryBuilder = await this.toNativeBuilder(context)
+
+
+                let insertedId = await context.startTransaction(async (trx) => {
+
+                    //replace the trx
+                    executionOptions = {...executionOptions, trx: trx}
+        
+                    // let afterMutationHooks = schema.hooks.filter()
+        
+                    // console.debug('======== INSERT =======')
+                    // console.debug(stmt.toString())
+                    // console.debug('========================')
+                    if (context.client().startsWith('mysql')) {
+                        let insertedId: number
+                        const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
+                        const r = await context.executeStatement(insertStmt, executionOptions)
+                        insertedId = r[0][0].id
+                        // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
+            
+                        return insertedId
+                    } else if (context.client().startsWith('sqlite')) {
+                        const insertStmt = queryBuilder.toString()
+                        const r = await context.executeStatement(insertStmt, executionOptions)
+        
+                        return null
+        
+                    } else if (context.client().startsWith('pg')) {
+                        const insertStmt = queryBuilder.toString()
+                        let insertedId: number
+                        const r = await context.executeStatement(insertStmt, executionOptions)
+                        
+                        insertedId = Object.keys(r.rows[0]).map(k => r.rows[0][k])[0]
+                        return insertedId
+                        // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+        
+                    } else {
+                        throw new Error('Unsupport client')
+                    }
+                    
+                }, executionOptions.trx)
+
+                return insertedId
             })
     }
 
@@ -845,7 +855,12 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     #updateItems: { [key: string]: Scalar<any> } | null = null
 
-    update<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropsFromDict< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropsFromDict<SourceProps>, SourcePropMap> >>
+    constructor(from: FromSource, repo?: DatabaseContext<any, any>){
+        super(repo)
+        this.fromItem = from
+    }
+
+    set<S extends Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromDict< (FromSource extends Datasource<infer DS, any>?DS:any)>>> , Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>
     (keyValues: S | ((map: Y ) => S )): UpdateStatement<SourceProps, SourcePropMap, FromSource>{
         
         let nameMap: { [key: string]: any | Scalar<any> }
@@ -895,15 +910,22 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
             throw new Error('No UPDATE and FROM are provided for Dataset')
         }
         nativeQB.update( updateItems )
-    
+
+        return nativeQB
     }
 
 
-    execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>) {
+    execute<S extends Schema<any>>(repo?: DatabaseContext<any, any>) {
+
+        const context = repo ?? this.context
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+
         return new DatabaseMutationRunner(
             async (executionOptions: ExecutionOptions) => {
-                const nativeSql = await dataset.toNativeBuilder(this)
-                let data = await this.executeStatement(nativeSql, executionOptions)
+                const nativeSql = await this.toNativeBuilder(context)
+                let data = await context.executeStatement(nativeSql, executionOptions)
                 return data
             })
     }
@@ -1094,10 +1116,11 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
         return new DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >>(
             async (executionOptions: ExecutionOptions) => {
-                let result = await context.execute( new Dataset().select({root: this}), executionOptions)
+                // let result = await context.execute( new Dataset().select({root: this}), executionOptions)
 
-                //@ts-ignore
-                return result[0].root as any  
+                // //@ts-ignore
+                // return result[0].root as any
+                throw new Error('NYI')
             }
         )
 

@@ -1,11 +1,10 @@
-import { Dataset, Datasource, makeRaw, Scalar, Scalarable } from "../../../dist/Builder"
+import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
 import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { UnionToIntersection } from "../../../dist/util"
-
+import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel } from "../../../dist/util"
 
 
 (async() => {
