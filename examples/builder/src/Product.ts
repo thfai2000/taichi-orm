@@ -31,4 +31,13 @@ export default class Product extends Model {
             .selectProps('name')
     })
 
+    myShopName = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<string | null>> => {
+
+        return new Dataset()
+            .from(context.findModelRepository(Shop).datasource('s'))
+            .innerJoin(root, ({root, s}) => root.shopId.equals(s.id))
+            .where(({s}) => s.name.equals(arg ?? 'myShop') )
+            .selectProps('name').castToScalar(StringType)
+    })
+
 }
