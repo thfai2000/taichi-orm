@@ -56,11 +56,16 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
     
     for (let i = 0; i < 5; i++) {    
         
-        await insert(Product.schema).values({
+        let product = await insert(Product.schema).values({
             ddd: 5,
             name: 'hello',
             shopId: shop1.id
         })
+        .executeAndReturn()
+        .withOptions({
+            onSqlRun: console.log
+        })
+        console.log('product', product)
     }
 
     console.log('finished')
@@ -116,7 +121,7 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
             onSqlRun: console.log
         })
 
-    console.log('test', r)
+    console.log('testttttttttttttt', r)
 
     let r2 = await dataset()
         .from(Shop.datasource("myShop"))
@@ -141,9 +146,11 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
 
 
     //Done: dynamic result type on 'find'
-    //TODO: dataset toScalar ....without ArrayType
-    //TODO: dataset api use DatabaseAction chain
-
+    //Done: dataset api use DatabaseAction chain
+    //Done: dataset toScalar ....without ArrayType
+    
+    // TODO: relation helper function: use string as input field
+    // TODO: deleteStatement
     // TODO: orderBy
     // TODO: having
     // TODO: addSelectProps
@@ -155,6 +162,7 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
     // minus, plus
     // SUM, MAX, MIN
     // delete()
+    // TODO: manyToMany Relation helper function
     // Scalar.boolean, Scalar.string
     // think about migrate issue
     // handle actionOptions failIfNone

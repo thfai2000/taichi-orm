@@ -223,7 +223,8 @@ export abstract class Model {
 export class ModelRepository<MT extends typeof Model>{
 
     #orm: ORM<any, any>
-    #modelClass: InstanceType<MT>
+    #model: InstanceType<MT>
+    #modelClass: MT
     #context: DatabaseContext<any, any>
 
     constructor(orm: ORM<any, any>, context: DatabaseContext<any, any>, modelClass: MT, modelName: string){
@@ -231,9 +232,14 @@ export class ModelRepository<MT extends typeof Model>{
         this.#context = context
 
         //must be the last statement because the creation of schema may require context
+        this.#modelClass = modelClass
         //@ts-ignore
-        this.#modelClass = new modelClass(this as ModelRepository<MT>, modelName)
+        this.#model = new modelClass(this as ModelRepository<MT>, modelName)
         // this.#modelClass.register()
+    }
+
+    get model(){
+        return this.#model
     }
 
     get modelClass(){
@@ -245,11 +251,11 @@ export class ModelRepository<MT extends typeof Model>{
     }
 
     datasource<Name extends string>(name: Name, options?: TableOptions) : Datasource<ExtractSchemaFromModelType<MT>, Name>{
-        return this.#modelClass.datasource(name, options)
+        return this.#model.datasource(name, options)
     }
 
     get schema() {
-        return this.#modelClass.schema()
+        return this.#model.schema()
     }
 
     get orm(){

@@ -365,6 +365,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
     // }
 
     findModelRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
+        //@ts-ignore
         let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
         if(!foundKey){
             throw new Error('Cannot find model')
@@ -374,7 +375,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
 
     schemaSqls = () => {
         let m = this.models
-        let sqls = Object.keys(m).map(k => m[k].modelClass).map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
+        let sqls = Object.keys(m).map(k => m[k].model).map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
         return sqls
     }
 

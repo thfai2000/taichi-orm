@@ -629,7 +629,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
                     let data = await context.executeStatement(nativeSql, {}, executionOptions)
         
-                    console.log('data', data)
+                    // console.log('data', data)
                     let rows: any
                     if(context.client().startsWith('mysql')){
                         rows = data[0][0]

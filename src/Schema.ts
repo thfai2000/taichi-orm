@@ -337,7 +337,11 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     if(sKey === '$allFields'){
-                        throw new Error('FYI')
+                        let props = datasource.getAllFieldProperty()
+                        return props.reduce( (acc, item) => {
+                            acc = Object.assign(acc, item.value())
+                            return acc
+                        }, {} as {[key:string]: Column<any, any>} )
                     } else {
                         let prop = oTarget.schema.propertiesMap[sKey]
                         if(prop instanceof FieldProperty){
@@ -351,7 +355,6 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                         }
                     }
                 }
-
             }
         }) as SelectorMap<E>
         return map
