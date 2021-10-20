@@ -110,7 +110,7 @@ export abstract class Model {
 
             let dataset = new Dataset()
 
-            let relatedModel = context.findModelInstance(relatedModelType)
+            let relatedModel = context.findModelRepository(relatedModelType)
             let relatedSource = relatedModel.datasource('root')
 
             let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema.propertiesMap).name  ): undefined ) ?? parent.getFieldProperty("id")
@@ -173,7 +173,7 @@ export abstract class Model {
             >> > => {
             
             let dataset = new Dataset()
-            let relatedSchema = context.findModelInstance(relatedModelType)
+            let relatedSchema = context.findModelRepository(relatedModelType)
             let relatedSource = relatedSchema.datasource('root')
 
             let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema.propertiesMap).name  ): undefined ) ?? relatedSource.getFieldProperty("id")

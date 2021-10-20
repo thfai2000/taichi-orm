@@ -356,12 +356,20 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
         return this.#config?.tablePrefix ?? ''
     }
 
-    findModelInstance = <T extends typeof Model>(modelClass: T): InstanceType<T> => {
-        let foundKey = Object.keys(this.#modelClassMap).find(key => this.#modelClassMap[key] === modelClass)
+    // findModelInstance = <T extends typeof Model>(modelClass: T): InstanceType<T> => {
+    //     let foundKey = Object.keys(this.#modelClassMap).find(key => this.#modelClassMap[key] === modelClass)
+    //     if(!foundKey){
+    //         throw new Error('Cannot find model')
+    //     }
+    //     return this.models[foundKey].modelClass as unknown as InstanceType<T>
+    // }
+
+    findModelRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
+        let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
         if(!foundKey){
             throw new Error('Cannot find model')
         }
-        return this.models[foundKey].modelClass as unknown as InstanceType<T>
+        return this.models[foundKey] as unknown as ModelRepository<T>
     }
 
     schemaSqls = () => {
