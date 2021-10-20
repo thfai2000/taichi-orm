@@ -364,7 +364,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, Mode
     //     return this.models[foundKey].modelClass as unknown as InstanceType<T>
     // }
 
-    findModelRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
+    getRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
         //@ts-ignore
         let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
         if(!foundKey){

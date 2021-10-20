@@ -51,8 +51,12 @@ export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaF
 
 
 export type ExtractFieldPropDictFromModel<M> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModel<M> >
-
 export type ExtractFieldPropDictFromModelType<MT extends typeof Model> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModelType<MT> >
+
+
+export type ExtractFieldPropNameFromModelType<MT extends typeof Model> = ExtractFieldPropNameFromSchema< ExtractSchemaFromModelType<MT> >
+
+export type ExtractFieldPropNameFromSchema<S extends Schema<any>> = S extends Schema<infer P>? (keyof ExtractFieldPropDictFromDict<P>) & string: never
 
 
 export type ExtractFieldPropDictFromSchema<S extends Schema<any>> = ExtractFieldPropDictFromDict<

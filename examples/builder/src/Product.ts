@@ -12,8 +12,8 @@ export default class Product extends Model {
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     shopId = this.field(NumberType)
-    shop = Product.belongsTo(Shop, this.shopId)
-        
+    shop = Product.belongsTo(Shop, 'shopId', 'id')
+    
     abc = Product.compute((context, root, arg?: number) => {
         return Scalar.number(`5 + ?`, [arg ?? 0])
     })
@@ -25,7 +25,7 @@ export default class Product extends Model {
     myShop = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<{name: string | null}[]>> => {
 
         return new Dataset()
-            .from(context.findModelRepository(Shop).datasource('s'))
+            .from(context.getRepository(Shop).datasource('s'))
             .innerJoin(root, ({root, s}) => root.shopId.equals(s.id))
             .where(({s}) => s.name.equals(arg ?? 'myShop') )
             .selectProps('name')
@@ -34,7 +34,7 @@ export default class Product extends Model {
     myShopName = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<string | null>> => {
 
         return new Dataset()
-            .from(context.findModelRepository(Shop).datasource('s'))
+            .from(context.getRepository(Shop).datasource('s'))
             .innerJoin(root, ({root, s}) => root.shopId.equals(s.id))
             .where(({s}) => s.name.equals(arg ?? 'myShop') )
             .selectProps('name').castToScalar(StringType)

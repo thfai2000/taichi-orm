@@ -1150,7 +1150,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     //     return new Scalar(this.toRealRaw(), d, this.context)
     // }
 
-    execute(executionOptions?: ExecutionOptions, repo?: DatabaseContext<any, any>): 
+    execute(repo?: DatabaseContext<any, any>): 
         DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >> {
         const context = repo ?? this.context
 

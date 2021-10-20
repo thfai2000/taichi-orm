@@ -1,6 +1,6 @@
 import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructPropertyDictBySelectiveArg, ConstructValueTypeDictBySelectiveArg, Scalarable } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
+import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Expression, Scalar } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
@@ -95,11 +95,12 @@ export abstract class Model {
     static hasMany<ParentModelType extends typeof Model, RootModelType extends typeof Model>(
         this: ParentModelType,
         relatedModelType: RootModelType, 
-        relatedBy: ((fieldPropDict: ExtractFieldPropDictFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>), 
-        parentKey?: ((fieldPropDict: ExtractFieldPropDictFromModelType<ParentModelType> ) => FieldProperty<FieldPropertyTypeDefinition<any>>)
-        ) {
+        relatedBy: string,
+        parentKey: string = 'id'
+        )
+        {
 
-        let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(
+        let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(
             context: DatabaseContext<any, any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
@@ -110,11 +111,11 @@ export abstract class Model {
 
             let dataset = new Dataset()
 
-            let relatedModel = context.findModelRepository(relatedModelType)
+            let relatedModel = context.getRepository(relatedModelType)
             let relatedSource = relatedModel.datasource('root')
 
-            let parentColumn = (parentKey? parent.getFieldProperty( parentKey(parent.schema.propertiesMap).name  ): undefined ) ?? parent.getFieldProperty("id")
-            let relatedByColumn = relatedSource.getFieldProperty( relatedBy(relatedSource.schema.propertiesMap).name  )
+            let parentColumn = parent.getFieldProperty( parentKey  )
+            let relatedByColumn = relatedSource.getFieldProperty( relatedBy  )
         
             let newDataset = dataset.from(relatedSource)
 
@@ -160,11 +161,12 @@ export abstract class Model {
     static belongsTo<ParentModelType extends typeof Model, RootModelType extends typeof Model>(
         this: ParentModelType,
         relatedModelType: RootModelType,
-        parentKey: FieldProperty<FieldPropertyTypeDefinition<any>>,
-        relatedBy?: ((fieldPropDict: ExtractFieldPropDictFromModelType<RootModelType>) => FieldProperty<FieldPropertyTypeDefinition<any>>) 
-        ) {
+        parentKey: string,
+        relatedBy: string = 'id'
+        )
+        {
 
-        let computeFn = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType> >>(
+        let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
             context: DatabaseContext<any, any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
@@ -173,11 +175,11 @@ export abstract class Model {
             >> > => {
             
             let dataset = new Dataset()
-            let relatedSchema = context.findModelRepository(relatedModelType)
+            let relatedSchema = context.getRepository(relatedModelType)
             let relatedSource = relatedSchema.datasource('root')
 
-            let relatedByColumn = (relatedBy? relatedSource.getFieldProperty( relatedBy(relatedSource.schema.propertiesMap).name  ): undefined ) ?? relatedSource.getFieldProperty("id")
-            let parentColumn = parent.getFieldProperty( parentKey.name  )
+            let relatedByColumn = relatedSource.getFieldProperty( relatedBy )
+            let parentColumn = parent.getFieldProperty( parentKey )
         
             let newDataset = dataset.from(relatedSource)
 
