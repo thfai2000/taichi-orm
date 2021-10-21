@@ -1,11 +1,11 @@
 import { Column, Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { ConstructPropertyDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
+import { ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
-import { Schema } from "../../../dist/Schema"
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, Parsable, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
+import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExpandRecursively, Expand } from "../../../dist/util"
+import { FieldProperty, Schema } from "../../../dist/Schema"
 
 
 (async() => {
@@ -36,15 +36,15 @@ import { Schema } from "../../../dist/Schema"
     await createModels()
 
 
-    let a = await Shop.find({
-        select: {
-            products: {
-                select: {
-                    shop: {}
-                }
-            }
-        }
-    })
+    // let a = await Shop.find({
+    //     select: {
+    //         products: {
+    //             select: {
+    //                 shop: {}
+    //             }
+    //         }
+    //     }
+    // })
 
     
     let s = Shop.datasource('shop')
@@ -53,23 +53,41 @@ import { Schema } from "../../../dist/Schema"
 
     let col = s.selectorMap().products({
         select: {
-            shop: {}
+            shop: {
+                select: {
+                    products: {}
+                }
+            }
         }
     })
 
     let aaa = await col.execute()
 
+    // let xx:  ExtractSchemaFromModelType<typeof ProductClass>
 
-    type A =  <F extends SingleSourceArg<ExtractSchemaFromModelType<typeof ProductClass>>>( args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ProductClass>>) => F) | undefined) => 
-        Column<"products", ArrayType<Schema<ConstructPropertyDictBySelectiveArg<ExtractSchemaFromModelType<typeof ProductClass>, F>>>>
 
-    let aaaaa : A
+    // let c: ExpandRecursively<
+    //         ConstructValueTypeDictBySelectiveArg<
+    //             ExtractSchemaFromModelType<typeof ProductClass>, {
+    //                 select: {
+    //                     shop: {}
+    //                 }
+    //             } >
+    //         >
 
-    let cc = await aaaaa!({
-        select: {
-            shop: {}
-        }
-    }).execute()
+
+    // type A =  <F extends SingleSourceArg<ExtractSchemaFromModelType<typeof ProductClass>>>( args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ProductClass>>) => F) | undefined) => 
+    //     Column<"products", ArrayType<Parsable<
+    //     ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<typeof ProductClass>, F>
+    //     >>>
+
+    // let aaaaa : A
+
+    // let cc = await aaaaa!({
+    //     select: {
+    //         shop: {}
+    //     }
+    // }).execute()
     
 
     
@@ -128,7 +146,11 @@ import { Schema } from "../../../dist/Schema"
                     ...product.shopId.equals(10).asColumn('nini').value(),
                     ...product.ddd.value(),
                     test: Scalar.number(` 5 + ?`, [3]),
-                    ...shop.products().value()
+                    ...shop.products({
+                        select: {
+                            shop: {}
+                        }
+                    }).value()
                 })
             ).offset(0).limit(4000).execute(orm.getContext()).withOptions({
                 onSqlRun: console.log

@@ -105,9 +105,9 @@ export type AddPrefix<E, k extends string, delimitor extends string = '.'> = {
 
 abstract class StatementBase {
 
-    protected context?: DatabaseContext<any, any> | null = null
+    protected context?: DatabaseContext<any> | null = null
 
-    constructor(context?: DatabaseContext<any, any> | null){
+    constructor(context?: DatabaseContext<any> | null){
         this.context = context
     }
 
@@ -121,7 +121,7 @@ abstract class StatementBase {
         return sqlkeywords
     }
 
-    protected async scalarMap2RawMap(targetSchema: Schema<any>, nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>) {
+    protected async scalarMap2RawMap(targetSchema: Schema<any>, nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any>) {
         const client = context.client()
         return await Object.keys(nameMap).reduce( async (accP, k) => {
 
@@ -148,9 +148,9 @@ abstract class StatementBase {
         }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
     }
 
-    abstract toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder>
+    abstract toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder>
 
-    abstract execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any, any>): any
+    abstract execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any>): any
 }
 
 abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource extends Datasource<any, any> = Datasource<any, any>>  extends StatementBase {
@@ -227,7 +227,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
         return this as any
     }
 
-    protected async buildWhereClause(context: DatabaseContext<any, any>, nativeQB: Knex.QueryBuilder<any, unknown[]>) {
+    protected async buildWhereClause(context: DatabaseContext<any>, nativeQB: Knex.QueryBuilder<any, unknown[]>) {
         let selectorMap = this.getSelectorMap()
 
         let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
@@ -273,7 +273,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     nativeBuilderCallbacks: ((nativeBuilder: Knex.QueryBuilder) => Promise<void> | void)[] = []
 
-    constructor(context?: DatabaseContext<any, any> | null){
+    constructor(context?: DatabaseContext<any> | null){
         super(context)
         // this.#fromItem = fromSource
         this.context = context ?? null
@@ -338,7 +338,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return nameMap
     }
 
-    protected async queryScalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any, any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
+    protected async queryScalarMap2RawArray(nameMap: { [key: string]: Scalar<any> }, context: DatabaseContext<any>, includeAlias: boolean): Promise<Knex.Raw<any>[]> {
         const client = context.client()
         return await Promise.all(Object.keys(nameMap).map(async (k) => {
 
@@ -556,7 +556,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     //     return Object.keys(this.#selectItems ?? {}).length > 0
     // }
 
-    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
 
         const context = repo ?? this.context
 
@@ -611,7 +611,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return nativeQB
     }
 
-    execute<S extends Schema<any>>(this: Dataset<S, any, any, any>, repo?: DatabaseContext<any, any>): 
+    execute<S extends Schema<any>>(this: Dataset<S, any, any, any>, repo?: DatabaseContext<any>): 
         DatabaseQueryRunner<ExpandRecursively< ExtractValueTypeDictFromSchema<S>[] >>
     {
         const context = repo ?? this.context
@@ -667,7 +667,7 @@ export class InsertStatement<T extends TableSchema<any>>
     #insertItems: { [key: string]: Scalar<any> } | null = null
     #uuidForInsertion: string | null = null
 
-    constructor(insertToSchema: T, context?: DatabaseContext<any, any> | null){
+    constructor(insertToSchema: T, context?: DatabaseContext<any> | null){
         super(context)
         this.#insertIntoSchema = insertToSchema
     }
@@ -703,7 +703,7 @@ export class InsertStatement<T extends TableSchema<any>>
         return this
     }
 
-    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
 
         const context = repo ?? this.context
 
@@ -752,7 +752,7 @@ export class InsertStatement<T extends TableSchema<any>>
         return nativeQB        
     }
 
-    executeAndReturn(repo?: DatabaseContext<any, any>)
+    executeAndReturn(repo?: DatabaseContext<any>)
      {
         const context = repo ?? this.context
 
@@ -773,14 +773,14 @@ export class InsertStatement<T extends TableSchema<any>>
                         throw new Error('Unexpected.')
                     }
                     // let info = ds.insertInfo()
-                    const schema = this.#insertIntoSchema as TableSchema<{uuid: FieldProperty<any>}>
+                    const schema = this.#insertIntoSchema as TableSchema<{id: FieldProperty<any>, uuid: FieldProperty<any>}>
                     
                     let result = await context.dataset()
                         .from(schema.datasource('root'))
                         .where( ({root}) => root.uuid.equals(uuid))
-                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions) as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>[]
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions) 
 
-                    return result[0]
+                    return result[0] as unknown as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>
 
                 } else {
                     const schema = this.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
@@ -788,9 +788,9 @@ export class InsertStatement<T extends TableSchema<any>>
                     let result = await context.dataset()
                         .from(schema.datasource('root'))
                         .where( ({root}) => root.id.equals(id))
-                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions) as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>[]
+                        .select( ({root}) => root.$allFields ).execute().withOptions(executionOptions)
                     
-                    return result[0]
+                    return result[0] as unknown as ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>
                 }
                 
             }, executionOptions.trx)
@@ -798,7 +798,7 @@ export class InsertStatement<T extends TableSchema<any>>
         })
     }
 
-    execute(repo?: DatabaseContext<any, any>) {
+    execute(repo?: DatabaseContext<any>) {
         const context = repo ?? this.context
 
         if(!context){
@@ -862,7 +862,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     #updateItems: { [key: string]: Scalar<any> } | null = null
 
-    constructor(repo?: DatabaseContext<any, any>){
+    constructor(repo?: DatabaseContext<any>){
         super(repo)
     }
 
@@ -928,7 +928,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         return this
     }
 
-    async toNativeBuilder(repo?: DatabaseContext<any, any>): Promise<Knex.QueryBuilder> {
+    async toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
 
         const context = repo ?? this.context
 
@@ -959,7 +959,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
     }
 
 
-    execute<S extends Schema<any>>(repo?: DatabaseContext<any, any>) {
+    execute<S extends Schema<any>>(repo?: DatabaseContext<any>) {
 
         const context = repo ?? this.context
         if(!context){
@@ -978,7 +978,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
 
 type RawUnit<T extends PropertyTypeDefinition<any> = any> = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T>> | Scalar<T> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
-type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any, any>) => RawUnit<T>) | RawUnit<T>
+type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
 
 export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable<T> {
     // __type: 'Scalar'
@@ -987,14 +987,14 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     // #cachedDefinition: PropertyTypeDefinition<any> | null = null
     readonly declaredDefinition?: T | null
     protected expressionOrDataset: RawExpression<T>
-    protected context: DatabaseContext<any, any> | null = null
+    protected context: DatabaseContext<any> | null = null
     #calculatedDefinition: PropertyTypeDefinition<any> | null = null
     #calculatedRaw: Knex.Raw | null = null
     
     // protected dataset:  | null = null
     constructor(expressionOrDataset: RawExpression<T>, 
         definition?: T | (new (...args: any[]) => T) | null,
-        context?: DatabaseContext<any, any> | null){
+        context?: DatabaseContext<any> | null){
         if(definition instanceof PropertyTypeDefinition){
             this.declaredDefinition = definition
         } else if(definition)
@@ -1006,7 +1006,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     }
 
     static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D>{
-        return new Scalar( (context: DatabaseContext<any, any>) => {
+        return new Scalar( (context: DatabaseContext<any>) => {
             if(!args){
                 return makeRaw(context, sql)
             } else {
@@ -1043,7 +1043,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         return this.#calculatedDefinition ?? this.declaredDefinition ?? new PropertyTypeDefinition()
     }
 
-    private async calculateDefinition(context?: DatabaseContext<any, any>):  Promise<PropertyTypeDefinition<any>>  {
+    private async calculateDefinition(context?: DatabaseContext<any>):  Promise<PropertyTypeDefinition<any>>  {
         const repo = (context ?? this.context)
         if(!repo){
             throw new Error('There is no repository provided')
@@ -1072,7 +1072,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         // return this.#cachedDefinition
     }
 
-    private calculateRaw(context?: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw> {
+    private calculateRaw(context?: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> {
         
         const repo = (context ?? this.context)
         if(!repo){
@@ -1123,14 +1123,14 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
     }
 
-    async definition(context?: DatabaseContext<any, any>): Promise<PropertyTypeDefinition<any>>{
+    async definition(context?: DatabaseContext<any>): Promise<PropertyTypeDefinition<any>>{
         if(!this.#calculatedDefinition){
             this.#calculatedDefinition = await this.calculateDefinition(context)
         }
         return this.#calculatedDefinition
     }
 
-    async toRaw(context?: DatabaseContext<any, any>): Promise<Knex.Raw> {
+    async toRaw(context?: DatabaseContext<any>): Promise<Knex.Raw> {
         if(!this.#calculatedRaw){
             this.#calculatedRaw = await this.calculateRaw(context)
         }
@@ -1150,7 +1150,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     //     return new Scalar(this.toRealRaw(), d, this.context)
     // }
 
-    execute(repo?: DatabaseContext<any, any>): 
+    execute(repo?: DatabaseContext<any>): 
         DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >> {
         const context = repo ?? this.context
 
@@ -1177,7 +1177,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
     constructor(alias: Name, expressionOrDataset: RawExpression, 
-        definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any, any> | null){
+        definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any> | null){
         super(expressionOrDataset, definition, context)
         this.alias = alias
         // this.scalarable = scalarable
@@ -1194,7 +1194,7 @@ export class Column<Name extends string, T extends PropertyTypeDefinition<any>> 
     }
 }
 
-export const makeRaw = (context: DatabaseContext<any, any>, sql: any, args?: any[]) => {
+export const makeRaw = (context: DatabaseContext<any>, sql: any, args?: any[]) => {
     let r = context.orm.getKnexInstance().raw(sql, args ?? [])
     // @ts-ignore
     r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'

@@ -117,12 +117,12 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends S
             super(definition)
         }
 
-    convertFieldName(propName: string, orm: ORM<any, any>){
+    convertFieldName(propName: string, orm: ORM<any>){
         const c = orm.ormConfig.propNameTofieldName
         return c? c(propName) : propName
     }
 
-    fieldName(orm: ORM<any, any>){
+    fieldName(orm: ORM<any>){
         // if(!this._fieldName){
         //     throw new Error('Property not yet registered')
         // }
@@ -177,14 +177,14 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
         })
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
+    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
         return this.parseDataBySchema(rawValue, context)
     }
-    parseProperty(propertyvalue: ExtractValueTypeDictFromPropertyDict<PropertyDict>, context: DatabaseContext<any, any>, prop?: string) {
+    parseProperty(propertyvalue: ExtractValueTypeDictFromPropertyDict<PropertyDict>, context: DatabaseContext<any>, prop?: string) {
         return propertyvalue
     }
 
-    parseDataBySchema(row: any, context: DatabaseContext<any,any>): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
+    parseDataBySchema(row: any, context: DatabaseContext<any>): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
         const schema = this
         let output = {}
         for (const propName in row) {
@@ -245,7 +245,7 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
         this.uuid = uuid
     }
 
-    tableName(context: DatabaseContext<any, any>, options?: TableOptions){
+    tableName(context: DatabaseContext<any>, options?: TableOptions){
         if(this.overridedTableName){
             return this.overridedTableName
         } else {
@@ -265,7 +265,7 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
         return this
     }
 
-    createTableStmt(context: DatabaseContext<any, any>, options?: TableOptions){
+    createTableStmt(context: DatabaseContext<any>, options?: TableOptions){
         const client = context.client()
         const tableName = this.tableName(context, options)
 
@@ -299,8 +299,8 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     schema: E
     selectorMap(): SelectorMap<E>
 
-    toRaw(context: DatabaseContext<any, any>): Knex.Raw | Promise<Knex.Raw>
-    realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
+    toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
+    realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
@@ -328,7 +328,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
     }
-    abstract realSource(context: DatabaseContext<any, any>): SQLString | Promise<SQLString>
+    abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
     selectorMap(): SelectorMap<E>{
         const datasource = this
@@ -426,7 +426,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }
     }
     
-    async toRaw(context: DatabaseContext<any, any>){
+    async toRaw(context: DatabaseContext<any>){
         const client = context.client()
         const sql = await this.realSource(context)
         return makeRaw(context, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
@@ -443,7 +443,7 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
         this.options = options
     }
 
-    realSource(context: DatabaseContext<any, any>){
+    realSource(context: DatabaseContext<any>){
         const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
 
         let tableName = this.schema.tableName(context, finalOptions)
@@ -462,7 +462,7 @@ export class DerivedDatasource<D extends Dataset<any>, Name extends string> exte
         this.dataset = dataset
     }
 
-    async realSource(context: DatabaseContext<any, any>){
+    async realSource(context: DatabaseContext<any>){
         return `(${(await this.dataset.toNativeBuilder(context))})`
     }
 }

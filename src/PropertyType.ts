@@ -43,13 +43,13 @@ const jsonArray = (client: string, arrayOfColNames: Array<any> = []) => {
 }
 
 export interface ParsableTrait<I> {
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): I 
-    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, prop?: string): any
+    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
+    parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
 }
 
 export type Parsable<I> = {
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop?: string): I 
-    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, prop?: string): any
+    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
+    parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
 }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
@@ -63,14 +63,14 @@ export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
         this.options = this.options ??options
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, prop: string): I {
+    parseRaw(rawValue: any, context: DatabaseContext<any>, prop: string): I {
         return rawValue
     }
-    parseProperty(propertyvalue: I, context: DatabaseContext<any, any>, prop: string): any {
+    parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop: string): any {
         return propertyvalue
     }
 
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any, any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
+    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
         if(rawOrDataset instanceof Dataset){
             if(rawOrDataset.selectItemsAlias().length === 1){
                 return thenResult( rawOrDataset.toNativeBuilder(context), query => makeRaw(context, `(${query})`) )
@@ -86,7 +86,7 @@ export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinit
     constructor(options?: any){
         super(options)
     }
-    abstract create(propName: string, fieldName: string, context: DatabaseContext<any, any>): string[]
+    abstract create(propName: string, fieldName: string, context: DatabaseContext<any>): string[]
 }
 
 // export abstract class ParsableFieldPropertyTypeDefinition<I> extends FieldPropertyTypeDefinition<I> implements ParsableTrait<I>{
@@ -133,7 +133,7 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
     //     return propertyvalue
     // }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>): string[]{
+    create(propName: string, fieldName: string, context: DatabaseContext<any>): string[]{
         const client = context.client()
         if( client.startsWith('pg') ){
             return [
@@ -186,7 +186,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
     //     }
     //     return propertyvalue
     // }
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -226,7 +226,7 @@ export class NumberNotNullType extends FieldPropertyTypeDefinition<number> {
     //     }
     //     return propertyvalue
     // }
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -264,7 +264,7 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
     //     return propertyvalue
     // }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
@@ -292,7 +292,7 @@ export class DecimalNotNullType extends FieldPropertyTypeDefinition<number>  {
         return false
     }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
@@ -320,7 +320,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         return true
     }
 
-    override parseRaw(rawValue: any, context: DatabaseContext<any, any>,propName: string): boolean | null {
+    override parseRaw(rawValue: any, context: DatabaseContext<any>,propName: string): boolean | null {
         //TODO: warning if nullable is false but value is null
         if(rawValue === null)
             return null
@@ -333,14 +333,14 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    override parseProperty(propertyvalue: boolean | null, context: DatabaseContext<any, any>,propName: string): any {
+    override parseProperty(propertyvalue: boolean | null, context: DatabaseContext<any>,propName: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue === null? null: (propertyvalue? '1': '0')
     }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -366,7 +366,7 @@ export class BooleanNotNullType extends FieldPropertyTypeDefinition<boolean>  {
         return true
     }
 
-    override parseRaw(rawValue: any, context: DatabaseContext<any, any>,propName: string): boolean {
+    override parseRaw(rawValue: any, context: DatabaseContext<any>,propName: string): boolean {
         if(rawValue === null)
             throw new Error('Not expected null')
         else if(rawValue === true)
@@ -378,14 +378,14 @@ export class BooleanNotNullType extends FieldPropertyTypeDefinition<boolean>  {
         }
         throw new Error('Cannot parse Raw into Boolean')
     }
-    override parseProperty(propertyvalue: boolean, context: DatabaseContext<any, any>,propName: string): any {
+    override parseProperty(propertyvalue: boolean, context: DatabaseContext<any>,propName: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue === null? null: (propertyvalue? '1': '0')
     }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -424,7 +424,7 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
     //     return propertyvalue
     // }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         let c = [this.options.length].filter(v => v).join(',')
         return [
@@ -466,7 +466,7 @@ export class StringNotNullType extends FieldPropertyTypeDefinition<string> {
     //     return propertyvalue
     // }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         let c = [this.options.length].filter(v => v).join(',')
         return [
@@ -498,14 +498,14 @@ export class DateType extends FieldPropertyTypeDefinition<Date | null> {
         return rawValue === null? null: new Date(rawValue)
     }
 
-    override parseProperty(propertyvalue: Date | null, context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date | null, context: DatabaseContext<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -537,14 +537,14 @@ export class DateNotNullType extends FieldPropertyTypeDefinition<Date> {
         return new Date(rawValue)
     }
 
-    override parseProperty(propertyvalue: Date, context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date, context: DatabaseContext<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue
     }
 
-    create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+    create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
             [
@@ -575,14 +575,14 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
         return rawValue === null? null: new Date(rawValue)
     }
 
-    override parseProperty(propertyvalue: Date | null, context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date | null, context: DatabaseContext<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue
     }
 
-   create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+   create(propName: string, fieldName: string, context: DatabaseContext<any>){
        const client = context.client()
         let c = [this.options.precision].filter(v => v).join(',')
         return [
@@ -613,14 +613,14 @@ export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
         return new Date(rawValue)
     }
 
-    override parseProperty(propertyvalue: Date, context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: Date, context: DatabaseContext<any>, propName?: string): any {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
         return propertyvalue
     }
 
-   create(propName: string, fieldName: string, context: DatabaseContext<any, any>){
+   create(propName: string, fieldName: string, context: DatabaseContext<any>){
        const client = context.client()
         let c = [this.options.precision].filter(v => v).join(',')
         return [
@@ -648,7 +648,7 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
         return true
     }
 
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any, any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
+    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
         if(!(rawOrDataset instanceof Dataset)){
             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
         }
@@ -662,7 +662,7 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
         })
     }
  
-    override parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName?: string): (T extends ParsableTrait<infer I>? I:never) {
+    override parseRaw(rawValue: any, context: DatabaseContext<any>, propName?: string): (T extends ParsableTrait<infer I>? I:never) {
         let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -678,7 +678,7 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
         return this.parsable.parseRaw(parsed, context)
     }
     
-    override parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I:never), context: DatabaseContext<any, any>, propName?: string): any {
+    override parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I:never), context: DatabaseContext<any>, propName?: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -703,7 +703,7 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
         return true
     }
 
-    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any, any>, singleColumnName?: string): Knex.Raw | Promise<Knex.Raw> {
+    transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw | Promise<Knex.Raw> {
 
         if(!(rawOrDataset instanceof Dataset)){
             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
@@ -716,7 +716,7 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
         })
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any, any>, propName: string): (T extends ParsableTrait<infer I>? I[]:never) {
+    parseRaw(rawValue: any, context: DatabaseContext<any>, propName: string): (T extends ParsableTrait<infer I>? I[]:never) {
         // let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -748,7 +748,7 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
         throw new Error('It is not supported.')
     }
     
-    parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I[]:never), context: DatabaseContext<any, any>, propName: string): any {
+    parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I[]:never), context: DatabaseContext<any>, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }

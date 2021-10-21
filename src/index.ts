@@ -115,7 +115,7 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 
 export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
-> = (context: DatabaseContext<any, any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+> = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
 export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
 
@@ -146,7 +146,7 @@ type SelectiveArgFunction = ((root: SelectorMap<Schema<any>>) => SelectiveArg )
 
 type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
  
-type ExtractValueTypeDictFromPropertyDict_FieldsOnly<S> = ExtractValueTypeDictFromPropertyDict< ExtractFieldPropDictFromDict<S>> 
+type ExtractValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
@@ -163,25 +163,25 @@ type ExtractSpecificPropertyFromSchema<S extends Schema<any>, name extends strin
     ): never
                 
 export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
-    ExtractValueTypeDictFromPropertyDict_FieldsOnly<S>
+    ExtractValueTypeDictFromSchema_FieldsOnly<S>
     & {
         [k in keyof SSA["select"] & string]: ConstructValueTypeDictBySelectiveArgAttribute<SSA["select"][k], ExtractSpecificPropertyFromSchema<S, k> >
     })
 
-export type ConstructPropertyDictBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
-            ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
-            :  (
-                SSA extends SelectiveArg?
-                ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
-                : 
-                S
-            )
+// export type ConstructPropertyBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
+//             ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
+//             :  (
+//                 SSA extends SelectiveArg?
+//                 ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
+//                 : 
+//                 S
+//             )
 
-export type ConstructPropertyDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
-    ExtractFieldPropDictFromSchema<S>
-    & {
-        [k in keyof SSA["select"] & string]: ConstructPropertyDictBySelectiveArgAttribute<SSA["select"][k],  ExtractSpecificPropertyFromSchema<S, k> >
-    })
+// export type ConstructPropertyDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
+//     ExtractFieldPropDictFromSchema<S>
+//     & {
+//         [k in keyof SSA["select"] & string]: ConstructPropertyBySelectiveArgAttribute<SSA["select"][k],  ExtractSpecificPropertyFromSchema<S, k> >
+//     })
 
 
     
@@ -209,10 +209,10 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
 }
 
 
-export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryMap extends {[key in keyof ModelMap]: ModelRepository< ModelMap[key] >}>{
+export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
     #globalKnexInstance: Knex | null = null
-    #contextMap = new Map<string, DatabaseContext<ModelMap, ModelRepositoryMap>>()
+    #contextMap = new Map<string, DatabaseContext<ModelMap>>()
 
     defaultORMConfig: ORMConfig<any> = {
         // primaryKeyName: 'id',
@@ -229,7 +229,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryM
 
     #ormConfig: ORMConfig<ModelMap>
     // @ts-ignore
-    #registeredModels: ModelMap = {}
+    #modelMap: ModelMap = {}
 
     constructor(newConfig: Partial<ORMConfig<ModelMap>>){
         let newOrmConfig: ORMConfig<ModelMap> = Object.assign({}, this.defaultORMConfig, newConfig)
@@ -244,13 +244,17 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryM
         return Object.assign({}, this.#ormConfig)
     }
 
+    get modelMap(){
+        return this.#modelMap
+    }
+
     private register(){
         //register models 
         if(this.#ormConfig.models){
             let models = this.#ormConfig.models
             Object.keys(models).forEach(key => {
                 // @ts-ignore
-                this.#registeredModels[key] = models[key]
+                this.#modelMap[key] = models[key]
             })
         }
 
@@ -268,7 +272,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryM
                     // registerEntity(entityName, entityClass.default);
 
                     // @ts-ignore
-                    this.#registeredModels[entityName] = entityClass.default
+                    this.#modelMap[entityName] = entityClass.default
                 }
             })
         }
@@ -278,12 +282,12 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryM
         // })
     }
 
-    getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<ModelMap, ModelRepositoryMap> {
+    getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<ModelMap> {
         //!!!important: lazy load, don't always return new object
         const key = JSON.stringify(config)
         let repo = this.#contextMap.get(key)
         if(!repo){
-            repo = new DatabaseContext(this, this.#registeredModels, config)
+            repo = new DatabaseContext<ModelMap>(this, config)
             this.#contextMap.set(key, repo)
         }
         return repo
@@ -329,23 +333,24 @@ export type DatabaseContextConfig = {
 } & TableOptions
 
 //(ModelMap[key] extends Model<infer E>?E:never) 
-export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}, ModelRepositoryMap extends {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}> {
+export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     #config: Partial<DatabaseContextConfig> | null = null
     readonly orm
     // private registeredEntities: EntityMap
-    public models: ModelRepositoryMap
-    #modelClassMap: ModelMap
+    public models: {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}
+    // #modelClassMap: ModelMap
     
-    constructor(orm: ORM<ModelMap, ModelRepositoryMap>, modelClassMap: ModelMap, config?: Partial<DatabaseContextConfig> ){
+    constructor(orm: ORM<ModelMap>, config?: Partial<DatabaseContextConfig> ){
         this.orm = orm
         this.#config = config ?? {}
-        this.#modelClassMap = modelClassMap
+        // this.#modelClassMap = modelClassMap
 
-        this.models = Object.keys(modelClassMap).reduce( (acc, key) => {
-            let modelClass = modelClassMap[key]
-            acc[key] = new ModelRepository(orm,this, modelClass, key)
+        this.models = Object.keys(orm.modelMap).reduce( (acc, key) => {
+            let modelClass = orm.modelMap[key]
+            //@ts-ignore
+            acc[key] = new ModelRepository<any>(orm,this, modelClass, key)
             return acc
-        }, {} as {[key:string]: ModelRepository<any>}) as ModelRepositoryMap
+        }, {} as {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>})
     }
 
     get config(){
@@ -598,7 +603,7 @@ export type HookInfo = {
     rootClassName: string
 }
 
-export type HookAction = <T>(context: DatabaseContext<any, any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
+export type HookAction = <T>(context: DatabaseContext<any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
 
 
 

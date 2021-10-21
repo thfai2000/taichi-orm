@@ -1,8 +1,8 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructPropertyDictBySelectiveArg, ConstructValueTypeDictBySelectiveArg, Scalarable } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Dataset, Expression, Scalar } from "./Builder"
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, Parsable, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
@@ -101,11 +101,11 @@ export abstract class Model {
         {
 
         let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(
-            context: DatabaseContext<any, any>,
+            context: DatabaseContext<any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
-            ): Scalarable< ArrayType< Schema<
-                ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+            ): Scalarable< ArrayType< Parsable<
+                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > > >{
 
 
@@ -167,11 +167,11 @@ export abstract class Model {
         {
 
         let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
-            context: DatabaseContext<any, any>,
+            context: DatabaseContext<any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
-            ): Scalarable< ObjectType<Schema<
-                ConstructPropertyDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+            ): Scalarable< ObjectType<Parsable<
+                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             >> > => {
             
             let dataset = new Dataset()
@@ -214,7 +214,7 @@ export abstract class Model {
 
             let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
 
-            return r as Scalarable< ObjectType<Schema<any>>>
+            return r as Scalarable< ObjectType<Parsable<any>>>
         }
 
         return this.compute( computeFn )
@@ -224,12 +224,12 @@ export abstract class Model {
 
 export class ModelRepository<MT extends typeof Model>{
 
-    #orm: ORM<any, any>
+    #orm: ORM<any>
     #model: InstanceType<MT>
     #modelClass: MT
-    #context: DatabaseContext<any, any>
+    #context: DatabaseContext<any>
 
-    constructor(orm: ORM<any, any>, context: DatabaseContext<any, any>, modelClass: MT, modelName: string){
+    constructor(orm: ORM<any>, context: DatabaseContext<any>, modelClass: MT, modelName: string){
         this.#orm = orm
         this.#context = context
 
