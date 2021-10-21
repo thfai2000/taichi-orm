@@ -309,18 +309,19 @@ export class ModelRepository<MT extends typeof Model>{
     //         })
     // }
 
-    // /**
-    //  * find array of records
-    //  * @param applyFilter 
-    //  * @returns the found record
-    //  */
-    // find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(applyFilter?: F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> > >{
-    //     return new DatabaseQueryRunner(
-    //         async (executionOptions: ExecutionOptions) => {
-    //             let rows = await this._find(executionOptions, applyFilter)
-    //             return rows
-    //     })
-    // }
+    /**
+     * find array of records
+     * @param applyFilter 
+     * @returns the found record
+     */
+    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(applyFilter?: F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> > >{
+        return new DatabaseQueryRunner(
+            async (executionOptions: ExecutionOptions) => {
+                throw new Error('xxx')
+                // let rows = await this._find(executionOptions, applyFilter)
+                // return rows
+        })
+    }
 
     // private async _find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(executionOptions: ExecutionOptions, applyOptions?: F ) {   
         

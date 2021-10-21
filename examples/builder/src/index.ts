@@ -1,10 +1,11 @@
-import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
+import { Column, Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import {snakeCase} from 'lodash'
-import { ORM } from "../../../dist"
+import { ConstructPropertyDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
-import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel } from "../../../dist/util"
+import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
+import { Schema } from "../../../dist/Schema"
 
 
 (async() => {
@@ -34,12 +35,43 @@ import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromMo
 
     await createModels()
 
+
+    let a = await Shop.find({
+        select: {
+            products: {
+                select: {
+                    shop: {}
+                }
+            }
+        }
+    })
+
     
     let s = Shop.datasource('shop')
     
     let p = Product.datasource('product')
 
-    // p.selectorMap().myABC().toScalar()
+    let col = s.selectorMap().products({
+        select: {
+            shop: {}
+        }
+    })
+
+    let aaa = await col.execute()
+
+
+    type A =  <F extends SingleSourceArg<ExtractSchemaFromModelType<typeof ProductClass>>>( args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ProductClass>>) => F) | undefined) => 
+        Column<"products", ArrayType<Schema<ConstructPropertyDictBySelectiveArg<ExtractSchemaFromModelType<typeof ProductClass>, F>>>>
+
+    let aaaaa : A
+
+    let cc = await aaaaa!({
+        select: {
+            shop: {}
+        }
+    }).execute()
+    
+
     
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
