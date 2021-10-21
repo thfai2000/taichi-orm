@@ -1,6 +1,6 @@
 
 import { Knex } from "knex"
-import { CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap } from "."
+import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap } from "."
 import { Column, Dataset, makeRaw, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"

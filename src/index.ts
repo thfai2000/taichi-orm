@@ -88,14 +88,16 @@ export type TwoSourcesArgFunction<Root extends Schema<any>, RootName extends str
 export type SelectorMap<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
             
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>? 
-            CompiledComputeFunction<key, Arg, P>              
-        : 
-            ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
-            Column<key, D>:
-            ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D>?
-            Column<key, D>:
-            never    
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
+        ArgR:
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>?
+        CompiledComputeFunction<key, Arg, P>: 
+        ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
+        Column<key, D>:
+        ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D>?
+        Column<key, D>:
+        never  
+        
 } & {
     $allFields: {
         [key in keyof ExtractFieldPropDictFromSchema<E> & string ]:
@@ -113,11 +115,44 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 }
 
 
+
+// export type ComputeFunction<DS extends Datasource<any, any>, 
+//     CompiledComputeFunction2<any, ARG, R>
+// > = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+
+// export type CompiledComputeFunction2<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
+
+
+// type AA<C> = (a: C) => number 
+
+// type CC<T> = (a: T) => T extends boolean? string: boolean
+
+// type B<A extends ((...args: any[]) => any) >= (f: Parameters<A>[0] ) => ReturnType<A>
+
+
+
+// let b: B<AA<boolean>>
+
+// let c: B<CC<boolean>>
+
+// let x = b!(true)
+
+// let y = c!(true)
+
+// let p: (f: (...args: any[]) => any ) => void
+
+// p!( c! )
+export type CompiledComputeFunctionDynamicReturn<Name extends string> = ((arg?: any) => Column<Name, PropertyTypeDefinition<any>> )
+
+export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
+    CCF extends CompiledComputeFunctionDynamicReturn<any>
+> = (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Column<any, infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Column<any, infer P>?P: never >>
+
 export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
 > = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
-export type CompiledComputeFunction<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
+export type CompiledComputeFunction<Name extends string, Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Column<Name, P>
 
 export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<S>>>
 
@@ -380,7 +415,10 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     schemaSqls = () => {
         let m = this.models
-        let sqls = Object.keys(m).map(k => m[k].model).map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix})).filter(t => t)
+        let sqls: string[] = Object.keys(m)
+            .map(k => m[k].model)
+            .map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix}))
+            .filter(notEmpty)
         return sqls
     }
 

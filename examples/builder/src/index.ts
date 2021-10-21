@@ -51,6 +51,9 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
     
     let p = Product.datasource('product')
 
+
+    let aa = s.selectorMap().products
+
     let col = s.selectorMap().products({
         select: {
             shop: {
@@ -88,8 +91,6 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
     //         shop: {}
     //     }
     // }).execute()
-    
-
     
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
@@ -146,11 +147,11 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
                     ...product.shopId.equals(10).asColumn('nini').value(),
                     ...product.ddd.value(),
                     test: Scalar.number(` 5 + ?`, [3]),
-                    ...shop.products({
+                    products: shop.products({
                         select: {
                             shop: {}
                         }
-                    }).value()
+                    })
                 })
             ).offset(0).limit(4000).execute(orm.getContext()).withOptions({
                 onSqlRun: console.log

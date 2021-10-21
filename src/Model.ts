@@ -1,7 +1,7 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
-import { Dataset, Expression, Scalar } from "./Builder"
+import { Column, Dataset, Expression, Scalar } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, Parsable, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 
@@ -35,7 +35,11 @@ export abstract class Model {
         return new FieldProperty<D>( new definition() )
     }
 
-    static compute<M extends typeof Model, F extends ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any>>(
+    static compute<M extends typeof Model, F extends 
+        ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any> |   
+        ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any>
+        = ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any>
+        >(
             this: M,
             compute: F) 
             : ComputeProperty<F> {
@@ -97,16 +101,29 @@ export abstract class Model {
         relatedModelType: RootModelType, 
         relatedBy: string,
         parentKey: string = 'id'
-        )
-        {
+        ){
 
-        let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(
-            context: DatabaseContext<any>,
-            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
-            ): Scalarable< ArrayType< Parsable<
+        type ArgR<Name extends string> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Column<Name, ArrayType< Parsable<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-            > > >{
+            > >>
+               
+        let computeFn: ComputeFunctionDynamicReturn<  
+            Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+            ArgR<any>
+        > = function(context: DatabaseContext<any>,
+            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+            args?
+        ){
+
+        // }
+            
+        // let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(
+        //     context: DatabaseContext<any>,
+        //     parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+        //     args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
+        //     ): Scalarable< ArrayType< Parsable<
+        //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+        //     > > >{
 
 
             let dataset = new Dataset()
@@ -166,13 +183,26 @@ export abstract class Model {
         )
         {
 
-        let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
-            context: DatabaseContext<any>,
-            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
-            ): Scalarable< ObjectType<Parsable<
+
+        type ArgR<Name extends string> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Column<Name, ObjectType< Parsable<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-            >> > => {
+            > >>
+               
+        let computeFn: ComputeFunctionDynamicReturn<  
+            Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+            ArgR<any>
+        > = function(context: DatabaseContext<any>,
+            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+            args?
+        ){
+
+        // let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
+        //     context: DatabaseContext<any>,
+        //     parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+        //     args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
+        //     ): Scalarable< ObjectType<Parsable<
+        //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
+        //     >> > => {
             
             let dataset = new Dataset()
             let relatedSchema = context.getRepository(relatedModelType)
@@ -224,13 +254,13 @@ export abstract class Model {
 
 export class ModelRepository<MT extends typeof Model>{
 
-    #orm: ORM<any>
+    // #orm: ORM<any>
     #model: InstanceType<MT>
     #modelClass: MT
     #context: DatabaseContext<any>
 
-    constructor(orm: ORM<any>, context: DatabaseContext<any>, modelClass: MT, modelName: string){
-        this.#orm = orm
+    constructor(context: DatabaseContext<any>, modelClass: MT, modelName: string){
+        // this.#orm = orm
         this.#context = context
 
         //must be the last statement because the creation of schema may require context
@@ -260,9 +290,9 @@ export class ModelRepository<MT extends typeof Model>{
         return this.#model.schema()
     }
 
-    get orm(){
-        return this.#orm
-    }
+    // get orm(){
+    //     return this.#orm
+    // }
 
     // createOne(data: PartialMutationEntityPropertyKeyValues<ExtractSchemaFromModelType<MT>>) {
         
