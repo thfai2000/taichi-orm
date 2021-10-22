@@ -45,12 +45,13 @@ const jsonArray = (client: string, arrayOfColNames: Array<any> = []) => {
 export interface ParsableTrait<I> {
     parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
     parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
+    prepareForParsing(context: DatabaseContext<any>): Promise<void>
 }
 
-export type Parsable<I> = {
-    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
-    parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
-}
+// export type Parsable<I> = {
+//     parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
+//     parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
+// }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
 export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
@@ -61,6 +62,9 @@ export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
 
     constructor(options?: any){
         this.options = this.options ??options
+    }
+
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
     }
 
     parseRaw(rawValue: any, context: DatabaseContext<any>, prop: string): I {
@@ -648,6 +652,11 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
         return true
     }
 
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        await super.prepareForParsing(context)
+        await this.parsable.prepareForParsing(context)
+    }
+
     transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
         if(!(rawOrDataset instanceof Dataset)){
             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
@@ -701,6 +710,11 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
 
     get nullable() {
         return true
+    }
+
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        await super.prepareForParsing(context)
+        await this.parsable.prepareForParsing(context)
     }
 
     transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw | Promise<Knex.Raw> {

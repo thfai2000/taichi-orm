@@ -1,9 +1,10 @@
-import { Column, Dataset, makeRaw, Scalar } from "../../../dist/Builder"
+import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
+import util from 'util'
 import {snakeCase} from 'lodash'
 import { ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, Parsable, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
 import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExpandRecursively, Expand } from "../../../dist/util"
 import { FieldProperty, Schema } from "../../../dist/Schema"
 
@@ -32,39 +33,31 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
         models: {Shop, Product} 
     } = orm.getContext()
 
+    let context = orm.getContext()
+
 
     await createModels()
 
 
-    // let a = await Shop.find({
-    //     select: {
-    //         products: {
-    //             select: {
-    //                 shop: {}
-    //             }
-    //         }
-    //     }
-    // })
 
-    
     let s = Shop.datasource('shop')
     
     let p = Product.datasource('product')
 
 
-    let aa = s.selectorMap().products
+    // let aa = s.selectorMap().products
 
-    let col = s.selectorMap().products({
-        select: {
-            shop: {
-                select: {
-                    products: {}
-                }
-            }
-        }
-    })
+    // let col = s.selectorMap().products({
+    //     select: {
+    //         shop: {
+    //             select: {
+    //                 products: {}
+    //             }
+    //         }
+    //     }
+    // })
 
-    let aaa = await col.execute()
+    // let aaa = await col.execute()
 
     // let xx:  ExtractSchemaFromModelType<typeof ProductClass>
 
@@ -143,21 +136,25 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
             .select(
                 ({shop, product}) => ({
                     ...shop.$allFields,
-                    ...shop.hour.value(),
-                    ...product.shopId.equals(10).asColumn('nini').value(),
-                    ...product.ddd.value(),
+                    hour: shop.hour,
+                    nini: product.shopId.equals(10),
+                    DDD: product.ddd,
                     test: Scalar.number(` 5 + ?`, [3]),
                     products: shop.products({
                         select: {
-                            shop: {}
+                            shop: {
+                                select: {
+                                    products: {}
+                                }
+                            }
                         }
                     })
                 })
-            ).offset(0).limit(4000).execute(orm.getContext()).withOptions({
+            ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
             })
     
-    console.log('xxx', result)
+    console.log('xxx', util.inspect(result, {showHidden: false, depth: null, colors: true}))
 
     let r0 = await update()
         .from(Shop.datasource("myShop"))
@@ -170,13 +167,14 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
 
     let r = await dataset()
         .from(Shop.datasource("myShop"))
+        // .select( ({myShop}) => myShop.$allFields)
         .selectProps('name','myShop.id','myShop.products')
         // .toScalar(new ArrayType(Shop.schema))
         .execute().withOptions({
             onSqlRun: console.log
         })
 
-    console.log('testttttttttttttt', r)
+    console.log('testttttttttttttt', util.inspect(r, {showHidden: false, depth: null, colors: true}))
 
     let r2 = await dataset()
         .from(Shop.datasource("myShop"))
@@ -197,7 +195,7 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
             onSqlRun: console.log
         })
 
-    console.log('test groupBy', r2[0].a)
+    console.log('test groupBy', r2[0])
 
 
     //Done: dynamic result type on 'find'

@@ -1,7 +1,7 @@
-
+import util from 'util'
 import { Knex } from "knex"
 import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap } from "."
-import { Column, Dataset, makeRaw, Scalar } from "./Builder"
+import { Dataset, makeRaw, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
@@ -55,6 +55,8 @@ export abstract class Property {
         return this.#name
     }
 
+    abstract prepareForParsing(context: DatabaseContext<any>): Promise<void>
+
 }
 
 export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends Property {
@@ -88,6 +90,10 @@ export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends P
 
         return this.#definition
     }
+
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        await this.definition.prepareForParsing(context)
+    }
 }
 
 export class ComputeProperty<F extends ComputeFunction<any, any, any> > extends Property {
@@ -104,6 +110,10 @@ export class ComputeProperty<F extends ComputeFunction<any, any, any> > extends 
             super()
             this.compute = compute
         }
+    
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        //none
+    }
 }
 
 export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends StrictTypeProperty<D> {
@@ -136,6 +146,7 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends S
         this._fieldName = value
         return this
     }
+
 }
 
 export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Property {
@@ -146,6 +157,10 @@ export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Prope
             super()
             this.scalar = scalar
         }
+
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        await (await this.scalar.getDefinition(context)).prepareForParsing(context)
+    }
 }
 
 export class Schema<PropertyDict extends {[key:string]: Property}> implements ParsableTrait<ExtractValueTypeDictFromPropertyDict<PropertyDict>>{
@@ -176,6 +191,11 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
             }
         })
     }
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        await Promise.all(this.properties.map( async(prop) => {
+            await prop.prepareForParsing(context)
+        }))
+    }
 
     parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
         return this.parseDataBySchema(rawValue, context)
@@ -193,6 +213,7 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
                 if( p instanceof ScalarProperty){
 
                     const propType = p.scalar.definitionForParsing()
+                    // console.log('propType', propName, propType)
                     /**
                      * it can be boolean, string, number, Object, Array of Object (class)
                      * Depends on the props..
@@ -201,7 +222,7 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
                     // if(metaInfo.propName === 'products'){
                     //     start = new Date()
                     // }
-                    let propValue = propType.parseRaw(row[propName], context, propName) ?? row[propName]
+                    let propValue = propType.parseRaw ? propType.parseRaw(row[propName], context, propName) : row[propName]
                     
                     // if(metaInfo.propName === 'products'){
                     //     //@ts-ignore
@@ -303,10 +324,10 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
-    getAllFieldProperty: ()  => Column<string, PropertyTypeDefinition<any>>[]
-    getFieldProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>>
-    getScalarProperty: <Name extends string>(name: Name) => Column<Name, PropertyTypeDefinition<any>> 
-    getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<Name, ARG, R>
+    getAllFieldProperty: () => { [key: string]: Scalar<PropertyTypeDefinition<any>>}
+    getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>>
+    getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>> 
+    getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -337,11 +358,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     if(sKey === '$allFields'){
-                        let props = datasource.getAllFieldProperty()
-                        return props.reduce( (acc, item) => {
-                            acc = Object.assign(acc, item.value())
-                            return acc
-                        }, {} as {[key:string]: Column<any, any>} )
+                        return datasource.getAllFieldProperty()
                     } else {
                         let prop = oTarget.schema.propertiesMap[sKey]
                         if(prop instanceof FieldProperty){
@@ -375,19 +392,25 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     //     }
     // }
 
-    getAllFieldProperty(): Column<string, PropertyTypeDefinition<any>>[] {
+    getAllFieldProperty(): { [key: string]: Scalar<PropertyTypeDefinition<any>>} {
         return Object.keys(this.schema.propertiesMap)
-        .map(key => (this.schema.propertiesMap[key] instanceof FieldProperty)? this.getFieldProperty(key) :null )
-        .filter(notEmpty)
+        .reduce( (acc, key) => {
+             if(this.schema.propertiesMap[key] instanceof FieldProperty){
+                acc[key] = this.getFieldProperty(key)
+             }
+             return acc
+
+            }, {} as { [key: string]: Scalar<PropertyTypeDefinition<any>>}
+        )
     }
 
-    getFieldProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
+    getFieldProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>> {
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof FieldProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Column(name, (context) => {
+            return new Scalar((context) => {
                 const orm = context.orm
                 const client = context.client()
                 let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
@@ -397,17 +420,17 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
 
-    getComputeProperty<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<Name, ARG, R>{
+    getComputeProperty<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<ARG, R>{
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
             throw new Error(`Not field property ${name}`)
         }else{
             const cProp = prop
             return (args?: ARG) => {
-            
-                let col = new Column<Name, R>(name, (context) => {
+                let col = new Scalar<R>((context) => {
+                    // console.log('getComputeProperty -> ', name, args)
                     const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, context, this, args)
-                    let r = thenResult( subquery, scalarable => scalarable.toScalar() )
+                    let r = thenResult( subquery, scalarable => scalarable.toScalar())
                     return r
                 }, null)
 
@@ -416,13 +439,13 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }
     }
 
-   getScalarProperty<Name extends string>(name: Name): Column<Name, PropertyTypeDefinition<any>> {
+    getScalarProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>> {
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof ScalarProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Column(name, fieldProp.scalar, null)
+            return new Scalar(fieldProp.scalar, null)
         }
     }
     

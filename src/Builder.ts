@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { v4 as uuidv4 } from 'uuid'
-import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExtractValueTypeDictFromPropertyDict, Scalarable, ExecutionOptions, DatabaseQueryRunner, ExtractValueTypeDictFromSchema, DatabaseMutationRunner } from "."
+import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExtractValueTypeDictFromPropertyDict, Scalarable, ExecutionOptions, DatabaseQueryRunner, ExtractValueTypeDictFromSchema, DatabaseMutationRunner, PropertyDefinition } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType, PrimaryKeyType } from "./PropertyType"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./Schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection } from "./util"
 
@@ -150,7 +150,7 @@ abstract class StatementBase {
 
     abstract toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder>
 
-    abstract execute<S extends Schema<any>>(this: StatementBase, repo?: DatabaseContext<any>): any
+    abstract execute(this: StatementBase, repo?: DatabaseContext<any>): any
 }
 
 abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource extends Datasource<any, any> = Datasource<any, any>>  extends StatementBase {
@@ -308,11 +308,11 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     }
 
     protected propNameArray2ScalarMap(properties: string[]){
-        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Column<string, any>}}
+        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Scalar<any>}}
         let fields = properties
         let nameMap: { [key: string]: Scalar<any> } = fields.reduce( (acc, key:string) => {
             let [source, field] = key.split('.')
-            let item: Column<any, any> | CompiledComputeFunction<any, any, any> | null = null
+            let item: Scalar<any> | CompiledComputeFunction<any, any> | null = null
             if(!field){
                 field = source
                 if(!this.fromItem){
@@ -327,10 +327,10 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
             if(!item){
                 throw new Error('Cannot resolve field')
-            }else if(item instanceof Column){
-                acc = Object.assign({}, acc, item.value() )
+            }else if(item instanceof Scalar){
+                acc = Object.assign({}, acc, {[field]: item})
             }else {
-                acc = Object.assign({}, acc, item().value() )    
+                acc = Object.assign({}, acc, {[field]: item()})    
             }
             
             return acc
@@ -647,6 +647,9 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             
                     const len = rows.length
                     const schema = current.schema()
+                    
+                    await schema.prepareForParsing(context)
+
                     let parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]
                     // console.log(schema)
                     for(let i=0; i <len;i++){
@@ -738,7 +741,7 @@ export class InsertStatement<T extends TableSchema<any>>
             if(!schemaUUIDPropName) {
                 throw new Error('No UUID')
             }
-            additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`)}
+            additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`, [], new StringNotNullType() )}
         }
 
         const insertItems = await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, this.#insertItems, additionalFields), context)
@@ -1057,11 +1060,14 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
                     if(ex.declaredDefinition){
                         return ex.declaredDefinition
-                    }else{
-                        return resolveDefinition(ex.toRealRaw())
+                    } else {
+                        let raw = ex.toRealRaw()
+                        return resolveDefinition(raw)
                     }
                 } else if(ex instanceof Function) {
                     return resolveDefinition(ex(repo))
+                } else {
+                    return new PropertyDefinition()
                 }
             })
         }
@@ -1101,10 +1107,10 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
             })
         }
 
-        let raw = thenResult( this.definition(repo), definition =>  {
+        let raw = thenResult( this.getDefinition(repo), definition =>  {
             // if(!definition){
-            //     // console.log('......', this.expressionOrDataset.toString())
-            //     throw new Error('It cannot toRaw because without definition')
+            //     console.log('......', this.declaredDefinition, this.calculateDefinition, this.expressionOrDataset.toString())
+            //     // throw new Error('It cannot toRaw because without definition')
             // }
             return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
                 
@@ -1123,9 +1129,10 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
     }
 
-    async definition(context?: DatabaseContext<any>): Promise<PropertyTypeDefinition<any>>{
+    async getDefinition(context?: DatabaseContext<any>): Promise<PropertyTypeDefinition<any>>{
         if(!this.#calculatedDefinition){
             this.#calculatedDefinition = await this.calculateDefinition(context)
+            // console.log('calculate the definition....', this.#calculatedDefinition)
         }
         return this.#calculatedDefinition
     }
@@ -1137,9 +1144,9 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         return this.#calculatedRaw
     }
 
-    asColumn<Name extends string>(propName: Name): Column<Name, T> {
-        return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
-    }
+    // asColumn<Name extends string>(propName: Name): Column<Name, T> {
+    //     return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
+    // }
 
     toScalar(){
         return this
@@ -1172,27 +1179,27 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     }
 }
 
-export class Column<Name extends string, T extends PropertyTypeDefinition<any>> extends Scalar<T>{
-    alias: Name
-    // scalarable: Scalarable<T> | Promise<Scalarable<T>>
+// export class Column<Name extends string, T extends PropertyTypeDefinition<any>> extends Scalar<T>{
+//     alias: Name
+//     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
 
-    constructor(alias: Name, expressionOrDataset: RawExpression, 
-        definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any> | null){
-        super(expressionOrDataset, definition, context)
-        this.alias = alias
-        // this.scalarable = scalarable
-    }
+//     constructor(alias: Name, expressionOrDataset: RawExpression, 
+//         definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any> | null){
+//         super(expressionOrDataset, definition, context)
+//         this.alias = alias
+//         // this.scalarable = scalarable
+//     }
 
-    value(): { [key in Name]: Scalar<T> } {
-        const key = this.alias
-        //@ts-ignore
-        return { [key]: new Scalar( this.expressionOrDataset, this.declaredDefinition, this.context) }
-    }
+//     value(): { [key in Name]: Scalar<T> } {
+//         const key = this.alias
+//         //@ts-ignore
+//         return { [key]: new Scalar( this.expressionOrDataset, this.declaredDefinition, this.context) }
+//     }
 
-    clone(): Column<Name, T> {
-        return new Column(this.alias, this.expressionOrDataset, this.declaredDefinition, this.context)
-    }
-}
+//     clone(): Column<Name, T> {
+//         return new Column(this.alias, this.expressionOrDataset, this.declaredDefinition, this.context)
+//     }
+// }
 
 export const makeRaw = (context: DatabaseContext<any>, sql: any, args?: any[]) => {
     let r = context.orm.getKnexInstance().raw(sql, args ?? [])

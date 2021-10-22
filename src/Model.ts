@@ -1,10 +1,10 @@
 import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
-import { Column, Dataset, Expression, Scalar } from "./Builder"
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, Parsable, PrimaryKeyType, StringNotNullType } from "./PropertyType"
+import { Expression, Scalar, Dataset } from "./Builder"
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
-
+import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
 
@@ -17,7 +17,6 @@ export abstract class Model {
     abstract id: FieldProperty<PrimaryKeyType>
     uuid?: FieldProperty<StringNotNullType> = undefined
 
-    
     constructor(repository: ModelRepository<any>, entityName: string){
         this.#repository = repository
         this.#entityName = entityName
@@ -103,13 +102,13 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        type ArgR<Name extends string> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Column<Name, ArrayType< Parsable<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
         let computeFn: ComputeFunctionDynamicReturn<  
             Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            ArgR<any>
+            ArgR
         > = function(context: DatabaseContext<any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
@@ -136,7 +135,7 @@ export abstract class Model {
         
             let newDataset = dataset.from(relatedSource)
 
-            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+            let props = relatedSource.getAllFieldProperty()
 
             let resolvedArgs: SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> | undefined
             
@@ -153,7 +152,7 @@ export abstract class Model {
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
-                    return relatedSource.getComputeProperty(key)(arg).value()
+                    return { [key]: relatedSource.getComputeProperty(key)(arg) }
                 }).reduce( (acc,v) => Object.assign(acc, v), {})
 
                 dataset.select(Object.assign(props, computedValues))
@@ -184,13 +183,13 @@ export abstract class Model {
         {
 
 
-        type ArgR<Name extends string> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Column<Name, ObjectType< Parsable<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
         let computeFn: ComputeFunctionDynamicReturn<  
             Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            ArgR<any>
+            ArgR
         > = function(context: DatabaseContext<any>,
             parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
@@ -223,15 +222,14 @@ export abstract class Model {
                 }
             }
 
-            let props = relatedSource.getAllFieldProperty().map(col => col.value() ).reduce( (acc,v) => Object.assign(acc, v), {})
+            let props = relatedSource.getAllFieldProperty()
             if(resolvedArgs?.select){
                 let computed = resolvedArgs.select
                 let computedValues = Object.keys(computed).map(key => {
                     //@ts-ignore
                     let arg = computed[key]
-                    return relatedSource.getComputeProperty(key)(arg).value()
+                    return { [key]: relatedSource.getComputeProperty(key)(arg)}
                 }).reduce( (acc,v) => Object.assign(acc, v), {})
-
                 dataset.select(Object.assign(props, computedValues))
             }else {
                 dataset.select(props)
@@ -244,7 +242,7 @@ export abstract class Model {
 
             let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
 
-            return r as Scalarable< ObjectType<Parsable<any>>>
+            return r as Scalarable< ObjectType<ParsableTrait<any>>>
         }
 
         return this.compute( computeFn )

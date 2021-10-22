@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import {Dataset, Scalar, Column, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
@@ -28,7 +28,7 @@ import {ExtractComputePropDictFromSchema} from './util'
 // }
 
 
-export type QueryOrderBy = ( (string| Column<any, any> ) | {column: (string|Column<any, any>), order: 'asc' | 'desc'} )[]
+export type QueryOrderBy = ( (string| Scalar<any> ) | {column: (string|Scalar<any>), order: 'asc' | 'desc'} )[]
 
 export type SelectableProps<E> = {
     [key in keyof E]: Scalar<any>
@@ -91,11 +91,11 @@ export type SelectorMap<E extends Schema<any>> = {
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         ArgR:
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>?
-        CompiledComputeFunction<key, Arg, P>: 
+        CompiledComputeFunction<Arg, P>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
-        Column<key, D>:
+        Scalar<D>:
         ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D>?
-        Column<key, D>:
+        Scalar<D>:
         never  
         
 } & {
@@ -142,17 +142,17 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 // let p: (f: (...args: any[]) => any ) => void
 
 // p!( c! )
-export type CompiledComputeFunctionDynamicReturn<Name extends string> = ((arg?: any) => Column<Name, PropertyTypeDefinition<any>> )
+export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyTypeDefinition<any>> )
 
 export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
-    CCF extends CompiledComputeFunctionDynamicReturn<any>
-> = (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Column<any, infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Column<any, infer P>?P: never >>
+    CCF extends CompiledComputeFunctionDynamicReturn
+> = (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
 
 export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
 > = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
-export type CompiledComputeFunction<Name extends string, Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Column<Name, P>
+export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P>
 
 export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<S>>>
 
@@ -383,7 +383,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         this.models = Object.keys(orm.modelMap).reduce( (acc, key) => {
             let modelClass = orm.modelMap[key]
             //@ts-ignore
-            acc[key] = new ModelRepository<any>(orm,this, modelClass, key)
+            acc[key] = new ModelRepository<any>(this, modelClass, key)
             return acc
         }, {} as {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>})
     }
