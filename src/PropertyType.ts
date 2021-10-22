@@ -48,6 +48,10 @@ export interface ParsableTrait<I> {
     prepareForParsing(context: DatabaseContext<any>): Promise<void>
 }
 
+export interface ParsableObjectTrait<I> extends ParsableTrait<I> {
+    columnsForParsing(): string[]
+}
+
 // export type Parsable<I> = {
 //     parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): I 
 //     parseProperty(propertyvalue: I, context: DatabaseContext<any>, prop?: string): any
@@ -638,7 +642,7 @@ export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
     }
 }
 
-export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableTrait<infer I>? I:never)>{
+export class ObjectType<T extends ParsableObjectTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I:never)>{
     // protected options: ObjectOfTypeOptions
     private parsable: T
 
@@ -661,33 +665,48 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
         if(!(rawOrDataset instanceof Dataset)){
             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
         }
+        const selectedColumns = rawOrDataset.selectItemsAlias()
+        const columns = this.parsable.columnsForParsing()
+
+        if( columns.some(col => !selectedColumns.includes(col)) ){
+            throw new Error('Dataset selected column cannot be parsed. Missing Selected Items.')
+        }
+
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
             const client = context.client()
-            const columns = rawOrDataset.selectItemsAlias()
-            let jsonify =  `(SELECT ${jsonObject(client)}(${
-                    columns.map(c => `'${c}', ${quote(client, c)}`).join(',')
-                }) AS ${quote(client, singleColumnName ?? 'soleCol')} FROM (${query}) AS ${quote(client, makeid(5))})`
-            return makeRaw(context, jsonify)
+            let jsonify =  `SELECT ${jsonArray(client, columns.map(col => quote(client, col)))} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
+            return makeRaw(context, `(${jsonify})`)
         })
     }
  
-    override parseRaw(rawValue: any, context: DatabaseContext<any>, propName?: string): (T extends ParsableTrait<infer I>? I:never) {
-        let parsed: SimpleObject
+    override parseRaw(rawValue: any, context: DatabaseContext<any>, propName?: string): (T extends ParsableObjectTrait<infer I>? I:never) {
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
             return rawValue
-        } else if(typeof rawValue === 'string'){
-            parsed = JSON.parse(rawValue)
-        } else if(typeof rawValue === 'object'){
-            parsed = rawValue
         } else {
-            throw new Error('It is not supported.')
+            let parsed = null
+            if(typeof rawValue === 'string'){
+                parsed = JSON.parse(rawValue)
+            } else if(Array.isArray(rawValue)){
+                parsed = rawValue
+            } 
+            if(Array.isArray(parsed)){
+                const header = this.parsable.columnsForParsing()
+                const rowData = parsed
+                const numCols = header.length
+                const parsableEntity = this.parsable
+                
+                let record = {} as {[key:string]: any}
+                for(let j=0; j<numCols; j++){
+                    record[header[j]] = rowData[j] 
+                }
+                return parsableEntity.parseRaw(record, context)
+            }
         }
-        // const entityClass = context.models[this.entityClassName] as unknown as E
-        return this.parsable.parseRaw(parsed, context)
+        throw new Error('It is not supported.')
     }
     
-    override parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I:never), context: DatabaseContext<any>, propName?: string): any {
+    override parseProperty(propertyvalue: (T extends ParsableObjectTrait<infer I>? I:never), context: DatabaseContext<any>, propName?: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }
@@ -698,11 +717,11 @@ export class ObjectType<T extends ParsableTrait<any> > extends ComputePropertyTy
     }
 }
 
-export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableTrait<infer I>? I[]:never)>{
+export class ArrayType<T extends ParsableObjectTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I[]:never)>{
     
-    private parsable: ParsableTrait<any>
+    private parsable: ParsableObjectTrait<any>
 
-    constructor(parsable: ParsableTrait<any>) {
+    constructor(parsable: ParsableObjectTrait<any>) {
         super()
         this.parsable = parsable
         // this.options = { ...options}
@@ -722,15 +741,21 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
         if(!(rawOrDataset instanceof Dataset)){
             throw new Error('Only Dataset can be the type of \'ObjectOfEntity\'')
         }
-        const client = context.client()
-        const columns = rawOrDataset.selectItemsAlias()
+        const selectedColumns = rawOrDataset.selectItemsAlias()
+        const columns = this.parsable.columnsForParsing()
+
+        if( columns.some(col => !selectedColumns.includes(col)) ){
+            throw new Error('Dataset selected column cannot be parsed. Missing Selected Items.')
+        }
+
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
-            let jsonify =  `SELECT ${jsonArray(client, [`${jsonArray(client, columns.map(col => `'${col}'`))}`, `coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)})` ])} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
+            const client = context.client()
+            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)}) AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
             return makeRaw(context, `(${jsonify})`)
         })
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any>, propName: string): (T extends ParsableTrait<infer I>? I[]:never) {
+    parseRaw(rawValue: any, context: DatabaseContext<any>, propName: string): (T extends ParsableObjectTrait<infer I>? I[]:never) {
         // let parsed: SimpleObject
         if( rawValue === null){
             //TODO: warning if nullable is false but value is null
@@ -742,8 +767,10 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
             } else if(Array.isArray(rawValue)){
                 parsed = rawValue
             } 
-            if(parsed){
-                const [header, rowData] : [string[], Array<Array<any>>] = parsed
+            if(Array.isArray(parsed)){
+                const header = this.parsable.columnsForParsing()
+                const rowData = parsed
+                // const [header, rowData] : [string[], Array<Array<any>>] = parsed
                 const numCols = header.length
                 const len = rowData.length
                 const parsableEntity = this.parsable
@@ -762,7 +789,7 @@ export class ArrayType<T extends ParsableTrait<any> > extends ComputePropertyTyp
         throw new Error('It is not supported.')
     }
     
-    parseProperty(propertyvalue: (T extends ParsableTrait<infer I>? I[]:never), context: DatabaseContext<any>, propName: string): any {
+    parseProperty(propertyvalue: (T extends ParsableObjectTrait<infer I>? I[]:never), context: DatabaseContext<any>, propName: string): any {
         // if(!prop.definition.computeFunc){
         //     throw new Error(`Property ${propName} is not a computed field. The data type is not allowed.`)
         // }

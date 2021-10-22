@@ -139,6 +139,7 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
                     hour: shop.hour,
                     nini: product.shopId.equals(10),
                     DDD: product.ddd,
+                    a: product.abc2(),
                     test: Scalar.number(` 5 + ?`, [3]),
                     products: shop.products({
                         select: {
@@ -201,6 +202,7 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
     //Done: dynamic result type on 'find'
     //Done: dataset api use DatabaseAction chain
     //Done: dataset toScalar ....without ArrayType
+    //Done: refactor ObjectType, ArrayType....use pure Array approach
     
     // TODO: relation helper function: use string as input field
     // TODO: deleteStatement
@@ -208,18 +210,19 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
     // TODO: having
     // TODO: addSelectProps
     // fix all unit tests
-    // repository.scalar()
+    // repository.scalar() & scalar.execute
     // EXISTS, NOT, BETWEEN, 
     // greaterThan, lessThan
     // equalOrGreaterThan, equalOrLessThan
     // minus, plus
     // SUM, MAX, MIN
-    // delete()
+    // MODEL: CRUD...delete()
     // TODO: manyToMany Relation helper function
     // Scalar.boolean, Scalar.string
     // think about migrate issue
     // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
+    // TODO: add PropertType (ArrayType of primivite)
 
 
 

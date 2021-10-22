@@ -2,7 +2,7 @@ import util from 'util'
 import { Knex } from "knex"
 import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap } from "."
 import { Dataset, makeRaw, Scalar } from "./Builder"
-import { FieldPropertyTypeDefinition, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
+import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
 
@@ -163,7 +163,7 @@ export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Prope
     }
 }
 
-export class Schema<PropertyDict extends {[key:string]: Property}> implements ParsableTrait<ExtractValueTypeDictFromPropertyDict<PropertyDict>>{
+export class Schema<PropertyDict extends {[key:string]: Property}> implements ParsableObjectTrait<ExtractValueTypeDictFromPropertyDict<PropertyDict>>{
 
     // properties: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyTypeDefinition<any> >)[] = []
@@ -191,6 +191,11 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
             }
         })
     }
+
+    columnsForParsing(): string[] {
+        return this.properties.map(prop => prop.name)
+    }
+    
     async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
         await Promise.all(this.properties.map( async(prop) => {
             await prop.prepareForParsing(context)

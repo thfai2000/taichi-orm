@@ -2,7 +2,7 @@ import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, Dat
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Expression, Scalar, Dataset } from "./Builder"
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, StringNotNullType } from "./PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
@@ -102,7 +102,7 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableTrait<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
@@ -183,7 +183,7 @@ export abstract class Model {
         {
 
 
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableTrait<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
@@ -242,7 +242,7 @@ export abstract class Model {
 
             let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
 
-            return r as Scalarable< ObjectType<ParsableTrait<any>>>
+            return r as Scalarable< ObjectType<ParsableObjectTrait<any>>>
         }
 
         return this.compute( computeFn )
