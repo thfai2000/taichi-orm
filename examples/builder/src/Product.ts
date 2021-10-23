@@ -1,8 +1,10 @@
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyTypeDefinition } from "../../../dist/PropertyType"
 import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
-import { Model } from "../../../dist/Model"
-import { Scalarable } from "../../../dist"
+import { Model, ModelRecord } from "../../../dist/Model"
+import { CFReturn, ExtractValueTypeDictFromSchema, Scalarable } from "../../../dist"
+
+
 
 export default class Product extends Model {
 
@@ -14,29 +16,21 @@ export default class Product extends Model {
     shop = Product.belongsTo(Shop, 'shopId', 'id')
     
     abc = Product.compute((context, root, arg?: number) => {
-        return Scalar.number(`5 + ?`, [arg ?? 0])
+        return context.scalar(`5 + ?`, [arg ?? 0], NumberType)
     })
 
-    abc2 = Product.compute((context, root, arg?: number): Scalarable<PropertyTypeDefinition<number | null>> => {
-        return Scalar.number(`5 + ? + ?`, [ root.selectorMap().abc(), arg])
+    abc2 = Product.compute((context, root, arg?: number): CFReturn<number | null> => {
+        return context.scalar(`5 + ? + ?`, [ root.selectorMap().abc(), arg], NumberType)
     })
 
-    myShop = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<{name: string | null}[]>> => {
+    // shopWithName = Product.computeDynamic<typeof Product, ModelRecord<typeof Shop> >(
+    //     (context, root, args?): any => {
 
-        return new Dataset()
-            .from(context.getRepository(Shop).datasource('s'))
-            .innerJoin(root, ({root, s}) => root.shopId.equals(s.id))
-            .where(({s}) => s.name.equals(arg ?? 'myShop') )
-            .selectProps('name')
-    })
+    //     return root.selectorMap().shop(args)
+    // })
 
-    myShopName = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<string | null>> => {
-
-        return new Dataset()
-            .from(context.getRepository(Shop).datasource('s'))
-            .innerJoin(root, ({root, s}) => root.shopId.equals(s.id))
-            .where(({s}) => s.name.equals(arg ?? 'myShop') )
-            .selectProps('name').castToScalar(StringType)
-    })
+    // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
+    //     return root.selectorMap().myShop().cast(StringType)
+    // })
 
 }

@@ -28,6 +28,7 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
     let {
         createModels,
         dataset, 
+        scalar,
         insert,
         update,
         models: {Shop, Product} 
@@ -38,12 +39,24 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
 
     await createModels()
 
-
+    let eee = await scalar('5', [], NumberNotNullType).execute()
 
     let s = Shop.datasource('shop')
     
     let p = Product.datasource('product')
 
+    p.selectorMap().shop()
+
+    let aaa = await p.selectorMap().shop({
+        select
+    }).execute()
+
+
+    let cc = await s.selectorMap().products({
+        select: {
+            
+        }
+    }).execute()
 
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
@@ -97,11 +110,11 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
                 ({shop, product}) => ({
                     ...shop.$allFields,
                     hour: shop.hour,
-                    nini: product.shopId.equals(10),
-                    DDD: product.ddd,
-                    a: product.abc(2),
-                    b: product.abc2(2),
-                    test: Scalar.number(` 5 + ?`, [3]),
+                    // nini: product.shopId.equals(10),
+                    // DDD: product.ddd,
+                    // a: product.abc(2),
+                    // b: product.abc2(2),
+                    // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
                             shop: {
@@ -110,7 +123,17 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
                                 }
                             }
                         }
-                    })
+                    }),
+                    // x: product.shop({
+                    //     select: {
+                    //         products: {}
+                    //     }
+                    // }),
+                    // x2: product.shop({
+                    //     select: {
+                    //         products: {}
+                    //     }
+                    // })
                 })
             ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
@@ -122,7 +145,7 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .set({
-            name: Scalar.value(`?`,['hello'])
+            name: Scalar.value('?',['hello'])
         }).execute().withOptions({
             onSqlRun: console.log
         })
@@ -184,6 +207,7 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
     // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
     // TODO: add PropertType (ArrayType of primivite)
+    // TODO: Model.count
 
 
 

@@ -2,10 +2,10 @@ import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import { RawUnit, Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement, RawExpression, RawUnit} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
 
@@ -13,7 +13,6 @@ import {ExtractComputePropDictFromSchema} from './util'
 
 // type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
 // type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
-
 
 // type VirtualSchemaWithComputed<F extends SingleSourceArg<any>> = EntityFieldPropertyKeyValues< FindSchema<F> > 
 //     & { 
@@ -27,6 +26,9 @@ import {ExtractComputePropDictFromSchema} from './util'
 
 // }
 
+export type CFReturn<D> = Scalarable<PropertyTypeDefinition<D>>
+
+// export type CFReturnModelArray<Model> = Scalarable<PropertyTypeDefinition< ExtractVa >>
 
 export type QueryOrderBy = ( (string| Scalar<any> ) | {column: (string|Scalar<any>), order: 'asc' | 'desc'} )[]
 
@@ -36,7 +38,7 @@ export type SelectableProps<E> = {
 
 
 export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = {
-    [key in keyof ExtractComputePropDictFromSchema<E> & string ]:
+    [key in keyof ExtractComputePropDictFromSchema<E>]:
         ExtractComputePropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
                 Arg: never           
 }
