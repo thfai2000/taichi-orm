@@ -1,13 +1,19 @@
 import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
-import { Expression, Scalar, Dataset } from "./Builder"
+import { Expression, Scalar, Dataset, DScalar } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
-
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => DScalar<Dataset<ExtractSchemaFromModelType<MT>>, ArrayType< ParsableObjectTrait<
+                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
+            > >>
+export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => DScalar<Dataset<ExtractSchemaFromModelType<MT>>, ObjectType< ParsableObjectTrait<
+            ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
+        > >>
+        
 export abstract class Model {
 
     #entityName: string
@@ -108,13 +114,9 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableObjectTrait<
-                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-            > >>
-               
-   
+
         //() => new ArrayType(relatedSchemaFunc())
-        return this.computeDynamic<ParentModelType, ArgR>((context: DatabaseContext<any>,
+        return this.computeDynamic<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
             parent, //: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
         ) => {
@@ -181,12 +183,8 @@ export abstract class Model {
         relatedBy: string = 'id'
         )
         {
-
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableObjectTrait<
-                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-            > >>
                
-        return this.computeDynamic<ParentModelType, ArgR>((context: DatabaseContext<any>,
+        return this.computeDynamic<ParentModelType, ModelObjectRecord<RootModelType> >((context: DatabaseContext<any>,
             parent,//: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
         ) => {

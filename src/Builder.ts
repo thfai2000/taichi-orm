@@ -378,8 +378,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
 
-    toScalar<T extends Dataset<any, any, any, any>>(this: T): Scalar<ArrayType<ExistingSchema>> {
-        return new Scalar(this, new ArrayType(this.schema()), this.context) //as unknown as Scalar<T> 
+    toScalar<T extends Dataset<any, any, any, any>>(this: T): DScalar<T, ArrayType<ExistingSchema>> {
+        return new DScalar(this, new ArrayType(this.schema()), this.context) //as unknown as Scalar<T> 
     }
 
     castToScalar<T extends PropertyTypeDefinition<any>>(
@@ -392,9 +392,9 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         if(type instanceof PropertyTypeDefinition){
             return new Scalar(this, type, this.context) //as unknown as Scalar<T> 
         } else if(isFunction(type)){
-            return new Scalar(this, type(this), this.context)
+            return new DScalar(this, type(this), this.context)
         } else {
-            return new Scalar(this, new type(), this.context) 
+            return new DScalar(this, new type(), this.context) 
         }
     }
 
@@ -1154,7 +1154,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
     //     return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
     // }
 
-    toScalar(){
+    toScalar<T>(this: T): T{
         return this
     }
 
@@ -1182,6 +1182,18 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
                 return result[0].root as ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >
             }
         )
+    }
+}
+
+export class DScalar<DS extends Dataset<any>, T extends PropertyTypeDefinition<any>> extends Scalar<T> {
+    constructor(dataset: DS, 
+        definition?: T | (new (...args: any[]) => T) | null,
+        context?: DatabaseContext<any> | null){
+            super(dataset, definition, context)
+        }
+
+    getDataset(): DS {
+        return this.expressionOrDataset as DS
     }
 }
 
