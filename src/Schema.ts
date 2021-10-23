@@ -1,6 +1,6 @@
 import util from 'util'
 import { Knex } from "knex"
-import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap } from "."
+import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap, ComputeFunctionDynamicReturn } from "."
 import { Dataset, makeRaw, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
@@ -96,17 +96,12 @@ export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends P
     }
 }
 
-export class ComputeProperty<F extends ComputeFunction<any, any, any> > extends Property {
+export class ComputeProperty<F extends (ComputeFunction<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F
 
-    constructor(
-        // definition: (F extends ComputeFunction<any, infer P>?P:never) |
-        // (new () => (F extends ComputeFunction<any, infer P>?P:never)) |
-        // ( () => (F extends ComputeFunction<any, infer P>?P:never))
-        // ,
-        compute:  F){
+    constructor(compute:  F){
             super()
             this.compute = compute
         }
@@ -434,7 +429,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             return (args?: ARG) => {
                 let col = new Scalar<R>((context) => {
                     // console.log('getComputeProperty -> ', name, args)
-                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.call(cProp, context, this, args)
+                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.fn.call(cProp, context, this, args)
                     let r = thenResult( subquery, scalarable => scalarable.toScalar())
                     return r
                 }, null)

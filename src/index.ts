@@ -144,13 +144,32 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 // p!( c! )
 export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyTypeDefinition<any>> )
 
-export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
-    CCF extends CompiledComputeFunctionDynamicReturn
-> = (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
+// export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
+//     CCF extends CompiledComputeFunctionDynamicReturn
+// > = {
+//     (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]): Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>,
+// }
 
-export type ComputeFunction<DS extends Datasource<any, any>, ARG, 
+export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
-> = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+>{
+    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>){
+        this.fn = fn
+    }
+}
+
+export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
+    CCF extends CompiledComputeFunctionDynamicReturn
+> extends ComputeFunction<DS, any, any>{
+
+    mode: 'dynamic' = 'dynamic'
+    // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
+    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>){
+        super(fn)
+    }
+}
+
 
 export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P>
 

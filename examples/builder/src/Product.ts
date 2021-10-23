@@ -3,7 +3,6 @@ import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
 import { Model } from "../../../dist/Model"
 import { Scalarable } from "../../../dist"
-import { Expand } from "../../../dist/util"
 
 export default class Product extends Model {
 
@@ -19,7 +18,7 @@ export default class Product extends Model {
     })
 
     abc2 = Product.compute((context, root, arg?: number): Scalarable<PropertyTypeDefinition<number | null>> => {
-        return Scalar.number(`5 + ?`, [ root.selectorMap().abc() ])
+        return Scalar.number(`5 + ? + ?`, [ root.selectorMap().abc(), arg])
     })
 
     myShop = Product.compute((context, root, arg?: string): Scalarable<PropertyTypeDefinition<{name: string | null}[]>> => {

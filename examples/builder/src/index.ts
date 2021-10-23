@@ -1,12 +1,12 @@
 import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
+import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
 import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExpandRecursively, Expand } from "../../../dist/util"
-import { FieldProperty, Schema } from "../../../dist/Schema"
+import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
 
 
 (async() => {
@@ -45,46 +45,6 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
     let p = Product.datasource('product')
 
 
-    // let aa = s.selectorMap().products
-
-    // let col = s.selectorMap().products({
-    //     select: {
-    //         shop: {
-    //             select: {
-    //                 products: {}
-    //             }
-    //         }
-    //     }
-    // })
-
-    // let aaa = await col.execute()
-
-    // let xx:  ExtractSchemaFromModelType<typeof ProductClass>
-
-
-    // let c: ExpandRecursively<
-    //         ConstructValueTypeDictBySelectiveArg<
-    //             ExtractSchemaFromModelType<typeof ProductClass>, {
-    //                 select: {
-    //                     shop: {}
-    //                 }
-    //             } >
-    //         >
-
-
-    // type A =  <F extends SingleSourceArg<ExtractSchemaFromModelType<typeof ProductClass>>>( args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ProductClass>>) => F) | undefined) => 
-    //     Column<"products", ArrayType<Parsable<
-    //     ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<typeof ProductClass>, F>
-    //     >>>
-
-    // let aaaaa : A
-
-    // let cc = await aaaaa!({
-    //     select: {
-    //         shop: {}
-    //     }
-    // }).execute()
-    
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
@@ -139,7 +99,8 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
                     hour: shop.hour,
                     nini: product.shopId.equals(10),
                     DDD: product.ddd,
-                    a: product.abc2(),
+                    a: product.abc(2),
+                    b: product.abc2(2),
                     test: Scalar.number(` 5 + ?`, [3]),
                     products: shop.products({
                         select: {
@@ -175,7 +136,7 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
             onSqlRun: console.log
         })
 
-    console.log('testttttttttttttt', util.inspect(r, {showHidden: false, depth: null, colors: true}))
+    //console.log('testttttttttttttt', util.inspect(r, {showHidden: false, depth: null, colors: true}))
 
     let r2 = await dataset()
         .from(Shop.datasource("myShop"))
@@ -196,7 +157,7 @@ import { FieldProperty, Schema } from "../../../dist/Schema"
             onSqlRun: console.log
         })
 
-    console.log('test groupBy', r2[0])
+    // console.log('test groupBy', r2[0])
 
 
     //Done: dynamic result type on 'find'

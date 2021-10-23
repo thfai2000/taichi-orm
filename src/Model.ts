@@ -1,8 +1,8 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
 import { Expression, Scalar, Dataset } from "./Builder"
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, StringNotNullType } from "./PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
@@ -34,24 +34,30 @@ export abstract class Model {
         return new FieldProperty<D>( new definition() )
     }
 
-    static compute<M extends typeof Model, F extends 
-        ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any> |   
-        ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any>
-        = ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, any, any>
+    static compute<M extends typeof Model, 
+        ARG,
+        P extends PropertyTypeDefinition<any>
         >(
             this: M,
-            compute: F) 
-            : ComputeProperty<F> {
+            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+        ) 
+            : ComputeProperty<
+                ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, P>
+            > {
 
-        return new ComputeProperty(compute)
+        return new ComputeProperty(new ComputeFunction(compute))
+    }
 
-        // if( definition instanceof PropertyTypeDefinition ){
-        //     const d = definition as (F extends ComputeFunction<any, infer P>?P:unknown)
-        //     return new ComputeProperty(d, compute)
-        // } else{
-        //     const d = definition as (new (...args: any[]) => (F extends ComputeFunction<any, infer P>?P:unknown) )
-        //     return new ComputeProperty(new d(), compute)
-        // }
+    static computeDynamic<M extends typeof Model,
+        CCF extends CompiledComputeFunctionDynamicReturn
+        >(
+            this: M,
+            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >> 
+        ) 
+            : ComputeProperty< 
+                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
+            > {
+        return new ComputeProperty(new ComputeFunctionDynamicReturn(compute))
     }
 
     hook(newHook: Hook){
@@ -106,13 +112,12 @@ export abstract class Model {
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
-        let computeFn: ComputeFunctionDynamicReturn<  
-            Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            ArgR
-        > = function(context: DatabaseContext<any>,
-            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+   
+        //() => new ArrayType(relatedSchemaFunc())
+        return this.computeDynamic<ParentModelType, ArgR>((context: DatabaseContext<any>,
+            parent, //: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
-        ){
+        ) => {
 
         // }
             
@@ -123,8 +128,6 @@ export abstract class Model {
         //     ): Scalarable< ArrayType< Parsable<
         //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
         //     > > >{
-
-
             let dataset = new Dataset()
 
             let relatedModel = context.getRepository(relatedModelType)
@@ -168,10 +171,7 @@ export abstract class Model {
             let r = newDataset.castToScalar( (ds) => new ArrayType(ds.schema() )) //as Schema<ConstructPropertyDictBySelectiveArg<RootModel, SSA>>) )
 
             return r
-        }
-
-        //() => new ArrayType(relatedSchemaFunc())
-        return this.compute( computeFn )
+        })
     }
 
     static belongsTo<ParentModelType extends typeof Model, RootModelType extends typeof Model>(
@@ -182,18 +182,14 @@ export abstract class Model {
         )
         {
 
-
         type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
-        let computeFn: ComputeFunctionDynamicReturn<  
-            Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            ArgR
-        > = function(context: DatabaseContext<any>,
-            parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
+        return this.computeDynamic<ParentModelType, ArgR>((context: DatabaseContext<any>,
+            parent,//: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
-        ){
+        ) => {
 
         // let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
         //     context: DatabaseContext<any>,
@@ -243,9 +239,7 @@ export abstract class Model {
             let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
 
             return r as Scalarable< ObjectType<ParsableObjectTrait<any>>>
-        }
-
-        return this.compute( computeFn )
+        })
     }
 }
 
