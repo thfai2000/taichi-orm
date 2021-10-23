@@ -279,14 +279,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         this.context = context ?? null
     }
 
-    // get actionType(): Action{
-    //     if(this.#selectItems && Object.keys(this.#selectItems).length > 0)
-    //         return 'select'
-    //     if(this.#updateItems && Object.keys(this.#updateItems).length > 0)
-    //         return DatasetAction.Update
-    //     throw new Error('NYI')
-    // }
-
     protected func2ScalarMap<S extends { [key: string]: Scalar<any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords<ExtractPropDictFromDict<SourceProps>, SourcePropMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: { [key: string]: Scalar<any>} 
         let selectorMap = this.getSelectorMap()
@@ -367,7 +359,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
     
-
     selectItemsAlias(): string[]{
         if(!this.#selectItems){
             return []
@@ -460,10 +451,11 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     groupByProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
-            Schema<
-                (ExistingSchema extends Schema<infer Props>? Props: never) &
-                SelectedPropsToScalarDict<SourceProps, P>
-            >
+        ExistingSchema
+            // Schema<
+            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
+            //     SelectedPropsToScalarDict<SourceProps, P>
+            // >
         , 
         SourceProps, SourcePropMap, FromSource>{
        
@@ -491,10 +483,11 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     groupBy<S extends { [key: string]: Scalar<any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< ExtractPropDictFromDict<SourceProps>, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
-            Schema<
-                (ExistingSchema extends Schema<infer Props>? Props: never) &
-                ScalarDictToScalarPropertyDict<S>
-            >
+        ExistingSchema
+            // Schema<
+            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
+            //     ScalarDictToScalarPropertyDict<S>
+            // >
         , 
         SourceProps, SourcePropMap, FromSource> {
 
@@ -979,9 +972,13 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
 }
 
+export type SQLStringWithArgs = {sql: string, args?: any[]}
+export type RawUnit<T extends PropertyTypeDefinition<any> = any> = string | Promise<string> | SQLStringWithArgs | Promise<SQLStringWithArgs> | Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T>> | Scalar<T> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
+export type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
 
-type RawUnit<T extends PropertyTypeDefinition<any> = any> = Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T>> | Scalar<T> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
-type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
+function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{ 
+    return ( ('sql' in value) && ('args' in value))
+}
 
 export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable<T> {
     // __type: 'Scalar'
@@ -1008,30 +1005,22 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         this.context = context ?? null
     }
 
-    static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D): Scalar<D>{
-        return new Scalar( (context: DatabaseContext<any>) => {
-            if(!args){
-                return makeRaw(context, sql)
-            } else {
-                const rawArgs = args.map( (arg) => {
-                    if(arg instanceof Scalar){
-                        return arg.toRaw(context)
-                    } else if(arg instanceof Dataset){
-                        return arg.toNativeBuilder(context)
-                    }
-                    return arg
-                })
-                return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(context, sql, rawArgs)) )
-            }
-        }, definition)
+    static value<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D>;
+    static value<D extends PropertyTypeDefinition<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D>;
+    static value<D extends PropertyTypeDefinition<any>>(...args: any[]): Scalar<D>{
+        if(typeof args[0] ==='string' && Array.isArray(args[1])){
+            return this.value({sql: args[0], args: args[1]}, args[2])
+        }
+        return new Scalar(args[0], args[1])
     }
 
-    static numberNotNull(sql: string, args: any[]) {
-        return Scalar.value(sql, args, new NumberNotNullType() )
-    }
-
-    static number(sql: string, args: any[]) {
-        return Scalar.value(sql, args, new NumberType() )
+    static number(sql: string, args?: any[]): Scalar<NumberNotNullType>;
+    static number(value: RawUnit): Scalar<NumberNotNullType>;
+    static number(...args: any[]): Scalar<NumberNotNullType>{
+        if(typeof args[0] ==='string' && Array.isArray(args[1])){
+            return this.number({sql: args[0], args: args[1]})
+        }
+        return new Scalar(args[0], NumberNotNullType)
     }
     
     equals(rightOperand: any): Scalar<BooleanNotNullType> {
@@ -1101,8 +1090,25 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
                 } else if( ex instanceof Function){
                     // console.log('resolve', ex.toString())
                     return resolveIntoRawOrDataset(ex(repo))
+                } else if (typeof ex === 'string') {
+
+                    return makeRaw(repo, ex)
+                } else if (isSQLStringWithArgs(ex)){
+
+                    if(!ex.args){
+                        return makeRaw(repo, ex.sql)
+                    } else {
+                        const rawArgs = ex.args.map( (arg) => {
+                            if(arg instanceof Scalar){
+                                return arg.toRaw(repo)
+                            } else if(arg instanceof Dataset){
+                                return arg.toNativeBuilder(repo)
+                            }
+                            return arg
+                        })
+                        return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(repo, ex.sql, rawArgs)) )
+                    }
                 }
-                // console.log('here 3')
                 return ex
             })
         }
@@ -1152,13 +1158,14 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
         return this
     }
 
-    // castToScalar<P extends PropertyTypeDefinition<any>>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
+    // cast<P extends PropertyTypeDefinition<any>>(definition?: P | (new (...args: any[]) => P )): Scalar<P>{
     //     const d = definition ??  this.definition
     //     return new Scalar(this.toRealRaw(), d, this.context)
     // }
 
-    execute(repo?: DatabaseContext<any>): 
-        DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >> {
+    execute(this: Scalar<T>, repo?: DatabaseContext<any>)
+    : DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >> 
+        {
         const context = repo ?? this.context
 
         if(!context){
@@ -1167,15 +1174,14 @@ export class Scalar<T extends PropertyTypeDefinition<any>> implements Scalarable
 
         return new DatabaseQueryRunner<ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >>(
             async (executionOptions: ExecutionOptions) => {
-                // let result = await context.execute( new Dataset().select({root: this}), executionOptions)
 
-                // //@ts-ignore
-                // return result[0].root as any
-                throw new Error('NYI')
+                let result = await context.dataset().select({
+                    root: this
+                }).execute().withOptions(executionOptions)
+
+                return result[0].root as ExpandRecursively< T extends PropertyTypeDefinition<infer D>? D: any >
             }
         )
-
-
     }
 }
 

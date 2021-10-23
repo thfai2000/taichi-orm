@@ -481,6 +481,17 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     dataset = (): Dataset<any> => {
         return new Dataset(this)
     }
+    scalar<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D>;
+    //@ts-ignore
+    scalar<D extends PropertyTypeDefinition<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D>;
+    //@ts-ignore
+    scalar = (...args: any[]): Scalar<any> => {
+        
+        if(typeof args[0] ==='string' && Array.isArray(args[1])){
+            return new Scalar({sql: args[0], args: args[1]}, args[2], this)
+        }
+        return new Scalar(args[0], args[1], this)
+    }
 
     update = () => {
         return new UpdateStatement(this)
