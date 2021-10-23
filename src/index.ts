@@ -161,9 +161,14 @@ export class ComputeFunction<DS extends Datasource<any, any>, ARG,
     }
 }
 
+//((root: SelectorMap<infer S>) => { select?: {}}),
+
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends CompiledComputeFunctionDynamicReturn
-> extends ComputeFunction<DS, any, any>{
+> extends ComputeFunction<DS,
+            Parameters<CCF>[0],
+            ReturnType<CCF> extends Scalar<infer P>?P: never
+            >{
 
     mode: 'dynamic' = 'dynamic'
     // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
@@ -171,7 +176,6 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
         super(fn)
     }
 }
-
 
 export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P>
 

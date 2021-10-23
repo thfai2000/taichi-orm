@@ -1,7 +1,7 @@
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyTypeDefinition } from "../../../dist/PropertyType"
 import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
-import { Model, ModelRecord } from "../../../dist/Model"
+import { Model } from "../../../dist/Model"
 import { CFReturn, ExtractValueTypeDictFromSchema, Scalarable } from "../../../dist"
 
 

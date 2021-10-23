@@ -4,9 +4,9 @@ import {snakeCase} from 'lodash'
 import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
+import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringType } from "../../../dist/PropertyType"
 import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExpandRecursively, Expand } from "../../../dist/util"
-import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
+import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dist/Schema"
 
 
 (async() => {
@@ -47,14 +47,32 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
 
     p.selectorMap().shop()
 
-    let aaa = await p.selectorMap().shop({
-        select
-    }).execute()
 
+    type A = ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<ProductClass>, any>, <SSA extends SingleSourceArg<ExtractSchemaFromModelType<typeof ShopClass>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ShopClass>>) => SSA) | undefined) => Scalar<ObjectType<ParsableObjectTrait<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<typeof ShopClass>, SSA>>>>>
+
+    type C = A extends ComputeFunction<any, infer D, infer E>? E: never
+
+
+    let aaa = await p.selectorMap().shop({
+        select: {
+            products: {
+                select: {
+                    
+                }
+            }
+        }
+    }).execute()
 
     let cc = await s.selectorMap().products({
         select: {
-            
+            shop: {
+                select: {
+                    products: {
+                        select: {
+                        }
+                    }
+                }
+            }
         }
     }).execute()
 
@@ -113,7 +131,7 @@ import { ComputeProperty, FieldProperty, Schema } from "../../../dist/Schema"
                     // nini: product.shopId.equals(10),
                     // DDD: product.ddd,
                     // a: product.abc(2),
-                    // b: product.abc2(2),
+                    b: product.abc2(2),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
