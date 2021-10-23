@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { FieldPropertyTypeDefinition, ObjectType, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
+import { RawUnit, Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
