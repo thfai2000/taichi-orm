@@ -108,7 +108,7 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableObjectTrait<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ArrayType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
@@ -182,7 +182,7 @@ export abstract class Model {
         )
         {
 
-        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableObjectTrait<
+        type ArgR = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA) ) => Scalar<ObjectType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
             > >>
                
