@@ -175,8 +175,10 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     //Done: dataset api use DatabaseAction chain
     //Done: dataset toScalar ....without ArrayType
     //Done: refactor ObjectType, ArrayType....use pure Array approach
+    //Done: relation helper function: use string as input field
     
-    // TODO: relation helper function: use string as input field
+    // TODO: where Typescript Hints not working
+    // TODO: consider computedFunction dynamic result Typescript Hints
     // TODO: deleteStatement
     // TODO: orderBy
     // TODO: having
