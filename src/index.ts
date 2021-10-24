@@ -26,14 +26,14 @@ import {ExtractComputePropDictFromSchema} from './util'
 
 // }
 
-export type CFReturn<D> = Scalarable<PropertyTypeDefinition<D>>
+export type CFReturn<D> = Scalarable<PropertyTypeDefinition<D>, any>
 
 // export type CFReturnModelArray<Model> = Scalarable<PropertyTypeDefinition< ExtractVa >>
 
-export type QueryOrderBy = ( (string| Scalar<any> ) | {column: (string|Scalar<any>), order: 'asc' | 'desc'} )[]
+export type QueryOrderBy = ( (string| Scalar<any, any> ) | {column: (string|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
 export type SelectableProps<E> = {
-    [key in keyof E]: Scalar<any>
+    [key in keyof E]: Scalar<any, any>
 } | SelectableProps<E>[]
 
 
@@ -95,9 +95,9 @@ export type SelectorMap<E extends Schema<any>> = {
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>?
         CompiledComputeFunction<Arg, P>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
-        Scalar<D>:
-        ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D>?
-        Scalar<D>:
+        Scalar<D, any>:
+        ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D, infer Value>?
+        Scalar<D, Value>:
         never  
         
 } & {
@@ -105,13 +105,13 @@ export type SelectorMap<E extends Schema<any>> = {
         [key in keyof ExtractFieldPropDictFromSchema<E> & string ]:
             
         ExtractFieldPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
-            Scalar<D>:
+            Scalar<D, any>:
             never
     }
 }
 
-export interface Scalarable<T extends PropertyTypeDefinition<any>> {
-    toScalar(): Scalar<T>
+export interface Scalarable<T extends PropertyTypeDefinition<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
+    toScalar(): Scalar<T, Value>
     // castToScalar<D extends PropertyTypeDefinition<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
@@ -144,7 +144,7 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>> {
 // let p: (f: (...args: any[]) => any ) => void
 
 // p!( c! )
-export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyTypeDefinition<any>> )
+export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyTypeDefinition<any>, any> )
 
 // export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
 //     CCF extends CompiledComputeFunctionDynamicReturn
@@ -155,29 +155,34 @@ export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<Proper
 export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
     P extends PropertyTypeDefinition<any>
 >{
-    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
-    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>){
+    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>
+    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>){
         this.fn = fn
     }
 }
 
-//((root: SelectorMap<infer S>) => { select?: {}}),
+export type CCFScalarable<CCF extends CompiledComputeFunctionDynamicReturn > = Scalarable<
+    ReturnType<CCF> extends Scalar<infer P, any>? P: never,
+    ReturnType<CCF> extends Scalar<any, infer Value>? Value: never
+    >
 
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends CompiledComputeFunctionDynamicReturn
 > extends ComputeFunction<DS,
             Parameters<CCF>[0],
-            ReturnType<CCF> extends Scalar<infer P>?P: never
+            ReturnType<CCF> extends Scalar<infer P, any>?P: never
             >{
 
     mode: 'dynamic' = 'dynamic'
     // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
-    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>){
+    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => 
+        CCFScalarable<CCF> | Promise<CCFScalarable<CCF>>
+    ){
         super(fn)
     }
 }
 
-export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P>
+export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P, any>
 
 export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<S>>>
 
@@ -193,7 +198,7 @@ export type ExtractValueTypeDictFromPropertyDict<E> = {
                 (
                     E[key] extends ComputeProperty<ComputeFunction<any, any, PropertyTypeDefinition<infer X>>>? X: 
                                 (
-                            E[key] extends ScalarProperty<PropertyTypeDefinition<infer Primitive>>? Primitive:
+                            E[key] extends ScalarProperty<PropertyTypeDefinition<infer Primitive>, any>? Primitive:
                             E[key]
                         )
                 )                  
@@ -487,9 +492,9 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     dataset = (): Dataset<any> => {
         return new Dataset(this)
     }
-    scalar<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D>;
+    scalar<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
     //@ts-ignore
-    scalar<D extends PropertyTypeDefinition<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D>;
+    scalar<D extends PropertyTypeDefinition<any>, Value extends RawUnit>(value: Value, definition?: D | (new (...args: any[]) => D)): Scalar<D, Value>;
     //@ts-ignore
     scalar = (...args: any[]): Scalar<any> => {
         

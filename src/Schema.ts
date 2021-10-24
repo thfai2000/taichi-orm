@@ -1,7 +1,7 @@
 import util from 'util'
 import { Knex } from "knex"
 import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap, ComputeFunctionDynamicReturn } from "."
-import { Dataset, makeRaw, Scalar } from "./Builder"
+import { Dataset, makeRaw, RawExpression, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
@@ -144,11 +144,11 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends S
 
 }
 
-export class ScalarProperty<D extends PropertyTypeDefinition<any>> extends Property {
-    readonly scalar: Scalar<D>
+export class ScalarProperty<D extends PropertyTypeDefinition<any>, Value extends Knex.Raw | Dataset<any> > extends Property {
+    readonly scalar: Scalar<D, Value>
 
     constructor(
-        scalar: Scalar<D>){
+        scalar: Scalar<D, Value>){
             super()
             this.scalar = scalar
         }
@@ -318,15 +318,15 @@ export type TableOptions = {
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
     schema: E
-    selectorMap(): SelectorMap<E>
+    selectorMap: SelectorMap<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyTypeDefinition<any> >(name: Name) => Column<Name, T>
-    getAllFieldProperty: () => { [key: string]: Scalar<PropertyTypeDefinition<any>>}
-    getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>>
-    getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>> 
+    getAllFieldProperty: () => { [key: string]: Scalar<PropertyTypeDefinition<any>, any>}
+    getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>, any>
+    getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>, any> 
     getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<ARG, R>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
@@ -339,6 +339,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     readonly schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
+    readonly selectorMap: SelectorMap<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -348,13 +349,10 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         this.schema = schema
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
-    }
-    abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
-    selectorMap(): SelectorMap<E>{
         const datasource = this
         //@ts-ignore
-        const map = new Proxy( datasource, {
+        this.selectorMap = new Proxy( datasource, {
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     if(sKey === '$allFields'){
@@ -374,8 +372,13 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                 }
             }
         }) as SelectorMap<E>
-        return map
     }
+    abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
+
+    // selectorMap(): SelectorMap<E>{
+        
+    //     return map
+    // }
 
     // getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
     //     let prop = this.schema.propertiesMap[name]
@@ -392,7 +395,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     //     }
     // }
 
-    getAllFieldProperty(): { [key: string]: Scalar<PropertyTypeDefinition<any>>} {
+    getAllFieldProperty(): { [key: string]: Scalar<PropertyTypeDefinition<any>, any>} {
         return Object.keys(this.schema.propertiesMap)
         .reduce( (acc, key) => {
              if(this.schema.propertiesMap[key] instanceof FieldProperty){
@@ -400,17 +403,17 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
              }
              return acc
 
-            }, {} as { [key: string]: Scalar<PropertyTypeDefinition<any>>}
+            }, {} as { [key: string]: Scalar<PropertyTypeDefinition<any>, any>}
         )
     }
 
-    getFieldProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>> {
+    getFieldProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>, any> {
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof FieldProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Scalar((context) => {
+            return new Scalar((context: DatabaseContext<any>) => {
                 const orm = context.orm
                 const client = context.client()
                 let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
@@ -427,9 +430,9 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }else{
             const cProp = prop
             return (args?: ARG) => {
-                let col = new Scalar<R>((context) => {
+                let col = new Scalar<R, any>((context: DatabaseContext<any>) => {
                     // console.log('getComputeProperty -> ', name, args)
-                    const subquery: Scalarable<any> | Promise<Scalarable<any> > = cProp.compute.fn.call(cProp, context, this, args)
+                    const subquery: Scalarable<any, any> | Promise<Scalarable<any, any> > = cProp.compute.fn.call(cProp, context, this, args)
                     let r = thenResult( subquery, scalarable => scalarable.toScalar())
                     return r
                 }, null)
@@ -439,7 +442,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }
     }
 
-    getScalarProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>> {
+    getScalarProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>, any> {
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof ScalarProperty)){
             throw new Error(`it is not field property ${name}`)
@@ -477,7 +480,7 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
     }
 }
 
-export class DerivedDatasource<D extends Dataset<any>, Name extends string> extends DatasourceBase< Schema<any>, Name> {
+export class DerivedDatasource<D extends Dataset<any, any, any, any>, Name extends string> extends DatasourceBase< Schema<any>, Name> {
 
     readonly dataset: D
     constructor(dataset: D, sourceAlias: Name){

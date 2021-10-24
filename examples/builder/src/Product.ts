@@ -1,8 +1,9 @@
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyTypeDefinition } from "../../../dist/PropertyType"
 import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
-import { Model } from "../../../dist/Model"
+import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
 import { CFReturn, ExtractValueTypeDictFromSchema, Scalarable } from "../../../dist"
+import { expand, expandRecursively } from "../../../dist/util"
 
 
 
@@ -15,19 +16,26 @@ export default class Product extends Model {
     shopId = this.field(NumberType)
     shop = Product.belongsTo(Shop, 'shopId', 'id')
     
-    abc = Product.compute((context, root, arg?: number) => {
+    abc = Product.compute((context, parent, arg?: number) => {
         return context.scalar(`5 + ?`, [arg ?? 0], NumberType)
     })
 
-    abc2 = Product.compute((context, root, arg?: number): CFReturn<number | null> => {
-        return context.scalar(`5 + ? + ?`, [ root.selectorMap().abc(), arg], NumberType)
+    abc2 = Product.compute((context, parent, arg?: number): CFReturn<number | null> => {
+        return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberType)
     })
 
-    // shopWithName = Product.computeDynamic<typeof Product, ModelRecord<typeof Shop> >(
-    //     (context, root, args?): any => {
-
-    //     return root.selectorMap().shop(args)
-    // })
+    shopWithName = Product.computeDynamic<typeof Product, ModelObjectRecord<typeof Shop> >(
+        (context, parent, args?): any => {
+        return parent.selectorMap.shop(args).afterResolved( ds => {
+            const prevWhere = ds.getWhere()
+            ds.where( ({And}) => 
+                    And(
+                        prevWhere? prevWhere: {},
+                        parent.selectorMap.name.equals('hello')
+                    )
+                )
+        })
+    })
 
     // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
     //     return root.selectorMap().myShop().cast(StringType)

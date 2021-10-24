@@ -2,7 +2,7 @@ import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Dataset} from '.
 import {Knex} from 'knex'
 import { BooleanNotNullType } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
-import { Scalarable } from '.'
+import { DatabaseContext, Scalarable } from '.'
 
 
 abstract class SQLFunction<Props, SourcePropMap> {
@@ -13,7 +13,7 @@ abstract class SQLFunction<Props, SourcePropMap> {
     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
     // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(): Scalar<any>
+    abstract toScalar(): Scalar<any, any>
 }
 
 export abstract class ConditionOperator<Props, SourcePropMap> {
@@ -24,15 +24,15 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
         this.resolver = resolver
     }
     // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(): Scalar<BooleanNotNullType>
+    abstract toScalar(): Scalar<BooleanNotNullType, any>
 }
 
-export abstract class AssertionOperator implements Scalarable<any>{
+export abstract class AssertionOperator implements Scalarable<any, any>{
 
     // abstract toRaw(leftOperand: Scalar ): Knex.Raw
     // abstract toScalar(leftOperand: Scalar ): Scalar
     // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(): Scalar<BooleanNotNullType>
+    abstract toScalar(): Scalar<BooleanNotNullType, any>
 }
 
 export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMap>{
@@ -44,11 +44,15 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         this.args = args
     }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
         // const p = this.toRaw(context, resolver)
         // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
+
+            if(this.args.length === 0){
+                return raw(context, '1')
+            }
 
             let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => raw(context, items.join(' AND ') ) )
@@ -79,11 +83,11 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
     //     ))
     // }
     
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
         // const p = this.toRaw(context, resolver)
         // return thenResult(p, r => makeScalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
 
             let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => raw(context, items.join(' OR ') ) )
@@ -109,12 +113,12 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
     //     // return raw( `NOT (${resolver(this.arg).toString()})`)
     // }
     
-    toScalar(): Scalar<BooleanNotNullType> {
+    toScalar(): Scalar<BooleanNotNullType, any> {
         // const p = this.toRaw(context, resolver)
         // return thenResult(p, r => new Scalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
 
-        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
             return thenResult( this.resolver(this.arg).toRaw(context), k => raw(context, 
                 `NOT (${k.toString()})`) 
             )
@@ -134,11 +138,11 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
     //     // return raw( `NOT (${resolver(this.arg).toString()})`)
     // }
     
-    toScalar(): Scalar<BooleanNotNullType> {
+    toScalar(): Scalar<BooleanNotNullType, any> {
         // const p = this.toRaw(context, resolver)
         // return thenResult(p, r => new Scalar(context, r, new BooleanType()))
         // return makeScalar(p, new BooleanType())
-        return new Scalar((context): Knex.Raw | Promise<Knex.Raw> => {
+        return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
             // return thenResult(this.arg.toNativeBuilder(context), scalar => raw(context, 
             //     `EXISTS (${scalar.toString()})`) 
             // )
@@ -151,10 +155,10 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
 }
 
 export class ContainOperator extends AssertionOperator {
-    rightOperands: Scalar<any>[]
-    leftOperand: Scalar<any>
+    rightOperands: Scalar<any, any>[]
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>, ...rightOperands: Scalar<any>[]){
+    constructor(leftOperand: Scalar<any, any>, ...rightOperands: Scalar<any, any>[]){
         super()
         this.rightOperands = rightOperands
         this.leftOperand = leftOperand
@@ -165,9 +169,9 @@ export class ContainOperator extends AssertionOperator {
     //     return thenResultArray(this.rightOperands, rightOperands => raw(context, `${this.leftOperand} IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResultArray(this.rightOperands.map(s => s.toRaw(context) ), rights => {
 
@@ -184,10 +188,10 @@ export class ContainOperator extends AssertionOperator {
 }
 
 export class NotContainOperator extends AssertionOperator {
-    rightOperands: Scalar<any>[]
-    leftOperand: Scalar<any>
+    rightOperands: Scalar<any, any>[]
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>, ...rightOperands: Scalar<any>[]){
+    constructor(leftOperand: Scalar<any, any>, ...rightOperands: Scalar<any, any>[]){
         super()
         this.rightOperands = rightOperands
         this.leftOperand = leftOperand
@@ -198,9 +202,9 @@ export class NotContainOperator extends AssertionOperator {
     //     // return thenResultArray(this.rightOperands, rightOperands => raw( `${leftOperand} NOT IN (${rightOperands.map(o => '?')})`, [...rightOperands]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResultArray(this.rightOperands.map(s => s.toRaw(context) ), rights => {
 
@@ -217,10 +221,10 @@ export class NotContainOperator extends AssertionOperator {
 }
 
 export class LikeOperator extends AssertionOperator {
-    rightOperand: Scalar<any>
-    leftOperand: Scalar<any>
+    rightOperand: Scalar<any, any>
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>, rightOperand: Scalar<any>){
+    constructor(leftOperand: Scalar<any, any>, rightOperand: Scalar<any, any>){
         super()
         this.rightOperand = rightOperand
         this.leftOperand = leftOperand
@@ -231,9 +235,9 @@ export class LikeOperator extends AssertionOperator {
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResult(this.rightOperand.toRaw(context), right => {
 
@@ -256,10 +260,10 @@ export class LikeOperator extends AssertionOperator {
 }
 
 export class NotLikeOperator extends AssertionOperator {
-    rightOperand: Scalar<any>
-    leftOperand: Scalar<any>
+    rightOperand: Scalar<any, any>
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>, rightOperand: Scalar<any>){
+    constructor(leftOperand: Scalar<any, any>, rightOperand: Scalar<any, any>){
         super()
         this.rightOperand = rightOperand
         this.leftOperand = leftOperand
@@ -270,9 +274,9 @@ export class NotLikeOperator extends AssertionOperator {
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResult(this.rightOperand.toRaw(context), right => {
 
@@ -295,10 +299,10 @@ export class NotLikeOperator extends AssertionOperator {
 }
 
 export class EqualOperator extends AssertionOperator{
-    rightOperand: Scalar<any> | any
-    leftOperand: Scalar<any> | any
+    rightOperand: Scalar<any, any> | any
+    leftOperand: Scalar<any, any> | any
 
-    constructor(leftOperand: Scalar<any> | any, rightOperand: Scalar<any> | any){
+    constructor(leftOperand: Scalar<any, any> | any, rightOperand: Scalar<any, any> | any){
         super()
         this.rightOperand = rightOperand
         this.leftOperand = leftOperand
@@ -309,9 +313,9 @@ export class EqualOperator extends AssertionOperator{
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(context)) ?? this.rightOperand, right => {
 
@@ -328,10 +332,10 @@ export class EqualOperator extends AssertionOperator{
 }
 
 export class NotEqualOperator extends AssertionOperator {
-    rightOperand: Scalar<any> | any
-    leftOperand: Scalar<any> | any
+    rightOperand: Scalar<any, any> | any
+    leftOperand: Scalar<any, any> | any
 
-    constructor(leftOperand: Scalar<any> | any, rightOperand: Scalar<any> | any){
+    constructor(leftOperand: Scalar<any, any> | any, rightOperand: Scalar<any, any> | any){
         super()
         this.rightOperand = rightOperand
         this.leftOperand = leftOperand
@@ -342,9 +346,9 @@ export class NotEqualOperator extends AssertionOperator {
     //     // return thenResult(this.rightOperand, rightOperand => raw( `${leftOperand} LIKE ?`, [rightOperand]) )
     // }
 
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
 
             return thenResult( (this.rightOperand.toRaw && this.rightOperand.toRaw(context)) ?? this.rightOperand, right => {
 
@@ -361,15 +365,15 @@ export class NotEqualOperator extends AssertionOperator {
 }
 
 export class IsNullOperator extends AssertionOperator {
-    leftOperand: Scalar<any>
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>){
+    constructor(leftOperand: Scalar<any, any>){
         super()
         this.leftOperand = leftOperand
     }
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
             return thenResult(this.leftOperand.toRaw(context), left => {
                 return raw(context, `${left} IS NULL`)
             })
@@ -378,15 +382,15 @@ export class IsNullOperator extends AssertionOperator {
 }
 
 export class IsNotNullOperator extends AssertionOperator {
-    leftOperand: Scalar<any>
+    leftOperand: Scalar<any, any>
 
-    constructor(leftOperand: Scalar<any>){
+    constructor(leftOperand: Scalar<any, any>){
         super()
         this.leftOperand = leftOperand
     }
-    toScalar(): Scalar<BooleanNotNullType>{
+    toScalar(): Scalar<BooleanNotNullType, any>{
 
-        return new Scalar((context) => {
+        return new Scalar((context: DatabaseContext<any>) => {
             return thenResult(this.leftOperand.toRaw(context), left => {
                 return raw(context, `${left} IS NOT NULL`)
             })

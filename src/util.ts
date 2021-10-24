@@ -32,7 +32,7 @@ export function expand<T>(o: T): Expand<T>{
 //     return o as any
 // }
 
-export type ScalarDictToValueTypeDict<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>>? D: never}
+export type ScalarDictToValueTypeDict<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>, any>? D: never}
 
 
 export type SimpleObject = { [key:string]: any}
@@ -59,6 +59,8 @@ export type ExtractFieldPropNameFromModelType<MT extends typeof Model> = Extract
 export type ExtractFieldPropNameFromSchema<S extends Schema<any>> = S extends Schema<infer P>? (keyof ExtractFieldPropDictFromDict<P>) & string: never
 
 
+export type ExtractPropDictFromModelType<MT extends typeof Model> = ExtractPropDictFromSchema< ExtractSchemaFromModelType<MT> >
+
 export type ExtractFieldPropDictFromSchema<S extends Schema<any>> = ExtractFieldPropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
@@ -76,7 +78,7 @@ Pick<E, ({
     [key in keyof E]: 
                     E[key] extends ComputeProperty<any>? key:
                     E[key] extends FieldProperty<any>? key:
-                    E[key] extends ScalarProperty<any>? key:
+                    E[key] extends ScalarProperty<any, any>? key:
                     never
 })[keyof E]>
 

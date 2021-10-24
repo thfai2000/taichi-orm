@@ -10,7 +10,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "typeRoots": ["./node_modules/@types", "../../dist"]
+    "typeRoots": ["./node_modules/@types", "../../dist"],
+    "noErrorTruncation": true
   },
   "include": ["src"]
 }

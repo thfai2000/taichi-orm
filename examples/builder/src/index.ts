@@ -45,37 +45,6 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     
     let p = Product.datasource('product')
 
-    p.selectorMap().shop()
-
-
-    type A = ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<ProductClass>, any>, <SSA extends SingleSourceArg<ExtractSchemaFromModelType<typeof ShopClass>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<typeof ShopClass>>) => SSA) | undefined) => Scalar<ObjectType<ParsableObjectTrait<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<typeof ShopClass>, SSA>>>>>
-
-    type C = A extends ComputeFunction<any, infer D, infer E>? E: never
-
-
-    let aaa = await p.selectorMap().shop({
-        select: {
-            products: {
-                select: {
-                    
-                }
-            }
-        }
-    }).execute()
-
-    let cc = await s.selectorMap().products({
-        select: {
-            shop: {
-                select: {
-                    products: {
-                        select: {
-                        }
-                    }
-                }
-            }
-        }
-    }).execute()
-
     let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
@@ -132,6 +101,11 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                     // DDD: product.ddd,
                     // a: product.abc(2),
                     b: product.abc2(2),
+                    c: product.shopWithName({
+                        select: {
+                            products: {}
+                        }
+                    }),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -147,11 +121,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                     //         products: {}
                     //     }
                     // }),
-                    // x2: product.shop({
-                    //     select: {
-                    //         products: {}
-                    //     }
-                    // })
+                   
                 })
             ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
@@ -198,7 +168,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
             onSqlRun: console.log
         })
 
-    // console.log('test groupBy', r2[0])
+    console.log('test groupBy', r2[0])
 
 
     //Done: dynamic result type on 'find'

@@ -1,18 +1,26 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, CCFScalarable } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively } from "./util"
-import { Expression, Scalar, Dataset, DScalar } from "./Builder"
+import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively, UnionToIntersection } from "./util"
+import { Expression, Scalar, Dataset, AddPrefix } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
 import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
-export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => DScalar<Dataset<ExtractSchemaFromModelType<MT>>, ArrayType< ParsableObjectTrait<
+export type DetermineDatasetFromModelType<MT extends typeof Model> =
+    Dataset<
+        ExtractSchemaFromModelType<MT>,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
+        UnionToIntersection< { 'root': SelectorMap< ExtractSchemaFromModelType<MT> > }>, 
+        Datasource<ExtractSchemaFromModelType<MT>, 'root'>
+    >
+
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => Scalar< ArrayType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            > >>
-export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => DScalar<Dataset<ExtractSchemaFromModelType<MT>>, ObjectType< ParsableObjectTrait<
+            > >, DetermineDatasetFromModelType<MT>>
+export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => Scalar< ObjectType< ParsableObjectTrait<
             ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-        > >>
+        > >, DetermineDatasetFromModelType<MT>>
         
 export abstract class Model {
 
@@ -45,7 +53,7 @@ export abstract class Model {
         P extends PropertyTypeDefinition<any>
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
+            compute: (context: DatabaseContext<any>, parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>
         ) 
             : ComputeProperty<
                 ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, P>
@@ -58,7 +66,7 @@ export abstract class Model {
         CCF extends CompiledComputeFunctionDynamicReturn
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >> 
+            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => CCFScalarable<CCF> | Promise<CCFScalarable<CCF>> 
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
@@ -146,7 +154,7 @@ export abstract class Model {
             
             if(args){
                 if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap())
+                    resolvedArgs = args(relatedSource.selectorMap)
                 } else {
                     resolvedArgs = args
                 }
@@ -210,7 +218,7 @@ export abstract class Model {
             
             if(args){
                 if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap())
+                    resolvedArgs = args(relatedSource.selectorMap)
                 } else {
                     resolvedArgs = args
                 }
@@ -236,7 +244,7 @@ export abstract class Model {
 
             let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
 
-            return r as Scalarable< ObjectType<ParsableObjectTrait<any>>>
+            return r as Scalarable< ObjectType<ParsableObjectTrait<any>>, any>
         })
     }
 }
