@@ -94,18 +94,21 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                 )
             )
             .select(
-                ({shop, product}) => ({
+                ({shop, product}) => {
+                    let c = product.shopWithName({
+                        select: {
+                            // products: {}
+                        }
+                    }).transform( ds => ds.selectProps('products'))
+                    
+                    return {
                     ...shop.$allFields,
                     hour: shop.hour,
                     // nini: product.shopId.equals(10),
                     // DDD: product.ddd,
                     // a: product.abc(2),
                     b: product.abc2(2),
-                    c: product.shopWithName({
-                        select: {
-                            products: {}
-                        }
-                    }),
+                    c: c,
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -121,8 +124,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                     //         products: {}
                     //     }
                     // }),
-                   
-                })
+                }}
             ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
             })

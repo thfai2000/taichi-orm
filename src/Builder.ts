@@ -979,7 +979,18 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 }
 
 export type SQLStringWithArgs = {sql: string, args?: any[]}
-export type RawUnit<T extends PropertyTypeDefinition<any> = any> = string | Promise<string> | SQLStringWithArgs | Promise<SQLStringWithArgs> | Knex.Raw | Promise<Knex.Raw> | Knex.QueryBuilder | Promise<Knex.QueryBuilder> | Promise<Scalar<T, any>> | Scalar<T, any> | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
+export type RawUnit<T extends PropertyTypeDefinition<any> = any> = 
+    string | Promise<string> 
+    | SQLStringWithArgs | Promise<SQLStringWithArgs> 
+    | Knex.Raw | Promise<Knex.Raw> 
+    | Knex.QueryBuilder | Promise<Knex.QueryBuilder> 
+    | Scalar<T, any> | Promise<Scalar<T, any>>
+    | Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>>
+    | Promise<
+        string | SQLStringWithArgs | Knex.Raw | Knex.QueryBuilder | Scalar<T, any> | Dataset<any, any, any, any>
+    >
+
+
 export type RawExpression<T extends PropertyTypeDefinition<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
 
 function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{ 
@@ -1035,9 +1046,9 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
         return new EqualOperator(this, rightOperand).toScalar()
     }
 
-    private toRealRaw() {
-        return this.expressionOrDataset
-    }
+    // private toRealRaw() {
+    //     return this.expressionOrDataset
+    // }
 
     // geValue(): Value {
     //     return this.expressionOrDataset
@@ -1058,9 +1069,28 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
         return this.#calculatedDefinition ?? this.declaredDefinition ?? new PropertyTypeDefinition()
     }
 
-    afterResolved<Current extends Scalar<any, any> >(this: Current, callback: (value: Value) => void | Promise<void> ): Current{
-        this.#afterResolvedHook = callback
-        return this
+    // afterResolved<Current extends Scalar<any, any> >(this: Current, callback: (value: Value) => void | Promise<void> ): Current{
+    //     this.#afterResolvedHook = callback
+    //     return this
+    // }
+
+    transform<ChangedValue extends Knex.Raw | Dataset<any, any, any, any>, 
+        T extends PropertyDefinition<any> = ChangedValue extends Dataset<infer Schema>? ArrayType<Schema>: any
+        >(
+        fn: (value: Value) => ChangedValue | Promise<ChangedValue>, 
+        definition?: T | (new (...args: any[]) => T) | null
+        ): Scalar<T, ChangedValue> {
+        
+        let s = new Scalar<T, ChangedValue>( (context) => {
+
+            const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset) as Value | Promise<Value>
+            
+            return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset) )
+            
+        }, definition)
+
+        return s
+
     }
 
     private async calculateDefinition(context?: DatabaseContext<any>):  Promise<PropertyTypeDefinition<any>>  {
@@ -1078,7 +1108,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
                     if(ex.declaredDefinition){
                         return ex.declaredDefinition
                     } else {
-                        let raw = ex.toRealRaw()
+                        let raw = ex.expressionOrDataset
                         return resolveDefinition(raw)
                     }
                 } else if(ex instanceof Function) {
@@ -1103,64 +1133,28 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
         }
         const expressionOrDataset = this.expressionOrDataset
 
-        const resolveIntoRawOrDataset = (ex: RawExpression ):
-            ( Knex.Raw<any> | Knex.QueryBuilder | Dataset<any, any, any>) => {
-
-            return thenResult(ex, ex => {
-
-                if(ex instanceof Dataset){
-                    // console.log('here 1')
-                    return ex
-                } else if(ex instanceof Scalar) {
-                    // console.log('here 2')
-                    return resolveIntoRawOrDataset( ex.toRealRaw())
-                    
-                } else if( ex instanceof Function){
-                    // console.log('resolve', ex.toString())
-                    return resolveIntoRawOrDataset(ex(repo))
-                } else if (typeof ex === 'string') {
-
-                    return makeRaw(repo, ex)
-                } else if (isSQLStringWithArgs(ex)){
-
-                    if(!ex.args){
-                        return makeRaw(repo, ex.sql)
-                    } else {
-                        const rawArgs = ex.args.map( (arg) => {
-                            if(arg instanceof Scalar){
-                                return arg.toRaw(repo)
-                            } else if(arg instanceof Dataset){
-                                return arg.toNativeBuilder(repo)
-                            }
-                            return arg
-                        })
-                        return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(repo, ex.sql, rawArgs)) )
-                    }
-                }
-                return ex
-            })
-        }
+        
 
         let raw = thenResult( this.getDefinition(repo), definition =>  {
             // if(!definition){
             //     console.log('......', this.declaredDefinition, this.calculateDefinition, this.expressionOrDataset.toString())
             //     // throw new Error('It cannot toRaw because without definition')
             // }
-            return thenResult( resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
+            return thenResult( this.resolveIntoRawOrDataset(repo, expressionOrDataset), rawOrDataset => {
                 
-                let e: void | Promise<void> | boolean = true
-                if(this.#afterResolvedHook){
-                    e = this.#afterResolvedHook(rawOrDataset)
-                }
+                // let e: void | Promise<void> | boolean = true
+                // if(this.#afterResolvedHook){
+                //     e = this.#afterResolvedHook(rawOrDataset)
+                // }
 
-                return thenResult(e, e => {
-                    if(!(rawOrDataset instanceof Dataset)){
-                        const next = makeRaw(repo, rawOrDataset.toString())
-                        return (definition ?? new PropertyTypeDefinition()).transformQuery(next, repo)
-                    } else {
-                        return (definition ?? new PropertyTypeDefinition()).transformQuery(rawOrDataset, repo)
-                    }
-                })
+                
+                if(!(rawOrDataset instanceof Dataset)){
+                    const next = makeRaw(repo, rawOrDataset.toString())
+                    return (definition ?? new PropertyTypeDefinition()).transformQuery(next, repo)
+                } else {
+                    return (definition ?? new PropertyTypeDefinition()).transformQuery(rawOrDataset, repo)
+                }
+            
                 
             })
 
@@ -1171,6 +1165,44 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
 
     }
 
+    private resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
+        ( Knex.Raw<any> | Promise<Knex.Raw<any>> | Dataset<any, any, any> | Promise< Dataset<any, any, any> >) {
+
+        return thenResult(raw, ex => {
+
+            if(ex instanceof Dataset){
+                // console.log('here 1')
+                return ex
+            } else if(ex instanceof Scalar) {
+                // console.log('here 2')
+                return this.resolveIntoRawOrDataset(context, ex.expressionOrDataset )
+                
+            } else if( ex instanceof Function){
+                // console.log('resolve', ex.toString())
+                return this.resolveIntoRawOrDataset(context, ex(context))
+            } else if (typeof ex === 'string') {
+
+                return makeRaw(context, ex)
+            } else if (isSQLStringWithArgs(ex)){
+
+                if(!ex.args){
+                    return makeRaw(context, ex.sql)
+                } else {
+                    const rawArgs = ex.args.map( (arg) => {
+                        if(arg instanceof Scalar){
+                            return arg.toRaw(context)
+                        } else if(arg instanceof Dataset){
+                            return arg.toNativeBuilder(context)
+                        }
+                        return arg
+                    })
+                    return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(context, ex.sql, rawArgs)) )
+                }
+            }
+            return ex
+        })
+    }
+    
     async getDefinition(context?: DatabaseContext<any>): Promise<PropertyTypeDefinition<any>>{
         if(context && this.#lastContext !== context){
             this.#calculatedRaw = null

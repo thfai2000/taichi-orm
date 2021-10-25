@@ -26,10 +26,10 @@ export default class Product extends Model {
 
     shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
         (context, parent, args?): any => {
-        return parent.selectorMap.shop(args).afterResolved( ds => {
+        return parent.selectorMap.shop(args).transform( ds => {
             const prevWhere = ds.getWhere()
 
-            ds.where( ({And}) => 
+            return ds.where( ({And}) => 
                     And(
                         prevWhere? prevWhere: {},
                         parent.selectorMap.name.equals('hello')
