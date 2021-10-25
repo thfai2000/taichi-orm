@@ -16,18 +16,19 @@ export default class Product extends Model {
     shopId = this.field(NumberType)
     shop = Product.belongsTo(Shop, 'shopId', 'id')
     
-    abc = Product.compute((context, parent, arg?: number) => {
+    abc = Product.compute((context, parent, arg?: number): CFReturn<number> => {
         return context.scalar(`5 + ?`, [arg ?? 0], NumberType)
     })
 
-    abc2 = Product.compute((context, parent, arg?: number): CFReturn<number | null> => {
+    abc2 = Product.compute((context, parent, arg?: number): CFReturn<number> => {
         return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberType)
     })
 
-    shopWithName = Product.computeDynamic<typeof Product, ModelObjectRecord<typeof Shop> >(
+    shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
         (context, parent, args?): any => {
         return parent.selectorMap.shop(args).afterResolved( ds => {
             const prevWhere = ds.getWhere()
+
             ds.where( ({And}) => 
                     And(
                         prevWhere? prevWhere: {},

@@ -54,24 +54,24 @@ export abstract class Model {
         >(
             this: M,
             compute: (context: DatabaseContext<any>, parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>
-        ) 
+        )
             : ComputeProperty<
                 ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, P>
-            > {
+            >;
 
-        return new ComputeProperty(new ComputeFunction(compute))
-    }
-
-    static computeDynamic<M extends typeof Model,
-        CCF extends CompiledComputeFunctionDynamicReturn
+    static compute<M extends typeof Model,
+            CCF extends CompiledComputeFunctionDynamicReturn
         >(
             this: M,
             compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => CCFScalarable<CCF> | Promise<CCFScalarable<CCF>> 
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
-            > {
-        return new ComputeProperty(new ComputeFunctionDynamicReturn(compute))
+            >;
+
+    static compute(...args: any[])
+    {
+        return new ComputeProperty(new ComputeFunction(args[0]))
     }
 
     hook(newHook: Hook){
@@ -124,7 +124,7 @@ export abstract class Model {
 
 
         //() => new ArrayType(relatedSchemaFunc())
-        return this.computeDynamic<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
+        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
             parent, //: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
         ) => {
@@ -192,7 +192,7 @@ export abstract class Model {
         )
         {
                
-        return this.computeDynamic<ParentModelType, ModelObjectRecord<RootModelType> >((context: DatabaseContext<any>,
+        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((context: DatabaseContext<any>,
             parent,//: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
         ) => {
