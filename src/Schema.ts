@@ -1,9 +1,9 @@
 import util from 'util'
 import { Knex } from "knex"
-import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, SelectorMap, ComputeFunctionDynamicReturn } from "."
+import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, SelectorMap, ComputeFunctionDynamicReturn } from "."
 import { Dataset, makeRaw, RawExpression, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
-import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
+import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
 
 export abstract class Property {

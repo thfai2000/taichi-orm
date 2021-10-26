@@ -2,7 +2,7 @@ import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyType
 import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
-import { CFReturn, ExtractValueTypeDictFromSchema, Scalarable } from "../../../dist"
+import { CFReturn } from "../../../dist"
 import { expand, expandRecursively } from "../../../dist/util"
 
 

@@ -139,6 +139,10 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
 
     let r = await dataset()
         .from(Shop.datasource("myShop"))
+        .where({
+            name: 'hello',
+            hour: 5
+        })
         // .select( ({myShop}) => myShop.$allFields)
         .selectProps('name','myShop.id','myShop.products')
         // .toScalar(new ArrayType(Shop.schema))
@@ -146,7 +150,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
             onSqlRun: console.log
         })
 
-    //console.log('testttttttttttttt', util.inspect(r, {showHidden: false, depth: null, colors: true}))
+    console.log('test', util.inspect(r, {showHidden: false, depth: null, colors: true}))
 
     let r2 = await dataset()
         .from(Shop.datasource("myShop"))
@@ -175,9 +179,9 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     //Done: dataset toScalar ....without ArrayType
     //Done: refactor ObjectType, ArrayType....use pure Array approach
     //Done: relation helper function: use string as input field
-    
-    // TODO: where Typescript Hints not working
-    // TODO: consider computedFunction dynamic result Typescript Hints
+    // Done: where Typescript Hints not working
+    // Done: consider computedFunction dynamic result Typescript Hints
+
     // TODO: deleteStatement
     // TODO: orderBy
     // TODO: having

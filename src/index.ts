@@ -3,9 +3,9 @@ import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, MutationEntityPropertyKeyValues, UpdateStatement, InsertStatement, RawExpression, RawUnit} from './Builder'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
 import { Model, ModelRepository } from './Model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
 
@@ -47,10 +47,10 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
 export type SingleSourceArg<S extends Schema<any> > = {
     select?: Partial<ConstructComputePropertyArgsDictFromSchema<S>>,
     where?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
                 > | ExpressionFunc<
-        UnionToIntersection< AddPrefix< ExtractPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >         
         >
     limit?: number,
@@ -59,7 +59,7 @@ export type SingleSourceArg<S extends Schema<any> > = {
 }
 
 export type SingleSourceFilter<S extends Schema<any> > = Expression<
-        UnionToIntersection< AddPrefix< ExtractPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
@@ -70,11 +70,11 @@ export type TwoSourcesArg<Root extends Schema<any>, RootName extends string, Rel
 
     props?: Partial<ConstructComputePropertyArgsDictFromSchema<Related>>,
     filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractPropDictFromDict< Root>, '', ''> | AddPrefix< ExtractPropDictFromDict< Root>, RootName> | AddPrefix< ExtractPropDictFromDict< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< FilterPropDictFromDict< Root>, '', ''> | AddPrefix< FilterPropDictFromDict< Root>, RootName> | AddPrefix< FilterPropDictFromDict< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 > | 
                 ExpressionFunc< 
-        UnionToIntersection< AddPrefix< ExtractPropDictFromDict< Root>, '', ''> | AddPrefix< ExtractPropDictFromDict< Root>, RootName> | AddPrefix< ExtractPropDictFromDict< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< FilterPropDictFromDict< Root>, '', ''> | AddPrefix< FilterPropDictFromDict< Root>, RootName> | AddPrefix< FilterPropDictFromDict< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 >
     limit?: number,
@@ -184,7 +184,7 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
 
 export type CompiledComputeFunction<Arg extends any, S extends Scalar<any,any>> = (args?: Arg) => S
 
-export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<S>>>
+// export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<ExtractEntityKeyValuesFromPropDict<ExtractFieldPropDictFromSchema<S>>>
 
 export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
@@ -192,26 +192,12 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
 }
 export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer V>, any> >>? V : never
    
-export type ExtractValueTypeDictFromPropertyDict<E> = {
-    [key in keyof E]:
-        E[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
-                (
-                    E[key] extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer X>, any> >>? X: 
-                                (
-                            E[key] extends ScalarProperty<Scalar<PropertyTypeDefinition<infer Primitive>, any>>? Primitive:
-                            E[key]
-                        )
-                )                  
-}
-export type ExtractValueTypeDictFromSchema<S extends Schema<any>> = ExtractValueTypeDictFromPropertyDict< S extends Schema<infer Dict>?Dict:never>
-
 
 type SelectiveArg = {select?:{}}
 type SelectiveArgFunction = ((root: SelectorMap<Schema<any>>) => SelectiveArg )
 
 type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
  
-type ExtractValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
