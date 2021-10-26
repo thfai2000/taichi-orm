@@ -26,7 +26,7 @@ import {ExtractComputePropDictFromSchema} from './util'
 
 // }
 
-export type CFReturn<D> = Scalarable<PropertyTypeDefinition<D>, any>
+export type CFReturn<D> = Scalar<PropertyTypeDefinition<D>, any>
 
 // export type CFReturnModelArray<Model> = Scalarable<PropertyTypeDefinition< ExtractVa >>
 
@@ -92,12 +92,12 @@ export type SelectorMap<E extends Schema<any>> = {
             
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         ArgR:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer P>>?
-        CompiledComputeFunction<Arg, P>: 
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer S>>?
+        CompiledComputeFunction<Arg, S>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
         Scalar<D, any>:
-        ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer D, infer Value>?
-        Scalar<D, Value>:
+        ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer S>?
+        S:
         never  
         
 } & {
@@ -153,36 +153,36 @@ export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<Proper
 // }
 
 export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
-    P extends PropertyTypeDefinition<any>
+    S extends Scalar<PropertyTypeDefinition<any>, any>
 >{
-    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>
-    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>){
+    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>
+    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>){
         this.fn = fn
     }
 }
 
-export type CCFScalarable<CCF extends CompiledComputeFunctionDynamicReturn > = Scalarable<
-    ReturnType<CCF> extends Scalar<infer P, any>? P: never,
-    ReturnType<CCF> extends Scalar<any, infer Value>? Value: never
-    >
+// export type CCFScalarable<CCF extends CompiledComputeFunctionDynamicReturn > = Scalarable<
+//     ReturnType<CCF> extends Scalar<infer P, any>? P: never,
+//     ReturnType<CCF> extends Scalar<any, infer Value>? Value: never
+//     >
 
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends CompiledComputeFunctionDynamicReturn
 > extends ComputeFunction<DS,
             Parameters<CCF>[0],
-            ReturnType<CCF> extends Scalar<infer P, any>?P: never
+            ReturnType<CCF>
             >{
 
     mode: 'dynamic' = 'dynamic'
     // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
     constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => 
-        CCFScalarable<CCF> | Promise<CCFScalarable<CCF>>
+        ReturnType<CCF> | Promise<ReturnType<CCF>>
     ){
         super(fn)
     }
 }
 
-export type CompiledComputeFunction<Arg extends any, P extends PropertyTypeDefinition<any> > = (args?: Arg) => Scalar<P, any>
+export type CompiledComputeFunction<Arg extends any, S extends Scalar<any,any>> = (args?: Arg) => S
 
 export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<MutationEntityPropertyKeyValues<ExtractFieldPropDictFromSchema<S>>>
 
@@ -190,15 +190,15 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
-export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, PropertyTypeDefinition<infer D>>>? D : never
+export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer V>, any> >>? V : never
    
 export type ExtractValueTypeDictFromPropertyDict<E> = {
     [key in keyof E]:
         E[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
                 (
-                    E[key] extends ComputeProperty<ComputeFunction<any, any, PropertyTypeDefinition<infer X>>>? X: 
+                    E[key] extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer X>, any> >>? X: 
                                 (
-                            E[key] extends ScalarProperty<PropertyTypeDefinition<infer Primitive>, any>? Primitive:
+                            E[key] extends ScalarProperty<Scalar<PropertyTypeDefinition<infer Primitive>, any>>? Primitive:
                             E[key]
                         )
                 )                  

@@ -1,6 +1,6 @@
 import util from 'util'
 import { Knex } from "knex"
-import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, Scalarable, SelectorMap, ComputeFunctionDynamicReturn } from "."
+import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, ExtractValueTypeDictFromPropertyDict, Hook, ORM, SelectorMap, ComputeFunctionDynamicReturn } from "."
 import { Dataset, makeRaw, RawExpression, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
@@ -144,11 +144,11 @@ export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends S
 
 }
 
-export class ScalarProperty<D extends PropertyTypeDefinition<any>, Value extends Knex.Raw | Dataset<any> > extends Property {
-    readonly scalar: Scalar<D, Value>
+export class ScalarProperty<S extends Scalar<any, any>> extends Property {
+    readonly scalar: S
 
     constructor(
-        scalar: Scalar<D, Value>){
+        scalar: S){
             super()
             this.scalar = scalar
         }
@@ -327,7 +327,7 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     getAllFieldProperty: () => { [key: string]: Scalar<PropertyTypeDefinition<any>, any>}
     getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>, any>
     getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyTypeDefinition<any>, any> 
-    getComputeProperty: <Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name) => CompiledComputeFunction<ARG, R>
+    getComputeProperty: <Name extends string, ARG extends any, S extends Scalar<PropertyTypeDefinition<any>, any> >(name: Name) => CompiledComputeFunction<ARG, S>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -423,22 +423,24 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
 
-    getComputeProperty<Name extends string, ARG extends any, R extends PropertyTypeDefinition<any>>(name: Name): CompiledComputeFunction<ARG, R>{
+    getComputeProperty<Name extends string, ARG extends any, S extends Scalar<any,any> >(name: Name): CompiledComputeFunction<ARG, S>{
         let prop = this.schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
             throw new Error(`Not field property ${name}`)
         }else{
             const cProp = prop
-            return (args?: ARG) => {
-                let col = new Scalar<R, any>((context: DatabaseContext<any>) => {
+            let c = (args?: ARG) => {
+
+                let col = new Scalar((context: DatabaseContext<any>) => {
                     // console.log('getComputeProperty -> ', name, args)
-                    const subquery: Scalarable<any, any> | Promise<Scalarable<any, any> > = cProp.compute.fn.call(cProp, context, this, args)
-                    let r = thenResult( subquery, scalarable => scalarable.toScalar())
-                    return r
-                }, null)
+                    const subquery: S | Promise<S > = cProp.compute.fn.call(cProp, context, this, args)
+                    return subquery
+                }, null) as S
 
                 return col
             }
+
+            return c
         }
     }
 

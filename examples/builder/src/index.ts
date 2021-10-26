@@ -94,21 +94,18 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                 )
             )
             .select(
-                ({shop, product}) => {
-                    let c = product.shopWithName({
-                        select: {
-                            // products: {}
-                        }
-                    }).transform( ds => ds.selectProps('products'))
-                    
-                    return {
+                ({shop, product}) => ({
                     ...shop.$allFields,
                     hour: shop.hour,
                     // nini: product.shopId.equals(10),
                     // DDD: product.ddd,
                     // a: product.abc(2),
                     b: product.abc2(2),
-                    c: c,
+                    c: product.shopWithName({
+                        select: {
+                            // products: {}
+                        }
+                    }).transform( ds => ds.selectProps('root.products').toScalarWithType(ds => new ObjectType(ds.schema())) ),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -124,7 +121,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                     //         products: {}
                     //     }
                     // }),
-                }}
+                })
             ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
             })
@@ -162,9 +159,9 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).castToScalar( 
+            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalarWithType( 
                 (ds) => new ObjectType(ds.schema()) 
-                )
+            )
         }))
         .execute().withOptions({
             onSqlRun: console.log

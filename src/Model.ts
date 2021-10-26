@@ -1,4 +1,4 @@
-import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, CCFScalarable } from "."
+import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, PartialMutationEntityPropertyKeyValues, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, ExtractPropDictFromDict, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively, UnionToIntersection } from "./util"
 import { Expression, Scalar, Dataset, AddPrefix } from "./Builder"
@@ -50,20 +50,20 @@ export abstract class Model {
 
     static compute<M extends typeof Model, 
         ARG,
-        P extends PropertyTypeDefinition<any>
+        S extends Scalar<any, any>
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => Scalarable<P, any> | Promise<Scalarable<P, any>>
+            compute: (context: DatabaseContext<any>, parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S | Promise< S >
         )
             : ComputeProperty<
-                ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, P>
+                ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>
             >;
 
     static compute<M extends typeof Model,
             CCF extends CompiledComputeFunctionDynamicReturn
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => CCFScalarable<CCF> | Promise<CCFScalarable<CCF>> 
+            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF> | Promise<ReturnType<CCF>> 
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
@@ -178,7 +178,7 @@ export abstract class Model {
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            let r = newDataset.castToScalar( (ds) => new ArrayType(ds.schema() )) //as Schema<ConstructPropertyDictBySelectiveArg<RootModel, SSA>>) )
+            let r = newDataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
 
             return r
         })
@@ -242,9 +242,9 @@ export abstract class Model {
             }
             newDataset.where( ({And}) => And(...filters) )
 
-            let r = newDataset.castToScalar( (ds) => new ObjectType(ds.schema() ))
+            let r = newDataset.toScalarWithType( (ds) => new ObjectType(ds.schema() ))
 
-            return r as Scalarable< ObjectType<ParsableObjectTrait<any>>, any>
+            return r as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
         })
     }
 }

@@ -1,4 +1,4 @@
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyTypeDefinition } from "../../../dist/PropertyType"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType, PropertyTypeDefinition, NumberNotNullType } from "../../../dist/PropertyType"
 import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
@@ -17,11 +17,11 @@ export default class Product extends Model {
     shop = Product.belongsTo(Shop, 'shopId', 'id')
     
     abc = Product.compute((context, parent, arg?: number): CFReturn<number> => {
-        return context.scalar(`5 + ?`, [arg ?? 0], NumberType)
+        return context.scalar(`5 + ?`, [arg ?? 0], NumberNotNullType)
     })
 
     abc2 = Product.compute((context, parent, arg?: number): CFReturn<number> => {
-        return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberType)
+        return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberNotNullType)
     })
 
     shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
@@ -34,7 +34,7 @@ export default class Product extends Model {
                         prevWhere? prevWhere: {},
                         parent.selectorMap.name.equals('hello')
                     )
-                )
+                ).toScalar()
         })
     })
 

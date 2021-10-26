@@ -78,7 +78,7 @@ Pick<E, ({
     [key in keyof E]: 
                     E[key] extends ComputeProperty<any>? key:
                     E[key] extends FieldProperty<any>? key:
-                    E[key] extends ScalarProperty<any, any>? key:
+                    E[key] extends ScalarProperty<any>? key:
                     never
 })[keyof E]>
 
@@ -95,14 +95,6 @@ Pick<E, ({
                     never
 })[keyof E]> 
 
-
-// export type ExtractSynComputeProps<E> = 
-// Pick<E, ({
-//     [key in keyof E]: E[key] extends ComputeProperty<any, any, any, any, infer R>? (
-//             Exclude<R, Promise<Scalarable> > extends Scalarable? key: key
-//         ):
-//         key
-// })[keyof E]> 
 
 
 export function thenResultArray<T, R>(

@@ -30,10 +30,10 @@ import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, Ext
 // }
 
 type ScalarDictToScalarPropertyDict<D> = {
-    [key in keyof D]: D[key] extends Scalar<infer P, infer Value>? ScalarProperty<P, Value>: never
+    [key in keyof D]: D[key] extends Scalar<any, any>? ScalarProperty<D[key]>: never
 }
 
-type SelectedPropsToScalarDict<SourceProps, P> = {
+type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
                 [key in keyof SourceProps
                     as 
                     (
@@ -49,12 +49,12 @@ type SelectedPropsToScalarDict<SourceProps, P> = {
                     key extends P? (
                             SourceProps[key] extends Prefixed<infer prefix, infer N, infer C>?
                             (C extends FieldProperty<infer D>?
-                                ScalarProperty<D, any>:
+                                ScalarProperty<Scalar<D, any>>:
                                 (
-                                    C extends ComputeProperty<ComputeFunction<any, any, infer P>>? 
-                                    ScalarProperty<P, any>:
+                                    C extends ComputeProperty<ComputeFunction<any, any, infer S>>? 
+                                    S:
                                     (
-                                        C extends ScalarProperty<any, any>? 
+                                        C extends ScalarProperty<any>? 
                                         C:
                                         never
                                     )
@@ -263,7 +263,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
 export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
     extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
-    implements Scalarable<any, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > {
+    implements Scalarable<ArrayType<ExistingSchema>, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > {
 
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
@@ -387,7 +387,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return new Scalar(this, new ArrayType(this.schema()), this.context) //as unknown as Scalar<T> 
     }
 
-    castToScalar<T extends PropertyTypeDefinition<any>>(
+    toScalarWithType<T extends PropertyTypeDefinition<any>>(
         this: Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>,
         type: 
         T | 
@@ -444,7 +444,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         Dataset<
             Schema<
                 (ExistingSchema extends Schema<infer Props>? Props: never) &
-                SelectedPropsToScalarDict<SourceProps, P>
+                SelectedPropsToScalarPropertyDict<SourceProps, P>
             >
         , 
         SourceProps, SourcePropMap, FromSource>{
@@ -542,7 +542,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
                 acc[key] = new ScalarProperty(selectItems[key])
                 return acc
-            }, {} as {[key:string]: ScalarProperty<any, any>})
+            }, {} as {[key:string]: ScalarProperty<any>})
             
             let schema = new Schema(propertyMap)
             this.datasetSchema = schema
@@ -1074,23 +1074,23 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
     //     return this
     // }
 
-    transform<ChangedValue extends Knex.Raw | Dataset<any, any, any, any>, 
-        T extends PropertyDefinition<any> = ChangedValue extends Dataset<infer Schema>? ArrayType<Schema>: any
+    transform<
+        S extends Scalar<any, any>
+        // ChangedValue extends Knex.Raw | Dataset<any, any, any, any>
+        // T extends PropertyDefinition<any> = ChangedValue extends Dataset<infer Schema>? ArrayType<Schema>: any
         >(
-        fn: (value: Value) => ChangedValue | Promise<ChangedValue>, 
-        definition?: T | (new (...args: any[]) => T) | null
-        ): Scalar<T, ChangedValue> {
+            fn: (value: Value) => S | Promise<S>
+        ): S {
         
-        let s = new Scalar<T, ChangedValue>( (context) => {
+        let s = new Scalar( (context) => {
 
             const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset) as Value | Promise<Value>
             
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset) )
             
-        }, definition)
+        }) as S
 
         return s
-
     }
 
     private async calculateDefinition(context?: DatabaseContext<any>):  Promise<PropertyTypeDefinition<any>>  {
