@@ -336,7 +336,7 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
 
 abstract class DatasourceBase<E extends Schema<any>, Name extends string> implements Datasource<E, Name> {
 
-    readonly schema: E
+    protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
     readonly selectorMap: SelectorMap<E>
@@ -346,7 +346,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             throw new Error('alias cannot start with Uppercase letter')
         }
 
-        this.schema = schema
+        this._schema = schema
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
 
@@ -358,7 +358,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                     if(sKey === '$allFields'){
                         return datasource.getAllFieldProperty()
                     } else {
-                        let prop = oTarget.schema.propertiesMap[sKey]
+                        let prop = oTarget._schema.propertiesMap[sKey]
                         if(prop instanceof FieldProperty){
                             return datasource.getFieldProperty(sKey)
                         }
@@ -375,10 +375,14 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
+    get schema(): E {
+        return this._schema
+    }
+
     getAllFieldProperty(): { [key: string]: Scalar<PropertyTypeDefinition<any>, any>} {
-        return Object.keys(this.schema.propertiesMap)
+        return Object.keys(this._schema.propertiesMap)
         .reduce( (acc, key) => {
-             if(this.schema.propertiesMap[key] instanceof FieldProperty){
+             if(this._schema.propertiesMap[key] instanceof FieldProperty){
                 acc[key] = this.getFieldProperty(key)
              }
              return acc
@@ -388,7 +392,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
     getFieldProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>, any> {
-        let prop = this.schema.propertiesMap[name]
+        let prop = this._schema.propertiesMap[name]
         if( !(prop instanceof FieldProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
@@ -404,7 +408,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
 
 
     getComputeProperty<Name extends string, ARG extends any, S extends Scalar<any,any> >(name: Name): CompiledComputeFunction<ARG, S>{
-        let prop = this.schema.propertiesMap[name]
+        let prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
             throw new Error(`Not field property ${name}`)
         }else{
@@ -425,7 +429,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
     getScalarProperty<Name extends string>(name: Name): Scalar<PropertyTypeDefinition<any>, any> {
-        let prop = this.schema.propertiesMap[name]
+        let prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ScalarProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
@@ -449,6 +453,10 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
     constructor(schema: E, sourceAlias: Name, options?: TableOptions){
         super(schema, sourceAlias)
         this.options = options
+    }
+
+    get schema(): E {
+        return this._schema
     }
 
     realSource(context: DatabaseContext<any>){

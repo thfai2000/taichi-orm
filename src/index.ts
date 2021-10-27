@@ -45,26 +45,24 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
 
 
 export type SingleSourceArg<S extends Schema<any> > = {
-    select?: Partial<ConstructComputePropertyArgsDictFromSchema<S>>,
-    where?: Expression< 
+    select?: SingleSourceSelect<S>,
+    where?: SingleSourceWhere<S>
+    limit?: number,
+    offset?: number,
+    orderBy?: QueryOrderBy
+}
+
+export type SingleSourceWhere<S extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >         
         >
-    limit?: number,
-    offset?: number,
-    orderBy?: QueryOrderBy
-}
 
-export type SingleSourceFilter<S extends Schema<any> > = Expression<
-        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S> }  >        
-    >
+export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
 
 // export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
-
 
 export type TwoSourcesArg<Root extends Schema<any>, RootName extends string, Related extends Schema<any>, RelatedName extends string> = {
 

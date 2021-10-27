@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DatabaseQueryRunner, DatabaseMutationRunner, PropertyDefinition } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyTypeDefinition, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
-import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./Schema"
+import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./Schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -921,7 +921,7 @@ export class InsertStatement<T extends TableSchema<any>>
 
 }
 
-export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends TableDatasource<any, any> = TableDatasource<any, any>> 
     extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
     {
 
@@ -931,10 +931,10 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         super(repo)
     }
 
-    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+    from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1021,11 +1021,15 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         }
         nativeQB.update( updateItems )
 
+        if ( context.client().startsWith('pg')) {
+            const schemaPrimaryKeyFieldName = (this.fromItem as unknown as TableDatasource<any, any>).schema().id.fieldName(context.orm)
+            nativeQB = nativeQB.returning(schemaPrimaryKeyFieldName)
+        }
+
         return nativeQB
     }
 
-
-    execute<S extends Schema<any>>(repo?: DatabaseContext<any>) {
+    execute(repo?: DatabaseContext<any>) {
 
         const context = repo ?? this.context
         if(!context){
@@ -1035,15 +1039,22 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         return new DatabaseMutationRunner(
             async (executionOptions: ExecutionOptions) => {
                 const nativeSql = await this.toNativeBuilder(context)
-                let data = await context.executeStatement(nativeSql, {}, executionOptions)
-                return data
+                let result = await context.executeStatement(nativeSql, {}, executionOptions)
+
+                if (context.client().startsWith('pg')) {
+
+                    const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
+
+                    return updatedIds
+                }
+                
+                return null
             })
     }
-
 }
 
 
-export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends TableDatasource<any, any> = TableDatasource<any, any>> 
     extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
     {
 
@@ -1053,10 +1064,10 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         super(repo)
     }
 
-    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+    from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
