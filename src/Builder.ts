@@ -979,6 +979,94 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
 }
 
+
+export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+    extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
+    {
+
+    #updateItems: { [key: string]: Scalar<any, any> } | null = null
+
+    constructor(repo?: DatabaseContext<any>){
+        super(repo)
+    }
+
+    from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
+        UpdateStatement< 
+            UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
+            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+        > {
+            return this.baseFrom(source) as any
+        }
+
+    where<Y extends SourcePropMap & SQLKeywords< SourceProps, SourcePropMap >  >(expression: Expression< SourceProps, Y>): UpdateStatement<SourceProps, SourcePropMap, FromSource>{
+        return this.baseWhere(expression) as any
+    }
+
+    innerJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
+        
+        return this.baseInnerJoin(source, expression) as any
+    }
+     
+    leftJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
+        return this.baseLeftJoin(source, expression) as any
+    }
+
+    rightJoin<S extends Schema<any>, SName extends string, 
+        X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        >(source: Datasource<S, SName>, 
+        expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
+        return this.baseRightJoin(source, expression) as any
+    }
+
+    async toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
+
+        const context = repo ?? this.context
+
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+
+        if(!this.fromItem){
+            throw new Error('No from item')
+        }
+        const from = await this.fromItem.toRaw(context)
+        let nativeQB = context.orm.getKnexInstance().from(from)
+        //@ts-ignore
+        nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
+
+        await this.buildWhereClause(context, nativeQB)
+
+        nativeQB.delete()
+
+        return nativeQB
+    }
+
+    execute<S extends Schema<any>>(repo?: DatabaseContext<any>) {
+
+        const context = repo ?? this.context
+        if(!context){
+            throw new Error('There is no repository provided.')
+        }
+
+        return new DatabaseMutationRunner(
+            async (executionOptions: ExecutionOptions) => {
+                const nativeSql = await this.toNativeBuilder(context)
+                let data = await context.executeStatement(nativeSql, {}, executionOptions)
+                return data
+            })
+    }
+
+}
+
 export type SQLStringWithArgs = {sql: string, args?: any[]}
 export type RawUnit<T extends PropertyTypeDefinition<any> = any> = 
     string | Promise<string> 

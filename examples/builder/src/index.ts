@@ -30,6 +30,7 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
         dataset, 
         scalar,
         insert,
+        del,
         update,
         models: {Shop, Product} 
     } = orm.getContext()
@@ -173,6 +174,29 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
 
     console.log('test groupBy', r2[0])
 
+    console.log('d1', await dataset()
+        .from(Shop.datasource("myShop"))
+        .where(({myShop}) => myShop.id.equals(1))
+        .select(({myShop}) => ({
+            ...myShop.$allFields
+        }))
+        .execute())
+
+    const deleted = await del()
+        .from(Shop.datasource("myShop"))
+        .where(({myShop}) => myShop.id.equals(1))
+        .execute().withOptions({
+            onSqlRun: console.log
+        })
+    console.log('xxx', deleted)
+
+    console.log('d2', await dataset()
+        .from(Shop.datasource("myShop"))
+        .where(({myShop}) => myShop.id.equals(1))
+        .select(({myShop}) => ({
+            ...myShop.$allFields
+        }))
+        .execute())
 
     //Done: dynamic result type on 'find'
     //Done: dataset api use DatabaseAction chain
@@ -181,26 +205,26 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     //Done: relation helper function: use string as input field
     // Done: where Typescript Hints not working
     // Done: consider computedFunction dynamic result Typescript Hints
+    // Done: deleteStatement
+    // Done: repository.scalar() & scalar.execute
 
-    // TODO: deleteStatement
     // TODO: orderBy
     // TODO: having
-    // TODO: addSelectProps
+    // MODEL: CRUD...delete()
+    // TODO: Model.count
     // fix all unit tests
-    // repository.scalar() & scalar.execute
+    // TODO: addSelectProps
     // EXISTS, NOT, BETWEEN, 
     // greaterThan, lessThan
     // equalOrGreaterThan, equalOrLessThan
     // minus, plus
     // SUM, MAX, MIN
-    // MODEL: CRUD...delete()
     // TODO: manyToMany Relation helper function
     // Scalar.boolean, Scalar.string
     // think about migrate issue
     // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
-    // TODO: add PropertType (ArrayType of primivite)
-    // TODO: Model.count
+    // TODO: add PropertType (ArrayType of primitive)
 
 
 
