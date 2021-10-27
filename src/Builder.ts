@@ -143,7 +143,7 @@ abstract class StatementBase {
                 if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                     text = `(${text})`
                 }
-                acc[prop.fieldName(context.orm)] = makeRaw(context, text)
+                acc[prop.fieldName(context.orm)] = context.raw(text)
             }
 
             return acc
@@ -351,7 +351,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
                 text = `(${text})`
             }
-            const newRaw = makeRaw(context, `${text}${includeAlias?` AS ${quote(client, k)}`:''}`)
+            const newRaw = context.raw(`${text}${includeAlias?` AS ${quote(client, k)}`:''}`)
 
             return newRaw
         }))
@@ -1134,8 +1134,6 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
         }
         const expressionOrDataset = this.expressionOrDataset
 
-        
-
         let raw = thenResult( this.getDefinition(repo), definition =>  {
             // if(!definition){
             //     console.log('......', this.declaredDefinition, this.calculateDefinition, this.expressionOrDataset.toString())
@@ -1148,9 +1146,8 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
                 //     e = this.#afterResolvedHook(rawOrDataset)
                 // }
 
-                
                 if(!(rawOrDataset instanceof Dataset)){
-                    const next = makeRaw(repo, rawOrDataset.toString())
+                    const next = repo.raw(rawOrDataset.toString())
                     return (definition ?? new PropertyTypeDefinition()).transformQuery(next, repo)
                 } else {
                     return (definition ?? new PropertyTypeDefinition()).transformQuery(rawOrDataset, repo)
@@ -1183,11 +1180,11 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
                 return this.resolveIntoRawOrDataset(context, ex(context))
             } else if (typeof ex === 'string') {
 
-                return makeRaw(context, ex)
+                return context.raw(ex)
             } else if (isSQLStringWithArgs(ex)){
 
                 if(!ex.args){
-                    return makeRaw(context, ex.sql)
+                    return context.raw(ex.sql)
                 } else {
                     const rawArgs = ex.args.map( (arg) => {
                         if(arg instanceof Scalar){
@@ -1197,7 +1194,7 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
                         }
                         return arg
                     })
-                    return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => makeRaw(context, ex.sql, rawArgs)) )
+                    return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => context.raw(ex.sql, rawArgs)) )
                 }
             }
             return ex
@@ -1294,16 +1291,6 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
 //     }
 // }
 
-export const makeRaw = (context: DatabaseContext<any>, sql: any, args?: any[]) => {
-    let r = context.orm.getKnexInstance().raw(sql, args ?? [])
-    // @ts-ignore
-    r.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
-    // r.clone = () => {
-    //     return makeRaw(repository, r.toString())
-    // }
-    // r.__type = 'Raw'
-    return r
-}
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M>) => Scalar<any, any>
 
@@ -1317,21 +1304,21 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
             value = expression
         }
         if( value === null){
-            return new Scalar((context: DatabaseContext<any>) => makeRaw(context, '?', [null]))
+            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
         } else if (typeof value === 'boolean') {
             const boolValue = value
-            return new Scalar((context: DatabaseContext<any>) => makeRaw(context, '?', [boolValue]), new BooleanType())
+            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [boolValue]), new BooleanType())
         } else if (typeof value === 'string'){
             const stringValue = value
-            return new Scalar((context: DatabaseContext<any>) => makeRaw(context, '?', [stringValue]), new StringType())
+            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
         } else if (typeof value === 'number'){
             const numberValue = value
             //TODO
-            return new Scalar((context: DatabaseContext<any>) => makeRaw(context, '?', [numberValue]), new NumberType())
+            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
         } else if (value instanceof Date){
             const dateValue = value
             //TODO
-            return new Scalar((context: DatabaseContext<any>) => makeRaw(context, '?', [dateValue]), new DateTimeType())
+            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
         } else if(value instanceof ConditionOperator){
             return value.toScalar()
         } else if(Array.isArray(value)){

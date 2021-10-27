@@ -490,6 +490,13 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return new Scalar(args[0], args[1], this)
     }
 
+    raw = (sql: any, args?: any[]) => {
+        let r = this.orm.getKnexInstance().raw(sql, args ?? [])
+        // @ts-ignore
+        r.then = 'It is overridden. \'Then\' function is removed to prevent execution when it is passing across any async function(s).'
+        return r
+    }
+    
     update = () => {
         return new UpdateStatement(this)
     }

@@ -1,4 +1,4 @@
-import { Dataset, makeRaw, Scalar } from "../../../dist/Builder"
+import { Dataset, Scalar } from "../../../dist/Builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
 import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"

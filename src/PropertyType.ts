@@ -1,7 +1,7 @@
 // import { Knex } from "knex"
 import { Knex } from "knex"
 import { DatabaseContext } from "."
-import { Dataset, makeRaw } from "./Builder"
+import { Dataset } from "./Builder"
 import { makeid, quote, SimpleObject, SQLString, thenResult } from "./util"
 
 
@@ -81,7 +81,7 @@ export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
     transformQuery(rawOrDataset: Knex.Raw<any> | Dataset<any, any, any>, context: DatabaseContext<any>, singleColumnName?: string): Knex.Raw<any> | Promise<Knex.Raw<any>> {
         if(rawOrDataset instanceof Dataset){
             if(rawOrDataset.selectItemsAlias().length === 1){
-                return thenResult( rawOrDataset.toNativeBuilder(context), query => makeRaw(context, `(${query})`) )
+                return thenResult( rawOrDataset.toNativeBuilder(context), query => context.raw(`(${query})`) )
             }
             throw new Error('Only Dataset with single column can be transformed.')
         }
@@ -675,7 +675,7 @@ export class ObjectType<T extends ParsableObjectTrait<any> > extends ComputeProp
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
             const client = context.client()
             let jsonify =  `SELECT ${jsonArray(client, columns.map(col => quote(client, col)))} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
-            return makeRaw(context, `(${jsonify})`)
+            return context.raw(`(${jsonify})`)
         })
     }
  
@@ -751,7 +751,7 @@ export class ArrayType<T extends ParsableObjectTrait<any> > extends ComputePrope
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
             const client = context.client()
             let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)}) AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
-            return makeRaw(context, `(${jsonify})`)
+            return context.raw(`(${jsonify})`)
         })
     }
 

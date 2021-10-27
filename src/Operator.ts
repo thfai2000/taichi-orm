@@ -1,4 +1,4 @@
-import {Scalar, makeRaw as raw, ExpressionResolver, Expression, Dataset} from './Builder'
+import {Scalar, ExpressionResolver, Expression, Dataset} from './Builder'
 import {Knex} from 'knex'
 import { BooleanNotNullType } from './PropertyType'
 import { thenResult, thenResultArray } from './util'
@@ -51,11 +51,10 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
 
             if(this.args.length === 0){
-                return raw(context, '1')
+                return context.raw('1')
             }
-
             let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
-            return thenResultArray(items, items => raw(context, items.join(' AND ') ) )
+            return thenResultArray(items, items => context.raw(items.join(' AND ') ) )
    
             // return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
             //     args.map(arg => {
@@ -89,8 +88,11 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
         // return makeScalar(p, new BooleanType())
         return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
 
+            if(this.args.length === 0){
+                return context.raw('1')
+            }
             let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
-            return thenResultArray(items, items => raw(context, items.join(' OR ') ) )
+            return thenResultArray(items, items => context.raw(items.join(' OR ') ) )
 
             // return thenResultArray(this.args, (args: Array<Expression<Props, PropMap> >) => raw(context,
             //     args.map(arg => {
@@ -119,7 +121,7 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
         // return makeScalar(p, new BooleanType())
 
         return new Scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult( this.resolver(this.arg).toRaw(context), k => raw(context, 
+            return thenResult( this.resolver(this.arg).toRaw(context), k => context.raw( 
                 `NOT (${k.toString()})`) 
             )
         },new BooleanNotNullType())
@@ -146,7 +148,7 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
             // return thenResult(this.arg.toNativeBuilder(context), scalar => raw(context, 
             //     `EXISTS (${scalar.toString()})`) 
             // )
-            return thenResult( this.arg.toNativeBuilder(context), k => raw(context, 
+            return thenResult( this.arg.toNativeBuilder(context), k => context.raw( 
                 `EXISTS (${k.toString()})`) 
             )
 
@@ -177,7 +179,7 @@ export class ContainOperator extends AssertionOperator {
 
                 return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(context, `${left} IN (${rights.map(o => '?')})`, [...rights])
+                    return context.raw(`${left} IN (${rights.map(o => '?')})`, [...rights])
 
                 })
 
@@ -210,7 +212,7 @@ export class NotContainOperator extends AssertionOperator {
 
                 return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(context, `${left} NOT IN (${rights.map(o => '?')})`, [...rights])
+                    return context.raw(`${left} NOT IN (${rights.map(o => '?')})`, [...rights])
 
                 })
 
@@ -243,7 +245,7 @@ export class LikeOperator extends AssertionOperator {
 
                 return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(context, `${left} LIKE ?`, [right])
+                    return context.raw(`${left} LIKE ?`, [right])
 
                 })
 
@@ -282,7 +284,7 @@ export class NotLikeOperator extends AssertionOperator {
 
                 return thenResult(this.leftOperand.toRaw(context), left => {
 
-                    return raw(context, `${left} NOT LIKE ?`, [right])
+                    return context.raw(`${left} NOT LIKE ?`, [right])
 
                 })
 
@@ -321,7 +323,7 @@ export class EqualOperator extends AssertionOperator{
 
                 return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
 
-                    return raw(context, `${left} = ?`, [right])
+                    return context.raw(`${left} = ?`, [right])
 
                 })
 
@@ -354,7 +356,7 @@ export class NotEqualOperator extends AssertionOperator {
 
                 return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
 
-                    return raw(context, `${left} <> ?`, [right])
+                    return context.raw(`${left} <> ?`, [right])
 
                 })
 
@@ -375,7 +377,7 @@ export class IsNullOperator extends AssertionOperator {
 
         return new Scalar((context: DatabaseContext<any>) => {
             return thenResult(this.leftOperand.toRaw(context), left => {
-                return raw(context, `${left} IS NULL`)
+                return context.raw(`${left} IS NULL`)
             })
         }, new BooleanNotNullType())
     }
@@ -392,7 +394,7 @@ export class IsNotNullOperator extends AssertionOperator {
 
         return new Scalar((context: DatabaseContext<any>) => {
             return thenResult(this.leftOperand.toRaw(context), left => {
-                return raw(context, `${left} IS NOT NULL`)
+                return context.raw(`${left} IS NOT NULL`)
             })
         }, new BooleanNotNullType())
     }

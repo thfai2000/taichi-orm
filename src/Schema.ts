@@ -1,7 +1,7 @@
 import util from 'util'
 import { Knex } from "knex"
 import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, SelectorMap, ComputeFunctionDynamicReturn } from "."
-import { Dataset, makeRaw, RawExpression, Scalar } from "./Builder"
+import { Dataset, RawExpression, Scalar } from "./Builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
@@ -375,26 +375,6 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
-    // selectorMap(): SelectorMap<E>{
-        
-    //     return map
-    // }
-
-    // getProperty<Name extends string, T extends PropertyTypeDefinition<any>>(name: Name) : Column<Name, T> {
-    //     let prop = this.schema.propertiesMap[name]
-    //     if( !(prop instanceof Property)){
-    //         throw new Error('it is not property')
-    //     } else {
-    //         const derivedProp = prop
-    //         return new Column(name, derivedProp.definition, (entityRepository) => {
-    //             const orm = entityRepository.orm
-    //             const client = orm.client()
-    //             let rawTxt = `${quote(client, this.sourceAlias)}.${quote(client, derivedProp.name)}`
-    //             return makeRaw(entityRepository, rawTxt)
-    //         })
-    //     }
-    // }
-
     getAllFieldProperty(): { [key: string]: Scalar<PropertyTypeDefinition<any>, any>} {
         return Object.keys(this.schema.propertiesMap)
         .reduce( (acc, key) => {
@@ -417,7 +397,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                 const orm = context.orm
                 const client = context.client()
                 let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
-                return makeRaw(context, rawTxt)
+                return context.raw(rawTxt)
             }, fieldProp.definition)
         }
     }
@@ -457,7 +437,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     async toRaw(context: DatabaseContext<any>){
         const client = context.client()
         const sql = await this.realSource(context)
-        return makeRaw(context, `${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
+        return context.raw(`${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
     }
 
 }
