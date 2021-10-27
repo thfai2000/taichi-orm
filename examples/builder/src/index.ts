@@ -208,8 +208,8 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     // Done: consider computedFunction dynamic result Typescript Hints
     // Done: deleteStatement
     // Done: repository.scalar() & scalar.execute
+    // Done: orderBy
 
-    // TODO: orderBy
     // TODO: having
     // MODEL: CRUD...delete()
     // TODO: Model.count

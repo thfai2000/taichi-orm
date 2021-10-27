@@ -47,10 +47,10 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
 export type SingleSourceArg<S extends Schema<any> > = {
     select?: Partial<ConstructComputePropertyArgsDictFromSchema<S>>,
     where?: Expression< 
-        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
                 > | ExpressionFunc<
-        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >         
         >
     limit?: number,
@@ -59,7 +59,7 @@ export type SingleSourceArg<S extends Schema<any> > = {
 }
 
 export type SingleSourceFilter<S extends Schema<any> > = Expression<
-        UnionToIntersection< AddPrefix< FilterPropDictFromDict<S>, '', ''> >,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
         UnionToIntersection< { 'root': SelectorMap< S> }  >        
     >
 
@@ -70,11 +70,11 @@ export type TwoSourcesArg<Root extends Schema<any>, RootName extends string, Rel
 
     props?: Partial<ConstructComputePropertyArgsDictFromSchema<Related>>,
     filter?: Expression< 
-        UnionToIntersection< AddPrefix< FilterPropDictFromDict< Root>, '', ''> | AddPrefix< FilterPropDictFromDict< Root>, RootName> | AddPrefix< FilterPropDictFromDict< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< Root>, '', ''> | AddPrefix< ExtractPropDictFromSchema< Root>, RootName> | AddPrefix< ExtractPropDictFromSchema< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 > | 
                 ExpressionFunc< 
-        UnionToIntersection< AddPrefix< FilterPropDictFromDict< Root>, '', ''> | AddPrefix< FilterPropDictFromDict< Root>, RootName> | AddPrefix< FilterPropDictFromDict< Related>, RelatedName> >,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< Root>, '', ''> | AddPrefix< ExtractPropDictFromSchema< Root>, RootName> | AddPrefix< ExtractPropDictFromSchema< Related>, RelatedName> >,
         UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
                 >
     limit?: number,

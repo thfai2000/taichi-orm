@@ -1,6 +1,6 @@
 import { DatabaseActionOptions, DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, SingleSourceFilter, ExtractValueTypeDictFromFieldProperties, ORM, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, FilterPropDictFromDict, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively, UnionToIntersection } from "./util"
+import { Expand, expandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromModel, ExtractFieldPropDictFromModelType, ExtractFieldPropNameFromModelType, FilterPropDictFromDict, ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, notEmpty, SimpleObject, undoExpandRecursively, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
 import { Expression, Scalar, Dataset, AddPrefix } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
@@ -129,16 +129,7 @@ export abstract class Model {
             args?
         ) => {
 
-        // }
-            
-        // let computeFn = function<SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>>>(
-        //     context: DatabaseContext<any>,
-        //     parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-        //     args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA)
-        //     ): Scalarable< ArrayType< Parsable<
-        //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-        //     > > >{
-            let dataset = new Dataset()
+            let dataset = context.dataset()
 
             let relatedModel = context.getRepository(relatedModelType)
             let relatedSource = relatedModel.datasource('root')
@@ -205,7 +196,7 @@ export abstract class Model {
         //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
         //     >> > => {
             
-            let dataset = new Dataset()
+            let dataset = context.dataset()
             let relatedSchema = context.getRepository(relatedModelType)
             let relatedSource = relatedSchema.datasource('root')
 
@@ -292,36 +283,36 @@ export class ModelRepository<MT extends typeof Model>{
     //     return this.#orm
     // }
 
-    // createOne(data: PartialMutationEntityPropertyKeyValues<ExtractSchemaFromModelType<MT>>) {
+    createOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>) {
         
-    //     return new DatabaseMutationRunner<(ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)>(
-    //         async (executionOptions: ExecutionOptions) => {
-    //             let ds = this.context.dataset().insert(this.#modelClass.schema()).values(data)
-    //             let id = this.context.executeAndReturn(ds)
+        return new DatabaseMutationRunner(
+            async (executionOptions: ExecutionOptions) => {
 
-    //             let result = await this.context.dataset().from(this.#modelClass.datasource('root')).select(({root})=> root.all).execute()
+                let result = await this.context.insert(this.#model.schema()).values(data).executeAndReturn().withOptions(executionOptions)
+                if(!result){
+                    throw new Error('Unexpected Error. Cannot find the entity after creation.')
+                }
+                return result 
+            }
+        )
+    }
 
-    //             // let result = await this._create(executionOptions, [data])
-    //             if(!result[0]){
-    //                 throw new Error('Unexpected Error. Cannot find the entity after creation.')
-    //             }
-    //             return result[0] as (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)
-    //         }
-    //     )
-    // }
+    createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
 
-    // // createEach(arrayOfData: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>[]): DatabaseMutationRunner< (ConstructValueTypeDictBySelectiveArg<>)[], ExtractSchemaFromModelType<MT>>{
-    // //     return new DatabaseMutationRunner< (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)[], ExtractSchemaFromModelType<MT> >(
-    // //         async (executionOptions: ExecutionOptions) => {
-    // //             let result = await this._create(executionOptions, arrayOfData)
-    // //             return result.map( data => {
-    // //                     if(data === null){
-    // //                         throw new Error('Unexpected Flow.')
-    // //                     }
-    // //                     return data as (ExtractValueTypeDictFromFieldProperties<InstanceType<MT>>)
-    // //                 })
-    // //         })
-    // // }
+        return new DatabaseMutationRunner(
+            async (executionOptions: ExecutionOptions) => {
+                const schema = this.#model.schema()
+                
+                return await Promise.all(arrayOfData.map( async(data) => {
+                    let result = await this.context.insert(schema).values(data).executeAndReturn().withOptions(executionOptions)
+                    if(!result){
+                        throw new Error('Unexpected Error. Cannot find the entity after creation.')
+                    }
+                    return result
+                }))
+
+            })
+    }
 
 
     // /**
@@ -342,10 +333,42 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(applyFilter?: F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> > >{
+    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F): DatabaseQueryRunner<  Array< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F> > >{
+        //@ts-ignore
         return new DatabaseQueryRunner(
             async (executionOptions: ExecutionOptions) => {
-                throw new Error('xxx')
+                
+                let source = this.model.datasource('root')
+                let dataset = this.context.dataset().from(source)
+
+                let props = source.getAllFieldProperty()
+    
+                let resolvedArgs: SingleSourceArg< ExtractSchemaFromModelType<MT>> | undefined
+                
+                if(args){
+                    if(args instanceof Function){
+                        resolvedArgs = args(source.selectorMap)
+                    } else {
+                        resolvedArgs = args
+                    }
+                }
+    
+                if(resolvedArgs?.select){
+                    let computed = resolvedArgs.select
+                    let computedValues = Object.keys(computed).map(key => {
+                        //@ts-ignore
+                        let arg = computed[key]
+                        return { [key]: source.getComputeProperty(key)(arg) }
+                    }).reduce( (acc,v) => Object.assign(acc, v), {})
+    
+                    dataset.select(Object.assign(props, computedValues))
+                }else {
+                    dataset.select(props)
+                }
+                if(resolvedArgs?.where){
+                    dataset.where( resolvedArgs.where )
+                }
+
                 // let rows = await this._find(executionOptions, applyFilter)
                 // return rows
         })
