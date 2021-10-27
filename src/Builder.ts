@@ -271,9 +271,9 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     protected datasetSchema: null | Schema<any> = null
 
     #selectItems: { [key: string]: Scalar<any, any> } | null = null
-   
-    
-    #groupByItems: { [key: string]: Scalar<any, any> } | null = null
+
+    #orderByItems:  Scalar<any, any>[] | null = null
+    #groupByItems: Scalar<any, any>[] | null = null
     #limit: null | number = null
     #offset: null | number = null
 
@@ -304,6 +304,22 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }, {} as { [key: string]: Scalar<any, any>} )
         return result
     }
+
+    protected func2ScalarArray<S extends Scalar<any, any>[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+        let nameMap: Scalar<any, any>[]
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+
+        if (named instanceof Function) {
+            Object.assign(selectorMap, this.sqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            nameMap = named(map)
+        } else {
+            nameMap = named
+        }
+        return nameMap
+    }
+
 
     protected propNameArray2ScalarMap(properties: string[]){
         let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
@@ -352,6 +368,27 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                 text = `(${text})`
             }
             const newRaw = context.raw(`${text}${includeAlias?` AS ${quote(client, k)}`:''}`)
+
+            return newRaw
+        }))
+    }
+
+    protected async queryScalarArray2RawArray(nameMap: Scalar<any, any>[], context: DatabaseContext<any>): Promise<Knex.Raw<any>[]> {
+        const client = context.client()
+        return await Promise.all(nameMap.map(async (k) => {
+
+            // let acc = await accP
+            let scalar = k
+            if(!scalar){
+                throw new Error(`cannot resolve field ${k}`)
+            }
+            const raw: Knex.Raw = await scalar.toRaw(context)
+            let text = raw.toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            const newRaw = context.raw(`${text}`)
 
             return newRaw
         }))
@@ -465,7 +502,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         , 
         SourceProps, SourcePropMap, FromSource>{
        
-        this.#groupByItems = this.propNameArray2ScalarMap(properties as string[])
+        const dict = this.propNameArray2ScalarMap(properties as string[])
+        this.#groupByItems = Object.keys(dict).map(k => dict[k])
         return this as any
     }
 
@@ -486,7 +524,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
 
-    groupBy<S extends { [key: string]: Scalar<any, any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
+    groupBy<S extends Array<Scalar<any, any>>, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
         ExistingSchema
@@ -497,9 +535,26 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         , 
         SourceProps, SourcePropMap, FromSource> {
 
-        const result = this.func2ScalarMap<S, Y>(named)
+        const result = this.func2ScalarArray(named)
 
         this.#groupByItems = result
+        return this as any
+    }
+
+    orderBy<S extends Array<Scalar<any, any>>, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
+        ((map: Y ) => S ) ):
+        Dataset<
+        ExistingSchema
+            // Schema<
+            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
+            //     ScalarDictToScalarPropertyDict<S>
+            // >
+        , 
+        SourceProps, SourcePropMap, FromSource> {
+
+        const result = this.func2ScalarArray(named)
+
+        this.#orderByItems = result
         return this as any
     }
     
@@ -579,14 +634,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
         await this.buildWhereClause(context, nativeQB)
 
-        if(this.#groupByItems){
-            const groupByItems = await this.queryScalarMap2RawArray(this.#groupByItems, context, false)
-            if(groupByItems.length === 0){
-                throw new Error('No groupByItems')
-            }
-            nativeQB.groupByRaw( groupByItems.map(item => item.toString()).join(',') )
-        }
-
         if(this.#offset) {
             nativeQB.offset(this.#offset)
         }
@@ -601,6 +648,22 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                 throw new Error('No SELECT and FROM are provided for Dataset')
             }
             nativeQB.select( selectItems )
+        }
+
+        if(this.#groupByItems){
+            const groupByItems = await this.queryScalarArray2RawArray(this.#groupByItems, context)
+            if(groupByItems.length === 0){
+                throw new Error('No groupByItems')
+            }
+            nativeQB.groupByRaw( groupByItems.map(item => item.toString()).join(',') )
+        }
+
+        if(this.#orderByItems){
+            const orderByItems = await this.queryScalarArray2RawArray(this.#orderByItems, context)
+            if(orderByItems.length === 0){
+                throw new Error('No groupByItems')
+            }
+            nativeQB.orderByRaw( orderByItems.map(item => item.toString()).join(',') )
         }
     
         await Promise.all(this.nativeBuilderCallbacks.map( async(callback) => {    
