@@ -444,27 +444,36 @@ export class ModelRepository<MT extends typeof Model>{
             
     //         let pks: number[] = []
     //         if (context.client().startsWith('pg')) {
-    //             let targetResult = await context.update().from(rootSource).set(data).where(args.where).execute()
+    //             let pks = await context.update().from(rootSource).set(data).where(args.where).execute()
                 
-    //             let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
-    //                 let pkValue = row[ schemaPrimaryKeyFieldName ]
-    //                 let record = await this.findOne({
-    //                     //@ts-ignore
-    //                     where: {[schemaPrimaryKeyPropName]: pkValue}
-    //                 }).withOptions(executionOptions)
-    //                 let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
-    //                 if(isDelete){
-    //                     await context.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), {}, executionOptions)
+    //             let newArgs = ({In}) => ({
+    //                 select: args.select?? {},
+    //                 orderBy: args.orderBy?? [],
+    //                 where: {
+    //                     id: In(pks)
     //                 }
-    //                 // {
-    //                 //     ...(querySelectAfterMutation? {select: querySelectAfterMutation}: {}),
-    //                 //     where: { [entityClass.schema.primaryKey.name]: pkValue} 
-    //                 // })
+    //             })
+    //             return await this._find(newArgs, executionOptions)
 
-    //                 return finalRecord
-    //             }))
+    //             // let outputs = await Promise.all((targetResult.rows as SimpleObject[] ).map( async (row) => {
+    //             //     let pkValue = row[ schemaPrimaryKeyFieldName ]
+    //             //     let record = await this.findOne({
+    //             //         //@ts-ignore
+    //             //         where: {[schemaPrimaryKeyPropName]: pkValue}
+    //             //     }).withOptions(executionOptions)
+    //             //     let finalRecord = await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+    //             //     if(isDelete){
+    //             //         await context.executeStatement( new Dataset().from(rootSource).native( qb => qb.where( {[schemaPrimaryKeyFieldName]: pkValue} ).del() ), {}, executionOptions)
+    //             //     }
+    //             //     // {
+    //             //     //     ...(querySelectAfterMutation? {select: querySelectAfterMutation}: {}),
+    //             //     //     where: { [entityClass.schema.primaryKey.name]: pkValue} 
+    //             //     // })
 
-    //             return outputs
+    //             //     return finalRecord
+    //             // }))
+
+               
     //         } else {
 
     //             if (context.client().startsWith('mysql')) {
