@@ -59,7 +59,25 @@ export abstract class Property {
 
 }
 
-export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends Property {
+export class ComputeProperty<F extends (ComputeFunction<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
+
+    // type: 'ComputeProperty' = 'ComputeProperty'
+    compute: F
+
+    constructor(compute:  F){
+            super()
+            this.compute = compute
+        }
+    
+    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
+        //none
+    }
+}
+
+export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends Property {
+
+    // type: 'FieldProperty' = 'FieldProperty'
+    private _fieldName?: string
     #definitionConstructor: D | (new () => D ) | (() => D)
     #definition: D | null = null
 
@@ -94,33 +112,6 @@ export class StrictTypeProperty<D extends PropertyTypeDefinition<any>> extends P
     async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
         await this.definition.prepareForParsing(context)
     }
-}
-
-export class ComputeProperty<F extends (ComputeFunction<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
-
-    // type: 'ComputeProperty' = 'ComputeProperty'
-    compute: F
-
-    constructor(compute:  F){
-            super()
-            this.compute = compute
-        }
-    
-    async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
-        //none
-    }
-}
-
-export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends StrictTypeProperty<D> {
-
-    // type: 'FieldProperty' = 'FieldProperty'
-    private _fieldName?: string
-
-
-    constructor(
-        definition: D | (new () => D ) | (() => D)){
-            super(definition)
-        }
 
     convertFieldName(propName: string, orm: ORM<any>){
         const c = orm.ormConfig.propNameTofieldName
