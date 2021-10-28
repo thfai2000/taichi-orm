@@ -5,7 +5,7 @@ export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefiniti
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement} from './Builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset } from './util'
 import { Model, ModelRepository } from './Model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
 
@@ -551,12 +551,19 @@ export type ExecutionOptions = {
     trx?: Knex.Transaction<any, any[]> | null
 }
 
+export type MutationExecutionOptions = ExecutionOptions & {
+    returnIds?: boolean
+}
+
 export type DatabaseActionResult<T> = T
 
 export type DatabaseActionOptions = {
     failIfNone: boolean
 }
 export type DatabaseAction<I> = (executionOptions: ExecutionOptions, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
+
+export type DatabaseMutationAction<I> = (executionOptions: MutationExecutionOptions, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
+
 
 export class DatabaseActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >{
     protected execOptions: ExecutionOptions
@@ -571,8 +578,8 @@ export class DatabaseActionRunnerBase<I> implements PromiseLike<ExpandRecursivel
         this.action = action
     }
 
-    protected async execAction(){
-        return await this.action(this.execOptions, this.options)
+    protected async execAction(execOptions?: ExecutionOptions){
+        return await this.action(execOptions ?? this.execOptions, this.options)
     }
 
     async then<TResult1, TResult2 = never>(
@@ -638,10 +645,49 @@ export class DatabaseQueryRunner<I> extends DatabaseActionRunnerBase<I> {
     }
 }
 
-export class DatabaseMutationRunner<I> extends DatabaseQueryRunner<I>{
+export class DatabaseMutationRunner<I, S extends TableSchema<any>> extends DatabaseQueryRunner<I>{
 
-    constructor(action: DatabaseAction<I>){
+    protected execOptions: MutationExecutionOptions
+
+    thenQueryFunction: <D extends AnyDataset>(execAction: (execOptions?: MutationExecutionOptions) => Promise<I>, 
+        onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ) => 
+                        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
+                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
+                            (D extends Dataset<infer S>?S:never)
+                        > >
+
+    constructor(action: DatabaseMutationAction<I>, 
+                thenQueryFunction: <D extends AnyDataset>(
+                    execAction: (execOptions?: MutationExecutionOptions) => Promise<I>, 
+                    onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ) => 
+                        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
+                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
+                            (D extends Dataset<infer S>?S:never)
+                        > >
+                ) {
         super(action)
+        this.execOptions = {}
+        this.thenQueryFunction = thenQueryFunction
+    }
+
+    protected async execAction(execOptions?: MutationExecutionOptions){
+        return await super.execAction(execOptions)
+    }
+
+    thenQuery<D extends AnyDataset>(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ): 
+        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
+                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
+                            (D extends Dataset<infer S>?S:never)
+                        > > {
+        return this.thenQueryFunction(this.execAction, onQuery)
+    }
+
+    returnIds(){
+        this.execOptions = {
+            ...this.execOptions,
+            returnIds: true
+        }
+        return this as unknown as DatabaseMutationRunner< NonNullable<I>, S>
     }
 
     //TODO: implement

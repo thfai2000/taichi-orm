@@ -281,16 +281,17 @@ export class ModelRepository<MT extends typeof Model>{
 
     createOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>) {
         
-        return new DatabaseMutationRunner(
-            async (executionOptions: ExecutionOptions) => {
+        return this.context.insert(this.#model.schema()).values(data).execute()
+        // return new DatabaseMutationRunner(
+        //     async (executionOptions: ExecutionOptions) => {
 
-                let result = await this.context.insert(this.#model.schema()).values(data).executeAndReturn().withOptions(executionOptions)
-                if(!result){
-                    throw new Error('Unexpected Error. Cannot find the entity after creation.')
-                }
-                return result 
-            }
-        )
+        //         let result = await this.context.insert(this.#model.schema()).values(data).executeAndReturn().withOptions(executionOptions)
+        //         if(!result){
+        //             throw new Error('Unexpected Error. Cannot find the entity after creation.')
+        //         }
+        //         return result 
+        //     }
+        // )
     }
 
     createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
@@ -300,14 +301,16 @@ export class ModelRepository<MT extends typeof Model>{
                 const schema = this.#model.schema()
                 
                 return await Promise.all(arrayOfData.map( async(data) => {
-                    let result = await this.context.insert(schema).values(data).executeAndReturn().withOptions(executionOptions)
-                    if(!result){
-                        throw new Error('Unexpected Error. Cannot find the entity after creation.')
-                    }
+                    let result = await this.context.insert(schema).values(data).execute().withOptions(executionOptions)
                     return result
                 }))
 
-            })
+            },
+            (execAction, onQuery: (dataset: Dataset<ExtractSchemaFromModelType<MT>>) => void ) => {
+
+                return execAction()
+            }    
+        )
     }
 
 

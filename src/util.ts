@@ -1,5 +1,5 @@
 import { ComputeFunction } from ".";
-import { Prefixed, Scalar } from "./Builder";
+import { Dataset, Prefixed, Scalar } from "./Builder";
 import { Model } from "./Model";
 import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyTypeDefinition } from "./PropertyType";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./Schema";
@@ -42,10 +42,14 @@ export function notEmpty<TValue>(value: TValue | null | undefined): value is TVa
     return value !== null && value !== undefined;
 }
 
+export type AnyDataset = Dataset<Schema<{[key:string]: ScalarProperty<any>}>>
+
 export type UnionToIntersection<T> = 
   (T extends any ? (x: T) => any : never) extends 
   (x: infer R) => any ? R : never
 
+
+export type ExtractSchemaFieldOnlyFromSchema<CurrentSchema extends Schema<any>> = Schema<ExtractFieldPropDictFromSchema<CurrentSchema> >
 
 export type ConstructMutationFromValueTypeDict<D> = {
     [key in keyof D]: 
