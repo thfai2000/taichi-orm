@@ -1,4 +1,4 @@
-import {  DatabaseMutationRunner, DatabaseQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DatabaseActionOptions } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
 import {  Scalar, Dataset, AddPrefix } from "./Builder"
@@ -296,7 +296,7 @@ export class ModelRepository<MT extends typeof Model>{
 
     createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
 
-        return new DatabaseMutationRunner(
+        return new DBMutationRunner(
             async (executionOptions: ExecutionOptions) => {
                 const schema = this.#model.schema()
                 
@@ -320,7 +320,7 @@ export class ModelRepository<MT extends typeof Model>{
      * @returns the found record
      */
     findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {        
-        return new DatabaseQueryRunner(
+        return new DBQueryRunner(
             async (executionOptions: ExecutionOptions) => {
                 let records = await this._find<F>(args, executionOptions)
                 return records[0]
@@ -335,7 +335,7 @@ export class ModelRepository<MT extends typeof Model>{
     find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
         //DatabaseQueryRunner
         
-        return new DatabaseQueryRunner(
+        return new DBQueryRunner(
             async (executionOptions: ExecutionOptions) => {
                 let records = await this._find<F>(args, executionOptions)
                 return records
@@ -390,8 +390,8 @@ export class ModelRepository<MT extends typeof Model>{
     // }
 
     update<Args extends Pick< SingleSourceArg<ExtractSchemaFromModelType<MT>>, "select" | "where" | "orderBy" > >(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: Args ){
-        return new DatabaseMutationRunner< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, Args >[] >(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DatabaseActionOptions>) => {
+        return new DBMutationRunner< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, Args >[] >(
+            async (executionOptions: ExecutionOptions, actionOptions: Partial<DBActionOptions>) => {
 
                 throw new Error('NYI')
                 // let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)

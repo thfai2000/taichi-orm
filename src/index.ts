@@ -551,28 +551,28 @@ export type ExecutionOptions = {
     trx?: Knex.Transaction<any, any[]> | null
 }
 
-export type MutationExecutionOptions = ExecutionOptions & {
-    returnIds?: boolean
+export type MutationExecutionOptions<S extends Schema<any> > = ExecutionOptions & {
+    // returnIds?: boolean
 }
 
-export type DatabaseActionResult<T> = T
+export type DBActionResult<T> = T
 
-export type DatabaseActionOptions = {
+export type DBActionOptions = {
     failIfNone: boolean
 }
-export type DatabaseAction<I> = (executionOptions: ExecutionOptions, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
+export type DBAction<I> = (executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
 
-export type DatabaseMutationAction<I> = (executionOptions: MutationExecutionOptions, options: Partial<DatabaseActionOptions>) => Promise<DatabaseActionResult<I>>
+export type DBMutationAction<I, S extends Schema<any>> = (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
 
 
-export class DatabaseActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >{
+export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >{
     protected execOptions: ExecutionOptions
-    protected action: DatabaseAction<I>
-    protected options: Partial<DatabaseActionOptions> = {}
+    protected action: DBAction<I>
+    protected options: Partial<DBActionOptions> = {}
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(action: DatabaseAction<I>, ){
+    constructor(action: DBAction<I>, ){
         // this.beforeAction = beforeAction
         this.execOptions = {}
         this.action = action
@@ -632,9 +632,13 @@ export class DatabaseActionRunnerBase<I> implements PromiseLike<ExpandRecursivel
         this.execOptions = execOptions
         return this
     }
+
+    getOptions() : ExecutionOptions{
+        return this.execOptions
+    }
 } 
 
-export class DatabaseQueryRunner<I> extends DatabaseActionRunnerBase<I> {
+export class DBQueryRunner<I> extends DBActionRunnerBase<I> {
 
     async failIfNone(){
         this.options = {
@@ -645,50 +649,84 @@ export class DatabaseQueryRunner<I> extends DatabaseActionRunnerBase<I> {
     }
 }
 
-export class DatabaseMutationRunner<I, S extends TableSchema<any>> extends DatabaseQueryRunner<I>{
+export class DBMutationRunner<I, S extends TableSchema<any>, AffectedRecordType = undefined, PreflightRecordType = undefined> extends DBQueryRunner<I>{
 
-    protected execOptions: MutationExecutionOptions
+    protected execOptions: MutationExecutionOptions<S>
 
-    thenQueryFunction: <D extends AnyDataset>(execAction: (execOptions?: MutationExecutionOptions) => Promise<I>, 
-        onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ) => 
-                        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
-                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
-                            (D extends Dataset<infer S>?S:never)
-                        > >
+    protected preflightFunction: <D extends AnyDataset>(
+        this: DBMutationRunner<I, S, AffectedRecordType, PreflightRecordType>) => Promise<void>
+    protected queryAffectedFunction: <D extends AnyDataset>(
+        this: DBMutationRunner<I, S, AffectedRecordType, PreflightRecordType>) => Promise<void>
+        
+    protected preflightFunctionArg: null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => AnyDataset | Promise<AnyDataset>) = null
 
-    constructor(action: DatabaseMutationAction<I>, 
-                thenQueryFunction: <D extends AnyDataset>(
-                    execAction: (execOptions?: MutationExecutionOptions) => Promise<I>, 
-                    onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ) => 
-                        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
-                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
-                            (D extends Dataset<infer S>?S:never)
-                        > >
-                ) {
+    protected queryAffectedFunctionArg: null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => AnyDataset | Promise<AnyDataset>) = null
+
+
+    protected preflightResult: PreflightRecordType | null = null
+    protected affectedResult: AffectedRecordType | null = null
+
+    constructor(action: DBMutationAction<I, S>, 
+        prefightFunction: <D extends AnyDataset>(
+            this: DBMutationRunner<I, S, AffectedRecordType, PreflightRecordType>) => Promise<void>,
+        queryAffectedFunction: <D extends AnyDataset>(
+            this: DBMutationRunner<I, S, AffectedRecordType, PreflightRecordType>) => Promise<void>,
+        ){
         super(action)
         this.execOptions = {}
-        this.thenQueryFunction = thenQueryFunction
+        this.preflightFunction = prefightFunction
+        this.queryAffectedFunction = queryAffectedFunction
     }
 
-    protected async execAction(execOptions?: MutationExecutionOptions){
+    protected async execAction(execOptions?: MutationExecutionOptions<S> ){
         return await super.execAction(execOptions)
     }
 
-    thenQuery<D extends AnyDataset>(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => D ): 
-        DatabaseQueryRunner< ExtractValueTypeDictFromSchema< 
-                            typeof onQuery extends undefined? ExtractSchemaFieldOnlyFromSchema<S>:
-                            (D extends Dataset<infer S>?S:never)
-                        > > {
-        return this.thenQueryFunction(this.execAction, onQuery)
+    override withOptions(execOptions: MutationExecutionOptions<S> ){
+        super.withOptions(execOptions)
+        return this
     }
 
-    returnIds(){
-        this.execOptions = {
-            ...this.execOptions,
-            returnIds: true
-        }
-        return this as unknown as DatabaseMutationRunner< NonNullable<I>, S>
+    override getOptions() : MutationExecutionOptions<S> {
+        return this.execOptions
     }
+
+    withAffected(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => AnyDataset ){
+
+        let m = new DBMutationWithDetailsRunner<I, S, ExtractValueTypeDictFromSchema<S>, ExtractValueTypeDictFromSchema<S>>(
+            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+                return {
+                    result: await this.action(executionOptions, options),
+                    preflight: this.preflightResult as ExtractValueTypeDictFromSchema<S>,
+                    affected: this.affectedResult as ExtractValueTypeDictFromSchema<S>
+                }
+            },
+            this.preflightFunction, this.queryAffectedFunction)
+        m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
+        return m
+    }
+
+    withPrefight(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => AnyDataset ){
+        let m = new DBMutationWithDetailsRunner<I, S, AffectedRecordType, ExtractValueTypeDictFromSchema<S>>(
+            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+                return {
+                    result: await this.action(executionOptions, options),
+                    preflight: this.preflightResult as ExtractValueTypeDictFromSchema<S>,
+                    affected: this.affectedResult as AffectedRecordType
+                }
+            },
+            this.preflightFunction, this.queryAffectedFunction)
+        m.preflightFunctionArg = onQuery ?? ((dataset: any) => dataset)
+        return m
+    }
+
+    // returnIds(){
+    //     this.execOptions = {
+    //         ...this.execOptions,
+    //         returnIds: true
+    //     }
+    //     return this as unknown as DBMutationRunner< NonNullable<I>, S>
+    // }
 
     //TODO: implement
     // async fetch<T>(queryProps: SelectableProps<S>){
@@ -698,6 +736,17 @@ export class DatabaseMutationRunner<I, S extends TableSchema<any>> extends Datab
     //     }
     //     return this
     // }
+}
+
+
+export class DBMutationWithDetailsRunner<I, S extends TableSchema<any>, AffectedRecordType, withPreflight> extends DBMutationRunner< {result: I, affected: AffectedRecordType, preflight: withPreflight}, S, AffectedRecordType, withPreflight>{
+
+
+    protected async execAction(execOptions?: MutationExecutionOptions<S> ){
+        return await super.execAction(execOptions)
+    }
+
+
 }
 
 
