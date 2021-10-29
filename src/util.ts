@@ -41,7 +41,7 @@ export const SimpleObjectClass = ({} as {[key:string]: any}).constructor
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
-
+export type ExtractValueTypeDictFromDataset<D extends Dataset<any>> = ExtractValueTypeDictFromSchema<D extends Dataset<infer S>?S:never>
 export type AnyDataset = Dataset<Schema<{[key:string]: ScalarProperty<any>}>>
 
 export type UnionToIntersection<T> = 

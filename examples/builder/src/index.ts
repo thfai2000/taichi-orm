@@ -188,7 +188,8 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
         .where(({myShop}) => myShop.id.equals(1))
         .execute().withOptions({
             onSqlRun: console.log
-        })
+        }).withPreflight()
+
     console.log('xxx', deleted)
 
     console.log('d2', await dataset()

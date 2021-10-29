@@ -294,24 +294,20 @@ export class ModelRepository<MT extends typeof Model>{
         // )
     }
 
-    createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
+    // createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
 
-        return new DBMutationRunner(
-            async (executionOptions: ExecutionOptions) => {
-                const schema = this.#model.schema()
+    //     return new DBMutationRunner(
+    //         async (executionOptions: ExecutionOptions) => {
+    //             const schema = this.#model.schema()
                 
-                return await Promise.all(arrayOfData.map( async(data) => {
-                    let result = await this.context.insert(schema).values(data).execute().withOptions(executionOptions)
-                    return result
-                }))
+    //             return await Promise.all(arrayOfData.map( async(data) => {
+    //                 let result = await this.context.insert(schema).values(data).execute().withOptions(executionOptions)
+    //                 return result
+    //             }))
 
-            },
-            (execAction, onQuery: (dataset: Dataset<ExtractSchemaFromModelType<MT>>) => void ) => {
-
-                return execAction()
-            }    
-        )
-    }
+    //         }
+    //     )
+    // }
 
 
     /**
@@ -389,16 +385,16 @@ export class ModelRepository<MT extends typeof Model>{
     //     )
     // }
 
-    update<Args extends Pick< SingleSourceArg<ExtractSchemaFromModelType<MT>>, "select" | "where" | "orderBy" > >(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: Args ){
-        return new DBMutationRunner< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, Args >[] >(
-            async (executionOptions: ExecutionOptions, actionOptions: Partial<DBActionOptions>) => {
+    // update<Args extends Pick< SingleSourceArg<ExtractSchemaFromModelType<MT>>, "select" | "where" | "orderBy" > >(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: Args ){
+    //     return new DBMutationRunner< ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, Args >[] >(
+    //         async (executionOptions: ExecutionOptions, actionOptions: Partial<DBActionOptions>) => {
 
-                throw new Error('NYI')
-                // let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)
-                // return result
-            }
-        )
-    }
+    //             throw new Error('NYI')
+    //             // let result = await this._update(executionOptions, data, applyFilter??null, false, false, actionOptions)
+    //             // return result
+    //         }
+    //     )
+    // }
 
     // private async _update<Args extends Pick< SingleSourceArg<ExtractSchemaFromModelType<MT>>, "select" | "where" | "orderBy" >>(executionOptions: ExecutionOptions, data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>,  
     //     args: Args, 
