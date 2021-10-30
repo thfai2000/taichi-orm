@@ -846,13 +846,11 @@ export class InsertStatement<T extends TableSchema<{
         if(!context){
             throw new Error('There is no repository provided.')
         }
-        type I = ({
+        type I = {
             id: number;
-            uuid?: undefined;
-        } | {
-            id: null;
+        }[] | {
             uuid: string;
-        })[]
+        }[] | null
         //@ts-ignore
         const statement = this
 
@@ -873,44 +871,51 @@ export class InsertStatement<T extends TableSchema<{
 
                     const executionFuncton = async() => {
                         // let afterMutationHooks = schema.hooks.filter()
-                        return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
-                            const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
-                            // console.debug('======== INSERT =======')
-                            // console.debug(stmt.toString())
-                            // console.debug('========================')
+
+                         if (!this.queryAffectedFunctionArg || context.client().startsWith('pg')) {
+                            const queryBuilder = statement.toNativeBuilder(context)
+                            const insertStmt = queryBuilder.toString()
+                            // let insertedId: number
+                            const r = await context.executeStatement(insertStmt, {}, executionOptions)
+
+                            if(context.client().startsWith('pg')){
+                                return Object.keys(r.rows[0]).map(k => ({id: r.rows[0][k] as number }) )
+                            } else {
+                                return null
+                            }
+                            // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+            
+                        } else {
+
                             if (context.client().startsWith('mysql')) {
                                 let insertedId: number
-                                const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                                const r = await context.executeStatement(insertStmt, {}, executionOptions)
-                                insertedId = r[0][0].id
-                                // let record = await this.findOne(entityClass, existingContext, (stmt, t) => stmt.toQueryBuilder().whereRaw('?? = ?', [t.pk, insertedId])  )
-                    
-                                return {id: insertedId}
+                                return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
+                                    const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
+                                    const r = await context.executeStatement(insertStmt, {}, executionOptions)
+                                    insertedId = r[0][0].id
+                                    return {id: insertedId}
+                                }))
+
                             } else if (context.client().startsWith('sqlite')) {
-                                const insertStmt = queryBuilder.toString()
-                                let uuid = uuidv4()
-                                const r = await context.executeStatement(insertStmt, {uuid}, executionOptions)
-            
-                                return {id: null, uuid}
-                
-                            } else if (context.client().startsWith('pg')) {
-                                const insertStmt = queryBuilder.toString()
-                                let insertedId: number
-                                const r = await context.executeStatement(insertStmt, {}, executionOptions)
-                                
-                                insertedId = Object.keys(r.rows[0]).map(k => r.rows[0][k])[0]
-                                return {id: insertedId}
-                                // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+
+                                return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
+                                    const insertStmt = queryBuilder.toString()
+                                    let uuid = uuidv4()
+                                    const r = await context.executeStatement(insertStmt, {uuid}, executionOptions)
+                                    return {uuid}
+                                }))
                 
                             } else {
                                 throw new Error('Unsupport client')
                             }
 
+                        }
 
-                        }))
                     }
                     
-                    const insertedId = await executionFuncton()
+                    const insertedIds = await executionFuncton()
 
                     if(this.queryAffectedFunctionArg){
     
@@ -918,16 +923,19 @@ export class InsertStatement<T extends TableSchema<{
                         
                         const queryAffectedFunction = async() => {
                             
-                            let isId = insertedId[0].id
+                            //@ts-ignore
+                            let isId = insertedIds[0].id
 
                             if(!isId){
+
+                                const i = insertedIds as {uuid: string}[]
 
                                 // let info = ds.insertInfo()
                                 const schema = statement.#insertIntoSchema as TableSchema<{uuid: FieldProperty<any>}>
                                                             
                                 const queryDataset = context.dataset()
                                     .from(schema.datasource('root'))
-                                    .where( ({root}) => root.uuid.contains(insertedId.map(r => r.uuid!)) )
+                                    .where( ({root}) => root.uuid.contains(i.map(r => r.uuid)) )
                                     .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
 
                                 const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
@@ -936,11 +944,13 @@ export class InsertStatement<T extends TableSchema<{
                                 return result 
                             
                             } else {
+
+                                const i = insertedIds as {id: number}[]
                                 const schema = statement.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
         
                                 let queryDataset = context.dataset()
                                     .from(schema.datasource('root'))
-                                    .where( ({root}) => root.id.contains(insertedId.map(r => r.id!)) )
+                                    .where( ({root}) => root.id.contains(i.map(r => r.id)) )
                                     .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
                                 
                                 const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
@@ -952,7 +962,7 @@ export class InsertStatement<T extends TableSchema<{
                         this.affectedResult = (await queryAffectedFunction()) as any[]
                     }
 
-                    return insertedId
+                    return insertedIds
 
                 }, executionOptions.trx)
 

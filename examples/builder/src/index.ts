@@ -52,20 +52,20 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     console.log('sql1', builder.toString() )
 
 
-    let shop1 = await insert(Shop.schema).values({
+    let shop1 = await insert(Shop.schema).values([{
         name: 'shop',
         hour: 5
-    }).executeAndReturn()
+    }]).executeAndReturn()
 
     console.log('finished-1', shop1)
     
     for (let i = 0; i < 5; i++) {    
         
-        let product = await insert(Product.schema).values({
+        let product = await insert(Product.schema).values([{
             ddd: 5,
             name: 'hello',
             shopId: shop1.id
-        })
+        }])
         .executeAndReturn()
         .withOptions({
             onSqlRun: console.log
@@ -199,6 +199,11 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
             ...myShop.$allFields
         }))
         .execute())
+
+
+    let shops = await Shop.find()
+
+    console.log('aaaa', shops)
 
     // Done: dynamic result type on 'find'
     // Done: dataset api use DatabaseAction chain

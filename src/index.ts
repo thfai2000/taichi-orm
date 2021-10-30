@@ -217,20 +217,6 @@ export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA exte
         [k in keyof SSA["select"] & string]: ConstructValueTypeDictBySelectiveArgAttribute<SSA["select"][k], ExtractSpecificPropertyFromSchema<S, k> >
     })
 
-// export type ConstructPropertyBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
-//             ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
-//             :  (
-//                 SSA extends SelectiveArg?
-//                 ConstructPropertyDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
-//                 : 
-//                 S
-//             )
-
-// export type ConstructPropertyDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
-//     ExtractFieldPropDictFromSchema<S>
-//     & {
-//         [k in keyof SSA["select"] & string]: ConstructPropertyBySelectiveArgAttribute<SSA["select"][k],  ExtractSpecificPropertyFromSchema<S, k> >
-//     })
 
 
     
@@ -647,6 +633,21 @@ export class DBQueryRunner<I> extends DBActionRunnerBase<I> {
         }
         return this
     }
+
+    getFirstRow(){
+        type NewI = I extends Array<infer T>? T: never
+        
+        let m = new DBQueryRunner<NewI>(
+            async (executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => {
+                let result = await this.action(executionOptions, options)
+                if(Array.isArray(result)){
+                    return result[0] as NewI
+                }
+                throw new Error('Only array is allowed to use getFirstRow')
+            })
+        return m
+    }
+
 }
 
 export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType, AffectedRecordType, isPreflight, isAffected> extends DBQueryRunner<I>{
@@ -689,6 +690,41 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
     override getOptions() : MutationExecutionOptions<S> {
         return this.execOptions
+    }
+
+    getAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
+        type AffectedRecordType = ExtractValueTypeDictFromDataset<D>
+        type NewI = AffectedRecordType
+        
+        let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
+            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+                await this.action(executionOptions, options)
+                return this.affectedResult as NewI
+            })
+
+        m.preflightFunctionArg = this.preflightFunctionArg ?? ((dataset: any) => dataset)
+        m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
+        
+        return m
+    }
+
+    getAffectedOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
+        type AffectedRecordType = ExtractValueTypeDictFromDataset<D>
+        type NewI = AffectedRecordType extends Array<infer T>? T: never
+        
+        let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
+            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+                await this.action(executionOptions, options)
+                if(Array.isArray(this.affectedResult)){
+                    return this.affectedResult[0] as NewI
+                }
+                throw new Error('Only array is allowed to use getAffectedOne')
+            })
+
+        m.preflightFunctionArg = this.preflightFunctionArg ?? ((dataset: any) => dataset)
+        m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
+        
+        return m
     }
 
     withAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
@@ -757,17 +793,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     // }
 }
 
-
-// export class DBMutationWithDetailsRunner<I, S extends TableSchema<any>, AffectedRecordType, withPreflight> extends DBMutationRunner< {result: I, affected: AffectedRecordType, preflight: withPreflight}, S, AffectedRecordType, withPreflight>{
-
-
-
-//     protected async execAction(execOptions?: MutationExecutionOptions<S> ){
-//         return await super.execAction(execOptions)
-//     }
-
+// export class DBMutationReturnAffectedRunner extends DBMutationRunner {
 
 // }
+
 
 
 export type MutationName = 'create'|'update'|'delete'

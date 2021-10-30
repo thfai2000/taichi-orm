@@ -280,35 +280,12 @@ export class ModelRepository<MT extends typeof Model>{
     }
 
     createOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>) {
-        
-        return this.context.insert(this.#model.schema()).values(data).execute()
-        // return new DatabaseMutationRunner(
-        //     async (executionOptions: ExecutionOptions) => {
-
-        //         let result = await this.context.insert(this.#model.schema()).values(data).executeAndReturn().withOptions(executionOptions)
-        //         if(!result){
-        //             throw new Error('Unexpected Error. Cannot find the entity after creation.')
-        //         }
-        //         return result 
-        //     }
-        // )
+        return this.context.insert(this.#model.schema()).values([data]).execute().getAffectedOne()
     }
 
-    // createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
-
-    //     return new DBMutationRunner(
-    //         async (executionOptions: ExecutionOptions) => {
-    //             const schema = this.#model.schema()
-                
-    //             return await Promise.all(arrayOfData.map( async(data) => {
-    //                 let result = await this.context.insert(schema).values(data).execute().withOptions(executionOptions)
-    //                 return result
-    //             }))
-
-    //         }
-    //     )
-    // }
-
+    createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
+        return this.context.insert(this.#model.schema()).values(arrayOfData).execute().getAffected()
+    }
 
     /**
      * find one record
@@ -316,11 +293,12 @@ export class ModelRepository<MT extends typeof Model>{
      * @returns the found record
      */
     findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {        
-        return new DBQueryRunner(
-            async (executionOptions: ExecutionOptions) => {
-                let records = await this._find<F>(args, executionOptions)
-                return records[0]
-        })
+        // return new DBQueryRunner(
+        //     async (executionOptions: ExecutionOptions) => {
+        //         let records = await this._find<F>(args, executionOptions)
+        //         return records[0]
+        // })
+        return this._find(args).execute().getFirstRow()
     }
 
     /**
@@ -331,15 +309,16 @@ export class ModelRepository<MT extends typeof Model>{
     find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
         //DatabaseQueryRunner
         
-        return new DBQueryRunner(
-            async (executionOptions: ExecutionOptions) => {
-                let records = await this._find<F>(args, executionOptions)
-                return records
-        })
+        // return new DBQueryRunner(
+        //     async (executionOptions: ExecutionOptions) => {
+        //         let records = await this._find<F>(args, executionOptions)
+        //         return records
+        // })
+        return this._find(args).execute()
     }
 
 
-    private async _find<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | undefined, executionOptions: ExecutionOptions) {
+    private _find<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | undefined) {
         let source = this.model.datasource('root')
         let dataset = this.context.dataset().from(source)
 
@@ -371,9 +350,10 @@ export class ModelRepository<MT extends typeof Model>{
         } else {
             dataset.select(props)
         }
-
-        let records = await dataset.execute().withOptions(executionOptions) as Array<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>
-        return records
+        return dataset
+        // return dataset.execute()
+        //.withOptions(executionOptions) as Array<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>
+        // return records
     }
 
     // updateOne<F extends SingleSourceFilter<InstanceType<MT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT>>{
