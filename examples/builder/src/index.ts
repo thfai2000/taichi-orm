@@ -201,7 +201,18 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
         .execute())
 
 
-    let shops = await Shop.find()
+    let shops = await Shop.find({
+        select: {
+            products: {
+                select: {
+                    shop: {}
+                }
+            }
+        },
+        where: {
+            name:'hello'
+        }
+    })
 
     console.log('aaaa', shops)
 

@@ -219,6 +219,14 @@ export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA exte
 
 
 
+export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
+    ExtractFieldPropDictFromSchema<S>
+    & {
+        [k in keyof SSA["select"] & string]: ScalarProperty<Scalar<PropertyTypeDefinition< 
+            ConstructValueTypeDictBySelectiveArgAttribute<SSA["select"][k], ExtractSpecificPropertyFromSchema<S, k> >
+        >, any>>
+    })
+
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {

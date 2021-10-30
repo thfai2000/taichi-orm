@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg } from "."
 import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
 import {  Scalar, Dataset, AddPrefix } from "./Builder"
@@ -350,7 +350,9 @@ export class ModelRepository<MT extends typeof Model>{
         } else {
             dataset.select(props)
         }
-        return dataset
+        return dataset as unknown as Dataset<Schema<ConstructScalarPropDictBySelectiveArg<
+            ExtractSchemaFromModelType<MT>, F
+        > > >
         // return dataset.execute()
         //.withOptions(executionOptions) as Array<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>
         // return records
