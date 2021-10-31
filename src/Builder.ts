@@ -783,7 +783,6 @@ export class InsertStatement<T extends TableSchema<{
 
     async toNativeBuilder(repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
         return this.toNativeBuilderWithSpecificRow(null, repo)
-
     }
 
     async toNativeBuilderWithSpecificRow(atRowIdx: number | null, repo?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
@@ -872,7 +871,8 @@ export class InsertStatement<T extends TableSchema<{
                     const executionFuncton = async() => {
                         // let afterMutationHooks = schema.hooks.filter()
 
-                         if (!this.queryAffectedFunctionArg || context.client().startsWith('pg')) {
+                        if (!this.queryAffectedFunctionArg || context.client().startsWith('pg')) {
+                            console.log('efffff', this)
                             const queryBuilder = statement.toNativeBuilder(context)
                             const insertStmt = queryBuilder.toString()
                             // let insertedId: number
@@ -886,7 +886,6 @@ export class InsertStatement<T extends TableSchema<{
                             // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
             
                         } else {
-
                             if (context.client().startsWith('mysql')) {
                                 let insertedId: number
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
@@ -898,7 +897,6 @@ export class InsertStatement<T extends TableSchema<{
                                 }))
 
                             } else if (context.client().startsWith('sqlite')) {
-
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString()
@@ -1361,11 +1359,13 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
     }
     
     equals(rightOperand: any) {
-        return new EqualOperator(this, rightOperand).toScalar()
+        return new EqualOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     contains(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
-        return new ContainOperator(this, ...rightOperands).toScalar()
+        const rights = rightOperands.length === 1 && Array.isArray(rightOperands[0]) ? rightOperands[0]: rightOperands
+
+        return new ContainOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
     }
 
     // private toRealRaw() {
@@ -1612,6 +1612,26 @@ export class Scalar<T extends PropertyTypeDefinition<any>, Value extends Knex.Ra
 //     }
 // }
 
+export function resolveValueIntoScalar(value: any){
+    if( value === null){
+        return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
+    } else if (typeof value === 'boolean') {
+        const boolValue = value
+        return new Scalar((context: DatabaseContext<any>) => context.raw('?', [boolValue]), new BooleanType())
+    } else if (typeof value === 'string'){
+        const stringValue = value
+        return new Scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
+    } else if (typeof value === 'number'){
+        const numberValue = value
+        //TODO
+        return new Scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
+    } else if (value instanceof Date){
+        const dateValue = value
+        //TODO
+        return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
+    }
+    return value
+}
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M>) => Scalar<any, any>
 
@@ -1624,23 +1644,8 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
         } else {
             value = expression
         }
-        if( value === null){
-            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
-        } else if (typeof value === 'boolean') {
-            const boolValue = value
-            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [boolValue]), new BooleanType())
-        } else if (typeof value === 'string'){
-            const stringValue = value
-            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
-        } else if (typeof value === 'number'){
-            const numberValue = value
-            //TODO
-            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
-        } else if (value instanceof Date){
-            const dateValue = value
-            //TODO
-            return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
-        } else if(value instanceof ConditionOperator){
+        value = resolveValueIntoScalar(value)
+        if(value instanceof ConditionOperator){
             return value.toScalar()
         } else if(Array.isArray(value)){
             const expr = new OrOperator<Props, M>(resolver, ...value)

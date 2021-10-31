@@ -174,7 +174,6 @@ export class ContainOperator extends AssertionOperator {
     toScalar(): Scalar<BooleanNotNullType, any>{
 
         return new Scalar((context: DatabaseContext<any>) => {
-
             return thenResultArray(this.rightOperands.map(s => s.toRaw(context) ), rights => {
 
                 return thenResult(this.leftOperand.toRaw(context), left => {

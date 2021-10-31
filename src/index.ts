@@ -573,7 +573,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     }
 
     protected async execAction(execOptions?: ExecutionOptions){
-        return await this.action(execOptions ?? this.execOptions, this.options)
+        return await this.action.call(this, execOptions ?? this.execOptions, this.options)
     }
 
     async then<TResult1, TResult2 = never>(
@@ -701,109 +701,92 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     getAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
-        type AffectedRecordType = ExtractValueTypeDictFromDataset<D>
-        type NewI = AffectedRecordType
+        const prev = this
+        type NewI = ExpandRecursively<AffectedRecordType>
         
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
-                await this.action(executionOptions, options)
-                return this.affectedResult as NewI
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>, 
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
+                await prev.action.call(this, executionOptions, options)
+                return expandRecursively(this.affectedResult) as NewI
             })
 
-        m.preflightFunctionArg = this.preflightFunctionArg ?? ((dataset: any) => dataset)
+        m.preflightFunctionArg = prev.preflightFunctionArg ?? ((dataset: any) => dataset)
         m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
-        
         return m
     }
 
     getAffectedOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
-        type AffectedRecordType = ExtractValueTypeDictFromDataset<D>
-        type NewI = AffectedRecordType extends Array<infer T>? T: never
+        const prev = this
+        type NewI = AffectedRecordType extends Array<infer T>? ExpandRecursively<T>: never
         
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
-                await this.action(executionOptions, options)
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>, 
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
+                await prev.action.call(this, executionOptions, options)
                 if(Array.isArray(this.affectedResult)){
-                    return this.affectedResult[0] as NewI
+                    return expandRecursively(this.affectedResult[0])
                 }
                 throw new Error('Only array is allowed to use getAffectedOne')
             })
 
-        m.preflightFunctionArg = this.preflightFunctionArg ?? ((dataset: any) => dataset)
+        m.preflightFunctionArg = prev.preflightFunctionArg ?? ((dataset: any) => dataset)
         m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
-        
+        console.log('aaaa', m)
         return m
     }
 
     withAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
-        type AffectedRecordType = ExtractValueTypeDictFromDataset<D>
+        const prev = this
         type NewI = {
             result: I,
-            preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: AffectedRecordType
+            preflight: isPreflight extends true? ExpandRecursively<PreflightRecordType>: never,
+            affected: ExpandRecursively< AffectedRecordType > 
         }
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>,
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
                 return {
-                    result: await this.action(executionOptions, options),
-                    preflight: this.preflightResult,
-                    affected: this.affectedResult
+                    result: await prev.action.call(this, executionOptions, options),
+                    preflight: expandRecursively(this.preflightResult),
+                    affected: expandRecursively(this.affectedResult)
                 } as NewI
             },
             // this.preflightFunction as any, this.queryAffectedFunction as any
             )
 
-        m.preflightFunctionArg = this.preflightFunctionArg ?? ((dataset: any) => dataset)
+        m.preflightFunctionArg = prev.preflightFunctionArg ?? ((dataset: any) => dataset)
         m.queryAffectedFunctionArg = onQuery ?? ((dataset: any) => dataset)
         
         return m
     }
 
     withPreflight<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>>>(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
-        type PreflightRecordType = ExtractValueTypeDictFromDataset<D>
+        const prev = this
         type NewI = {
             result: I,
-            preflight: PreflightRecordType,
-            affected: isAffected extends true? AffectedRecordType: never,
+            preflight: ExpandRecursively<PreflightRecordType>,
+            affected: isAffected extends true? ExpandRecursively<AffectedRecordType>: never,
         }
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>(
-            async (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => {
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>, 
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 return {
-                    result: await this.action(executionOptions, options),
-                    preflight: this.preflightResult,
-                    affected: this.affectedResult
+                    result: await prev.action.call(this, executionOptions, options),
+                    preflight: expandRecursively(this.preflightResult),
+                    affected: expandRecursively(this.affectedResult)
                 } as NewI
             },
             // this.preflightFunction as any, this.queryAffectedFunction as any
             )
             
         m.preflightFunctionArg = onQuery ?? ((dataset: any) => dataset)
-        m.queryAffectedFunctionArg = this.queryAffectedFunctionArg
+        m.queryAffectedFunctionArg = prev.queryAffectedFunctionArg
         
         return m
     }
-
-    // returnIds(){
-    //     this.execOptions = {
-    //         ...this.execOptions,
-    //         returnIds: true
-    //     }
-    //     return this as unknown as DBMutationRunner< NonNullable<I>, S>
-    // }
-
-    //TODO: implement
-    // async fetch<T>(queryProps: SelectableProps<S>){
-    //     this.options = {
-    //         ...this.options,
-    //         queryProps: queryProps
-    //     }
-    //     return this
-    // }
 }
 
-// export class DBMutationReturnAffectedRunner extends DBMutationRunner {
-
-// }
 
 
 

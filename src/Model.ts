@@ -1,6 +1,6 @@
 import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg } from "."
 import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix } from "./Builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition, StringNotNullType } from "./PropertyType"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./Schema"
@@ -292,13 +292,8 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {        
-        // return new DBQueryRunner(
-        //     async (executionOptions: ExecutionOptions) => {
-        //         let records = await this._find<F>(args, executionOptions)
-        //         return records[0]
-        // })
-        return this._find(args).execute().getFirstRow()
+    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
+        return this.dataset(args).execute().getFirstRow()
     }
 
     /**
@@ -307,21 +302,18 @@ export class ModelRepository<MT extends typeof Model>{
      * @returns the found record
      */
     find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
-        //DatabaseQueryRunner
-        
-        // return new DBQueryRunner(
-        //     async (executionOptions: ExecutionOptions) => {
-        //         let records = await this._find<F>(args, executionOptions)
-        //         return records
-        // })
-        return this._find(args).execute()
+        return this.dataset(args).execute()
     }
 
-
-    private _find<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | undefined) {
+    /**
+     * return a dataset with selected all field Property
+     * 
+     * @param applyFilter 
+     * @returns dataset with selected all field Property
+     */
+    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | undefined) {
         let source = this.model.datasource('root')
         let dataset = this.context.dataset().from(source)
-
 
         let props = source.getAllFieldProperty()
 
@@ -352,10 +344,11 @@ export class ModelRepository<MT extends typeof Model>{
         }
         return dataset as unknown as Dataset<Schema<ConstructScalarPropDictBySelectiveArg<
             ExtractSchemaFromModelType<MT>, F
-        > > >
-        // return dataset.execute()
-        //.withOptions(executionOptions) as Array<ConstructValueTypeDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>
-        // return records
+        > >,
+        UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
+            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>;
+        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">
+        >
     }
 
     // updateOne<F extends SingleSourceFilter<InstanceType<MT>>>(data: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>, applyFilter?: F): DatabaseQueryRunner< ConstructValueTypeDictBySelectiveArg<InstanceType<MT>, {}>, InstanceType<MT>>{
