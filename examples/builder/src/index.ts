@@ -73,6 +73,22 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
         console.log('product', product)
     }
 
+ 
+        
+    let anotherProducts = await insert(Product.schema).values([{
+        ddd: 5,
+        name: 'hello',
+        shopId: shop1.id
+    }, {
+        ddd: 8,
+        name: 'hello2',
+        shopId: shop1.id
+    }])
+    .execute().withAffected()
+
+    console.log('product', anotherProducts.affected)
+    
+
     console.log('finished')
 
     let result = await new Dataset()
