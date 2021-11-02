@@ -3,13 +3,14 @@ import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
 export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement} from './Builder'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, SQLKeywords} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset } from './util'
 import { Model, ModelRepository } from './Model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './Schema'
 
 import {ExtractComputePropDictFromSchema} from './util'
+import { AndOperator, ExistsOperator, NotOperator, OrOperator } from './Operator'
 
 // type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
 // type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
@@ -488,7 +489,14 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         r.then = 'It is overridden. \'Then\' function is removed to prevent execution when it is passing across any async function(s).'
         return r
     }
-    
+
+    op: SQLKeywords<{}, any> = {
+        And: (...args: Array<Expression<{}, any >>) => new AndOperator(makeExpressionResolver(this.op), ...args),
+        Or: (...args: Array<Expression<{}, any >>) => new OrOperator(makeExpressionResolver(this.op), ...args),
+        Not: (arg: Expression<{}, any >) => new NotOperator(makeExpressionResolver(this.op), arg),
+        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(makeExpressionResolver(this.op), dataset),
+    }
+
     update = () => {
         return new UpdateStatement(this)
     }

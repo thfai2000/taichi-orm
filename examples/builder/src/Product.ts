@@ -3,9 +3,6 @@ import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
 import { CFReturn } from "../../../dist"
-import { expand, expandRecursively } from "../../../dist/util"
-
-
 
 export default class Product extends Model {
 
@@ -22,6 +19,10 @@ export default class Product extends Model {
 
     abc2 = Product.compute((context, parent, arg?: number): CFReturn<number> => {
         return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberNotNullType)
+    })
+
+    ccc = Product.compute((context, parent, arg?: number): CFReturn<boolean> => {
+        return context.op.And(parent.selectorMap.abc(), parent.selectorMap.abc2()).toScalar()
     })
 
     shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(

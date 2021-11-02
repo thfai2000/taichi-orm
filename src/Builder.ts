@@ -239,7 +239,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
     protected async buildWhereClause(context: DatabaseContext<any>, nativeQB: Knex.QueryBuilder<any, unknown[]>) {
         let selectorMap = this.getSelectorMap()
 
-        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         Object.assign(selectorMap, this.sqlKeywords(resolver))
 
@@ -297,7 +297,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     protected func2ScalarMap<S extends { [key: string]: Scalar<any, any>} , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: { [key: string]: Scalar<any, any>} 
         let selectorMap = this.getSelectorMap()
-        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
             Object.assign(selectorMap, this.sqlKeywords(resolver))
@@ -317,7 +317,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     protected func2ScalarArray<S extends Scalar<any, any>[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: Scalar<any, any>[]
         let selectorMap = this.getSelectorMap()
-        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
             Object.assign(selectorMap, this.sqlKeywords(resolver))
@@ -762,7 +762,7 @@ export class InsertStatement<T extends TableSchema<{
         
         let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
         let selectorMap = {}
-        let resolver = makeExpressionResolver(null, [], selectorMap)
+        let resolver = makeExpressionResolver(selectorMap, null, [])
         
         if(arrayOfkeyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
@@ -1024,7 +1024,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         let nameMap: { [key: string]: any | Scalar<any, any> }
         let selectorMap = this.getSelectorMap()
         
-        let resolver = makeExpressionResolver(this.fromItem, this.joinItems.map(item => item.source), selectorMap)
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
         
         if(keyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
@@ -1635,7 +1635,7 @@ export function resolveValueIntoScalar(value: any){
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M>) => Scalar<any, any>
 
-export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<any, any> | null, sources: Datasource<any, any>[], dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >) {
+export const makeExpressionResolver = function<Props, M>(dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >, fromSource?: Datasource<any, any> | null, sources?: Datasource<any, any>[]) {
 
     const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M>): Scalar<any, any> => {
         let value
@@ -1668,7 +1668,7 @@ export const makeExpressionResolver = function<Props, M>(fromSource: Datasource<
                     propName = sourceName
                     source = fromSource
                 } else{
-                    source = [fromSource, ...sources].find(s => s && s.sourceAlias === sourceName)
+                    source = [fromSource, ...(sources?sources:[]) ].find(s => s && s.sourceAlias === sourceName)
                 }
                 if(!source){
                     // console.log('sources', sources, sourceName)

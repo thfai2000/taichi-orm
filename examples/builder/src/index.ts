@@ -225,9 +225,9 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
                 }
             }
         },
-        where: {
-            name:'hello'
-        }
+        where: ({And})=> And({
+            name: 'hello'
+        })
     })
 
     console.log('aaaa', shops)
