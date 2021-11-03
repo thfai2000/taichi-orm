@@ -1,8 +1,8 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { v4 as uuidv4 } from 'uuid'
-export { PropertyTypeDefinition as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyTypeDefinition } from './PropertyType'
+export { PropertyType as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
+import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType } from './PropertyType'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, SQLKeywords} from './Builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset } from './util'
@@ -12,7 +12,7 @@ import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, S
 import {ExtractComputePropDictFromSchema} from './util'
 import { AndOperator, ExistsOperator, NotOperator, OrOperator } from './Operator'
 
-// type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyTypeDefinition
+// type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyType
 // type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
 
 // type VirtualSchemaWithComputed<F extends SingleSourceArg<any>> = EntityFieldPropertyKeyValues< FindSchema<F> > 
@@ -22,14 +22,14 @@ import { AndOperator, ExistsOperator, NotOperator, OrOperator } from './Operator
 //                 (FindSchema<F>[k] extends ComputeProperty<infer P, any, any, any>? 
 //                 P:
 //                 FindSchema<F>[k] extends FieldProperty<infer P>?
-//                 P:never) extends PropertyTypeDefinition<infer T> ? ExpectedInstance<>
+//                 P:never) extends PropertyType<infer T> ? ExpectedInstance<>
 //             ) 
 
 // }
 
-export type CFReturn<D> = Scalar<PropertyTypeDefinition<D>, any>
+export type CFReturn<D> = Scalar<PropertyType<D>, any>
 
-// export type CFReturnModelArray<Model> = Scalarable<PropertyTypeDefinition< ExtractVa >>
+// export type CFReturnModelArray<Model> = Scalarable<PropertyType< ExtractVa >>
 
 export type QueryOrderBy = ( (string| Scalar<any, any> ) | {column: (string|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
@@ -109,9 +109,9 @@ export type SelectorMap<E extends Schema<any>> = {
     }
 }
 
-export interface Scalarable<T extends PropertyTypeDefinition<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
+export interface Scalarable<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
     toScalar(): Scalar<T, Value>
-    // castToScalar<D extends PropertyTypeDefinition<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
+    // castToScalar<D extends PropertyType<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
     // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
 }
 
@@ -121,7 +121,7 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>, Value extends
 //     CompiledComputeFunction2<any, ARG, R>
 // > = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
 
-// export type CompiledComputeFunction2<Name extends string, ARG, R extends PropertyTypeDefinition<any> > = (args?: ARG) => Column<Name, R>
+// export type CompiledComputeFunction2<Name extends string, ARG, R extends PropertyType<any> > = (args?: ARG) => Column<Name, R>
 
 
 // type AA<C> = (a: C) => number 
@@ -143,7 +143,7 @@ export interface Scalarable<T extends PropertyTypeDefinition<any>, Value extends
 // let p: (f: (...args: any[]) => any ) => void
 
 // p!( c! )
-export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyTypeDefinition<any>, any> )
+export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
 
 // export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
 //     CCF extends CompiledComputeFunctionDynamicReturn
@@ -152,7 +152,7 @@ export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<Proper
 // }
 
 export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
-    S extends Scalar<PropertyTypeDefinition<any>, any>
+    S extends Scalar<PropertyType<any>, any>
 >{
     fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>
     constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>){
@@ -189,7 +189,7 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
-export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer V>, any> >>? V : never
+export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
    
 
 type SelectiveArg = {select?:{}}
@@ -223,7 +223,7 @@ export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA exte
 export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA extends { select?: {}} > = ( 
     ExtractFieldPropDictFromSchema<S>
     & {
-        [k in keyof SSA["select"] & string]: ScalarProperty<Scalar<PropertyTypeDefinition< 
+        [k in keyof SSA["select"] & string]: ScalarProperty<Scalar<PropertyType< 
             ConstructValueTypeDictBySelectiveArgAttribute<SSA["select"][k], ExtractSpecificPropertyFromSchema<S, k> >
         >, any>>
     })
@@ -471,9 +471,9 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     dataset = (): Dataset<any> => {
         return new Dataset(this)
     }
-    scalar<D extends PropertyTypeDefinition<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
+    scalar<D extends PropertyType<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
     //@ts-ignore
-    scalar<D extends PropertyTypeDefinition<any>, Value extends RawUnit>(value: Value, definition?: D | (new (...args: any[]) => D)): Scalar<D, Value>;
+    scalar<D extends PropertyType<any>, Value extends RawUnit>(value: Value, definition?: D | (new (...args: any[]) => D)): Scalar<D, Value>;
     //@ts-ignore
     scalar = (...args: any[]): Scalar<any> => {
         
@@ -815,7 +815,7 @@ export type HookInfo = {
     hookName: string,
     mutationName: MutationName,
     propertyName: string | null,
-    propertyDefinition: PropertyTypeDefinition<any> | null,
+    propertyDefinition: PropertyType<any> | null,
     propertyValue: any | null,
     rootClassName: string
 }
