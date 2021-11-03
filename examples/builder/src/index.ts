@@ -267,7 +267,13 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
     // TODO: add PropertType (ArrayType of primitive)
-
+    // TODO:
+    // - [ ] context allow global filter on specific tables (use case: soft delete)
+    // - [ ] context allow read-only transaction... speed up query and safe to graphql query
+    // - [ ] query array of data with total count(before limit rows)
+    // - [ ] failIfNone and fetch()
+    // - [ ] relations test cases
+    // - [ ] vuepress to introduce ORM
 
 
     // let allShops = await Shop.find({

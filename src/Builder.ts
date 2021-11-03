@@ -1701,9 +1701,6 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     scalars.push( makeOperator(converted, dict[key]).toScalar() )
                 } else if(prop instanceof ComputeProperty){
                     let compiled = (source.getComputeProperty(propName))()
-                    if(compiled instanceof Promise){
-                        throw new Error('Unsupported Async Computed Property in Expression Resolver')
-                    }
                     scalars.push( makeOperator(compiled, dict[key]).toScalar() )
                 }
     
