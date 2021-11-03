@@ -1,6 +1,6 @@
-import {Scalar, ExpressionResolver, Expression, Dataset} from './Builder'
+import {Scalar, ExpressionResolver, Expression, Dataset} from './builder'
 import {Knex} from 'knex'
-import { BooleanNotNullType } from './PropertyType'
+import { BooleanNotNullType } from './types'
 import { thenResult, thenResultArray } from './util'
 import { DatabaseContext, Scalarable } from '.'
 

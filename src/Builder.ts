@@ -1,9 +1,9 @@
 import { Knex}  from "knex"
 import { v4 as uuidv4 } from 'uuid'
-import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
-import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./Operator"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./PropertyType"
-import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./Schema"
+import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
+import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator } from "./operators"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
+import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -113,16 +113,7 @@ abstract class StatementBase {
         this.context = context
     }
 
-    protected sqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>){
-        let sqlkeywords: SQLKeywords<X, Y> = {
-            And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
-            Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
-            Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition),
-            Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset)
-        }
-        return sqlkeywords
-    }
-
+    
     protected async scalarMap2RawMap(targetSchema: Schema<any>, nameMap: { [key: string]: Scalar<any, any> }, context: DatabaseContext<any>) {
         const client = context.client()
         return await Object.keys(nameMap).reduce( async (accP, k) => {
@@ -241,7 +232,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
         let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
-        Object.assign(selectorMap, this.sqlKeywords(resolver))
+        Object.assign(selectorMap, constructSqlKeywords(resolver))
 
         await this.joinItems.reduce(async (acc, item) => {
             await acc
@@ -300,8 +291,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
-            Object.assign(selectorMap, this.sqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
@@ -320,8 +311,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
-            Object.assign(selectorMap, this.sqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
@@ -766,7 +757,7 @@ export class InsertStatement<T extends TableSchema<{
         
         if(arrayOfkeyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
-            const map = Object.assign({}, this.sqlKeywords<any, any>(resolver)) as Y
+            const map = Object.assign({}, constructSqlKeywords<any, any>(resolver)) as Y
             arrayOfNameMap = arrayOfkeyValues(map)
         } else {
             arrayOfNameMap = arrayOfkeyValues
@@ -1027,8 +1018,8 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
         
         if(keyValues instanceof Function){    
-            Object.assign(selectorMap, this.sqlKeywords(resolver) )
-            const map = Object.assign({}, this.getSelectorMap(), this.sqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver) )
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
             nameMap = keyValues(map)
         } else {
             nameMap = keyValues

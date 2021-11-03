@@ -1,10 +1,7 @@
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/PropertyType"
-import { Dataset, Scalar} from "../../../dist/Builder"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
 import { CFReturn } from "../../../dist"
-import { expand, expandRecursively } from "../../../dist/util"
-
 
 
 export default class Product extends Model {

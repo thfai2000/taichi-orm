@@ -1,7 +1,7 @@
 // import { Knex } from "knex"
 import { Knex } from "knex"
 import { DatabaseContext } from "."
-import { Dataset } from "./Builder"
+import { Dataset } from "./builder"
 import { makeid, quote, SimpleObject, SQLString, thenResult } from "./util"
 
 

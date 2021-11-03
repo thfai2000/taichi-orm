@@ -1,8 +1,8 @@
 import { ComputeFunction } from ".";
-import { Dataset, Prefixed, Scalar } from "./Builder";
-import { Model } from "./Model";
-import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./PropertyType";
-import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./Schema";
+import { Dataset, Prefixed, Scalar } from "./builder";
+import { Model } from "./model";
+import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
+import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
