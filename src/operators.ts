@@ -399,6 +399,7 @@ export class IsNotNullOperator extends AssertionOperator {
     }
 }
 
+
 //TODO: GreaterThan
 //TODO: LessThan
 //TODO: GreaterThanOrEqual

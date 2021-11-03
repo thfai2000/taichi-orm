@@ -34,8 +34,7 @@ export default class Product extends Model {
 ```
 
 
-
-Then you can use it simply just like a normal field.
+Then you can use it simply just like a normal field
 ```ts
   let activeProducts = await Product.find({
     where: {
@@ -44,7 +43,8 @@ Then you can use it simply just like a normal field.
   })
 ```
 
-If you find some logics are often repeated. You are suggested to make them into  `ComputedProperty`.
+
+
 `ComputedProperty` can accept the parameters.
 Imagine your Product can be accessible by certain users.
 
@@ -71,16 +71,78 @@ Then you can use it like a function.
   let targetProducts = await Product.find({
     where: ({root, And}) => And(
       { isActive: true },
-      root.isAccessibleByUserId(currentUserId)
+      root.isAccessibleByUserId(currentUserId)  // the function call return a boolean Scalar
     )
   })
 
 ```
 
 
+If you find some logics are often repeated on many Models. It is suggested to create a util function.
+Let say you have a table Role, User, RoleEntity
+
+User
+- id
+- roleId
+
+Role
+- id
+
+RoleEntity
+- roleId
+- entityName    (Model Name)
+
+
+```ts
+//rbacModel.ts
+export default class RBACModel extends Model {
+
+    static propertyOfEditableByUserId(entityName: string){
+
+      return Product.compute((context, parent, userId?: number): CFReturn<boolean> => {
+          // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
+          return context.dataset()
+            .from( Role.datasource('role') )
+            .innerJoin( User.datasource('user'), ({role, user}) => user.roleId.equals(role.id))
+            .innerJoin( RoleEntity.datasource('re'), ({role, re}) => role.id.equals(re.roleId) )
+            .where( ({re}) => re.entityName.equals( entityName ))
+            .exists()
+      })
+    }
+}
+```
+
+```ts
+//product.ts
+export default class Product extends RBACModel {
+  id = this.field(PrimaryKeyType)
+
+  //use the static method to create a property
+  isEditableByUserId = Product.propertyOfEditableByUserId('product')
+}
+```
+
+```ts
+  const currentUserId = 1
+
+  let products = await Product.find({
+    where: ({root, And}) => And(
+      root.isEditableByUserId(currentUserId)  // the function call return a boolean Scalar
+    )
+  })
+```
+
+
+
+
+
+
+
 Another Typical use cases.
-Let's say Product has a ComputeProperty called 'shop' (belongsTo relation) which accept argument for data filter.
-These logics can be used in both 'where' or 'select' clause
+Let's say a Product belongs to a Shop. 
+We can define ComputeProperty called 'shop' or 'products' on these two Models using our standard helper functions 'belongsTo' and 'hasMany'.
+
+These properties can be used in both 'where' or 'select' clause.
 
 ```ts
 export default class Product extends Model {
@@ -115,6 +177,7 @@ export default class Shop extends Model {
   // find shops with products which are only in color 'red'
   let shops = await Shop.find({
     select: {
+      // select the computed property 'products'
       products: {
         where: {
           color: 'red'
@@ -167,14 +230,10 @@ export default class Shop extends Model {
 ```
 
 
+
 # Why we need it?
 
-
-- For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship".
-
-
-
-- Query the relation data is not efficient. If the data query consist of multiple Entity, it query the database tables one by one. Usually, it produce several SQL query. Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
+For some traditional ORM, querying the relation data of Model is not efficient. If the data query consist of multiple Entity, it executes SQL SELECT statement one by one. Usually, it produce several SQL query. But Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
 
 ##More explaination:
 
@@ -210,10 +269,22 @@ But actually we can query the data in only one SQL statement instead:
 
 ```
 The trick is using the SQL server build-in function to construct JSON objects.
-It is more efficient than the traditional way.
+It may be more efficient than the traditional way. taichi-orm is currently using this approach.
 
 
-# Installation
+For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is stricted.
+But using ComputeProperty, you can define a SubQuery (We called it Dataset) which can allow us applying additional where clause condition on demand.
+
+
+
+//TODO: show example here
+
+
+
+
+
+
+# Getting Start
 
 WARNING: Don't use it for production
 It is still under heavy development. The API specification can be changed in the future.
@@ -224,36 +295,18 @@ The npm package doesn't work now. It is out-dated. **The release target is Q4 of
 npm install --save taichi-orm
 ```
 
-2. define your Data Models (or in separates files)
-3. call `configure` to use the setup the resposity and database connection
+2. Install dependencies
+```bash
+npm install --save mysql
+npm install --save pg
+npm install --save sqlite3
+```
+
+3. define your Data Models (or in separates files)
+. call `configure` to use the setup the resposity and database connection
 
 ```javascript
 // #index.js
-import {configure, Entity, Schema, Types, builder, raw} from 'taichi-orm'
-
-class Shop extends Entity{
-
-  static register(schema){
-    schema.prop('name', new Types.String(true, 100))
-    schema.prop('location', new Types.String(true, 255))
-    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
-        let p = Product.selector()
-        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
-    })
-  }
-}
-
-class Product extends Entity{
-
-  static register(schema){
-    schema.prop('name', new Types.String(true, 255))
-    schema.prop('createdAt', new Types.DateTime())
-    schema.prop('shopId', new Types.Number() )
-    // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-    schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
-  }
-}
 
 (async() =>{
 
@@ -278,7 +331,6 @@ class Product extends Entity{
         update,
         models: {Shop, Product} 
     } = orm.getContext()
-
 
 })()
 ```

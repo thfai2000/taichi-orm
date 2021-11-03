@@ -1359,6 +1359,22 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return new ContainOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
     }
 
+    greaterThan(rightOperand: any) {
+        return new GreaterThanOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+    }
+
+    lessThan(rightOperand: any) {
+        return new LessThanOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+    }
+
+    greaterThanOrEquals(){
+        
+    }
+
+    lessThanOrEquals(){
+        
+    }
+
     // private toRealRaw() {
     //     return this.expressionOrDataset
     // }
