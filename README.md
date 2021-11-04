@@ -1,120 +1,239 @@
-A new way to deal with your Data Logic. Build your ORM by Data Brick.
 
-WARNING: Don't use it for productio
-It is still under heavy development. The API specification can be changed in the future.
+A new way to deal with your Data Logic. You can define a virtual field called `ComputedProperty` which is subquery or sql operators in your Data Model.
 
-TODO:
-- [ ] context allow global filter on specific tables (use case: soft delete)
-- [v] creating table statement should be carried out within context, it allows partition of data (use table prefix)
-- [ ] context allow read-only transaction... speed up query and safe to graphql query
-- [ ] query array of data with total count(before limit rows)
-- [ ] failIfNone and fetch()
-- [ ] typescript decorators
-- [ ] typescript type check on QueryWhere
-- [ ] relations test cases
-- [ ] vuepress to introduce ORM
 # Introduction
 
-- Introduce a concept `ComputedProperty`for Data Model
-  - It is a Entity's property. It consist of data logics defined using SQL builder (`Knex`)
-  - Once you orgazine your data logics in form of `ComputedProp` that is highly resuable and extensible
-  - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters. 
-  - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`.
-- Efficient in data query execution. 
-  - Query all Entity and its relation data in one single SQL call.
-- Developed in **Typescript**.
-- (Soon) Data caching
-- (soon) Better Integration with **GraphQL** and **Restful** Server
+- Introduce a concept `ComputeProperty`for Data Model
+  - It is a Entity's property. It consist of data logics defined using Query Builder
+  - Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible
+  - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters.   
+- Developed in **Typescript** but you can use it without typescript compiler.
+- Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`. And the related Models are queried in one single Sql call. (Explain later)
 
-**Example**:
-```javascript
-// define a Data Model
-class Shop extends Entity{
 
-  static register(schema: Schema){
+Imagine an E-commerce system. A product (Model) has various fields like `availableStart`, `availableEnd` and `remainingStock`.
+A product is active when the current time are within these dates and the remainingStock are not zero.
+We can define the schema like this:
+```ts
+export default class Product extends Model {
 
-    // Normal Property that map to real table field
-    schema.prop('location', new Types.String(true, 255))
+    //define field properties here
+    id = this.field(PrimaryKeyType)
+    availableStart = this.field(DateNotNullType)
+    availableEnd = this.field(DateNotNullType)
+    remainingStock = this.field(NumberNotNullType)
 
-    // Define a Computed Property using common relation template
-    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-
-    // Define a Computed Property using builder
-    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
-        let p = Product.selector()
-        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+    //define computed properties here
+    isActive = Product.compute((context, parent): CFReturn<boolean> => {
+        return context.op.And(
+            parent.selectorMap.availableStart.lessThan( new Date() ),
+            parent.selectorMap.availableEnd.greaterThan( new Date() ),
+            parent.selectorMap.remainingStock.greaterThan(0)
+        ).toScalar()
     })
-
-    schema.prop('location', new Types.String(true, 255))
-    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-    // Define a Computed Property
-    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
-        let p = Product.selector()
-        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
-    })
-  }
-
-}
-
-class Product extends Entity{
-
-  static register(schema){
-    schema.prop('name', new Types.String(true, 255))
-    schema.prop('shopId', new Types.Number() )
-    schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
-
-  }
-}
-
-// Query. Find a Shop with id=1 and its Products and total number of Products. 
-await Shop.find( (stmt, root) => {
-    // stmt is an instance of QueryBuilder. 
-    // Now, we query both properties 'product' and 'productCount'
-    return stmt.select(root.$.products(), root.$.productCount())
-           .where(root._.id, '=', 1)
-})
-// Output: [ Shop:{products:[...], productCount:5}, Shop:{products:[...], productCount:3} ...]
 ```
-Explain: 
-`root.$` is the dictionary of `computedProperty` of `Shop`. 
-`root.$.products` locate the computedProperty
 
 
-The data logics of Computed Property is **extensible**. Let's change the ComputedPRop in above example.
-```javascript
-// #models/Shop.js
-...
-// Define a Computed Property which accept "applyFilters"
-schema.computedProp('productCount', Types.Number(),  (shop, applyFilters) => {
-    let p = Product.selector()
-    return applyFilters(p.count().where(shop._.id, '=', p.shopId))
-})
-...
+Then you can use it simply just like a normal field
+```ts
+  let activeProducts = await Product.find({
+    where: {
+      isActive: true
+    }
+  })
+```
 
-//Let's query Shops with productCount of which the products in specific category
-await Shop.find( (stmt, root) => {
-    // stmt is an instance of QueryBuilder
-    return stmt.select(root.$.productCount( (pStmt, pRoot) => {
-      pStmt.where(pRoot.category, '=', 'Food') 
-    })).where(root._.id, '=', 1)
-})
+
+
+`ComputedProperty` can accept the parameters.
+Imagine your Product can be accessible by certain users.
+
+```ts
+export default class Product extends Model {
+
+    id = this.field(PrimaryKeyType)
+
+    isAccessibleByUserId = Product.compute((context, parent, arg?: number): CFReturn<boolean> => {
+        // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
+        return context.dataset()
+          .from( UserProduct.datasource('up') )
+          .where({
+            'up.userId': arg,
+            'up.productId': parent.id
+          }).exists()
+    })
+```
+
+Then you can use it like a function.
+```ts
+  const currentUserId = 1
+
+  let targetProducts = await Product.find({
+    where: ({root, And}) => And(
+      { isActive: true },
+      root.isAccessibleByUserId(currentUserId)  // the function call return a boolean Scalar
+    )
+  })
 
 ```
-Explain:
-`applyFilters` can exposes the instance of the QueryBuilder
 
 
-Note:
-Inspired by **GraphQL**: `ComputedProperty` is similar to `GraphTypeResolver`.
-Inspired by **Knex** (SQL builder). SQL builder allows us to build data logics without any limitation.
+If you find some logics are often repeated on many Models. It is suggested to create a util function.
+Let say you have a table Role, User, RoleEntity
+
+User
+- id
+- roleId
+
+Role
+- id
+
+RoleEntity
+- roleId
+- entityName    (Model Name)
+
+
+```ts
+//rbacModel.ts
+export default class RBACModel extends Model {
+
+    static propertyOfEditableByUserId(entityName: string){
+
+      return Product.compute((context, parent, userId?: number): CFReturn<boolean> => {
+          // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
+          return context.dataset()
+            .from( Role.datasource('role') )
+            .innerJoin( User.datasource('user'), ({role, user}) => user.roleId.equals(role.id))
+            .innerJoin( RoleEntity.datasource('re'), ({role, re}) => role.id.equals(re.roleId) )
+            .where( ({re}) => re.entityName.equals( entityName ))
+            .exists()
+      })
+    }
+}
+```
+
+```ts
+//product.ts
+export default class Product extends RBACModel {
+  id = this.field(PrimaryKeyType)
+
+  //use the static method to create a property
+  isEditableByUserId = Product.propertyOfEditableByUserId('product')
+}
+```
+
+```ts
+  const currentUserId = 1
+
+  let products = await Product.find({
+    where: ({root, And}) => And(
+      root.isEditableByUserId(currentUserId)  // the function call return a boolean Scalar
+    )
+  })
+```
+
+
+
+
+
+
+
+Another Typical use cases.
+Let's say a Product belongs to a Shop. 
+We can define ComputeProperty called 'shop' or 'products' on these two Models using our standard helper functions 'belongsTo' and 'hasMany'.
+
+These properties can be used in both 'where' or 'select' clause.
+
+```ts
+export default class Product extends Model {
+    id = this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    color = this.field(StringType)
+    //define a computeProperty as "belongsTo" relation
+    shop = Product.belongsTo(Shop, 'shopId', 'id')
+}
+
+export default class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    location = this.field(StringType)
+    //define a computeProperty as "hasMany" relation
+    products = Shop.hasMany(Product, 'shopId', 'id')
+}
+```
+
+```ts
+  // find all products which belongs to Shop with location 'Hong Kong'
+  let products = await Product.find({
+    where: ({root}) => root.shop({
+      where: {
+        location: 'Hong Kong'
+      }
+    }).exists()
+  })
+```
+
+
+```ts
+  // find shops with products which are only in color 'red'
+  let shops = await Shop.find({
+    select: {
+      // select the computed property 'products'
+      products: {
+        where: {
+          color: 'red'
+        }
+      }
+    },
+    where: {
+      //...
+    }
+  })
+```
+
+
+A more advanced usage.
+ComputeProperty is very flexible. You can define it based on another existing ComputeProperty.
+
+```ts
+export default class Product extends Model {
+    id = this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId', 'id')
+
+    // define a relation based on 'shop' with additional where clause
+    shopInHongKong = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
+        (context, parent, args?): any => {
+        return parent.selectorMap.shop(args).transform( ds => {
+            const prevWhere = ds.getWhere()
+
+            return ds.where( ({And}) => 
+                    And(
+                        prevWhere? prevWhere: {},
+                        parent.selectorMap.location.equals('Hong Kong')
+                    )
+                ).toScalar()
+        })
+    })
+}
+
+export default class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    location = this.field(StringType)
+}
+```
+
+```ts
+  // find all products which belongs to Shop with location 'Hong Kong'
+  let products = await Product.find({
+    where: ({root}) => root.shopInHongKong().exists()
+  })
+```
+
 
 
 # Why we need it?
 
-Problems of some traditional ORM:
-- It allows applying filter on entity of relation, but cannot apply filters on the pivot table of `manyToMany` relationship".
-- In the schema, we usually can declare to use some common relation such as `hasMany`, `belongsTo` etc. Why don't it allow us to define custom relation of which data logics can be re-use many times in the business logics.
-- Query the relation data is not efficient. If the data query consist of multiple Entity, it query the database tables one by one. Usually, it produce several SQL query. Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
+For some traditional ORM, querying the relation data of Model is not efficient. If the data query consist of multiple Entity, it executes SQL SELECT statement one by one. Usually, it produce several SQL query. But Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
 
 ##More explaination:
 
@@ -150,16 +269,25 @@ But actually we can query the data in only one SQL statement instead:
 
 ```
 The trick is using the SQL server build-in function to construct JSON objects.
-It is more efficient than the traditional way.
-
-More information can be found here:
-https://github.com/typeorm/typeorm/issues/3857#issuecomment-840397366
+It may be more efficient than the traditional way. taichi-orm is currently using this approach.
 
 
-# Installation
+For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is stricted.
+But using ComputeProperty, you can define a SubQuery (We called it Dataset) which can allow us applying additional where clause condition on demand.
 
-!!!!!!!! Don't Use it !!!!!!!!
-It is still under heavy development.
+
+
+//TODO: show example here
+
+
+
+
+
+
+# Getting Start
+
+WARNING: Don't use it for production
+It is still under heavy development. The API specification can be changed in the future.
 The npm package doesn't work now. It is out-dated. **The release target is Q4 of year 2021.**
 
 1. Install the package
@@ -167,57 +295,42 @@ The npm package doesn't work now. It is out-dated. **The release target is Q4 of
 npm install --save taichi-orm
 ```
 
-2. define your Data Models (or in separates files)
-3. call `configure` to use the setup the resposity and database connection
+2. Install dependencies
+```bash
+npm install --save mysql
+npm install --save pg
+npm install --save sqlite3
+```
+
+3. define your Data Models (or in separates files)
+. call `configure` to use the setup the resposity and database connection
 
 ```javascript
 // #index.js
-import {configure, Entity, Schema, Types, builder, raw} from 'taichi-orm'
-
-class Shop extends Entity{
-
-  static register(schema){
-    schema.prop('name', new Types.String(true, 100))
-    schema.prop('location', new Types.String(true, 255))
-    schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
-        let p = Product.selector()
-        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
-    })
-  }
-}
-
-class Product extends Entity{
-
-  static register(schema){
-    schema.prop('name', new Types.String(true, 255))
-    schema.prop('createdAt', new Types.DateTime())
-    schema.prop('shopId', new Types.Number() )
-    // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-    schema.computedProp('shop', new Types.ObjectOf(Shop), Relations.belongsTo(Shop, 'shopId') )
-  }
-}
 
 (async() =>{
 
     // configure the orm
-    await configure({
-        models: { Shop, Product },
-        createModels: true,
+    const orm = new ORM({
+        models: {Shop: ShopClass, Product: ProductClass},
+        enableUuid: true,
         knexConfig: {
             client: 'sqlite3',
             connection: {
-                filename: "file:memDb1?mode=memory&cache=shared",
-                flags: ['OPEN_URI', 'OPEN_SHAREDCACHE']
+                filename: ':memory:'
             }
         }
     })
 
-    /**
-     * Basic
-     */
-    let myShops = await Shop.find()
-    console.log('HERE:', myShops)
+    let {
+        createModels,
+        dataset, 
+        scalar,
+        insert,
+        del,
+        update,
+        models: {Shop, Product} 
+    } = orm.getContext()
 
 })()
 ```
@@ -226,137 +339,6 @@ class Product extends Entity{
 ```bash
 node index.js
 ```
-
-## Basic Usage
-```javascript
-//Basic query
-await Shop.find() // result: [Shop, Shop ...]
-
-// find records in normal coding style
-let records1 = await Shop.find( (stmt, root) => {
-    return stmt.where(root.pk, '>', 1).limit(5)
-})
-
-// find records in another style
-let s = Shop.selector()
-let records2 = await builder(s).select(s.$.products).where(s.pk, '>', 1)
-
-/**
-  * find records with relations (computed field)
-  * 'root' is a selector that access the entity information
-  * 'root.$' can access one computedField named 'products' which are predefined in the entity schema
-  */
-await Shop.find( (stmt, root) => {
-    return stmt.select(root.$.products()).where(root.pk, '=', 1)
-})
-
-/**
-  * find records with multiple level of relations
-  * The Shop relates Product and Product relates Color.
-  */
-await Shop.find( (stmt, shop) => {
-    return stmt.select(shop.$.products( (stmt2, prd) => {
-        return stmt2.select(prd.$.colors()).limit(2)
-    })).where(shop.pk, '=', 1)
-})
-
-// use computed fields for filtering
-// for example: find all shops with Product Count over 2
-let shopsWithAtLeast2Products = await Shop.find( (stmt, root) => {
-  return stmt.select(root.$.products()).whereRaw('?? >= 2', [root.$.productCount()])
-})
-
-```
-
-## Advanced Usage
-
-TODO: some examples of schema, applying both filters and arguments on ComputedField
-
-You can create an Entity like  Graphql `type Query`. You can select list of `Shop` and `Product` at the same time.
-Let say we define the computedProperty 
-- `myShops`
-- `myShopCount`, 
-- `myProducts`
-- `myProductCount`
-
-You can use the built in Entity called `Dual` to do this. `Dual` is a special entity that is without tableName.
-```javascript
-  await Dual.find( (stmt, s) => {
-    return stmt.select( 
-      s.derivedProp(new NamedProperty('myShops', ..., __computedFunc__) ),
-      s.derivedProp(new NamedProperty('myShopCount', ..., __computedFunc__) ),
-      s.derivedProp(new NamedProperty('myProducts', ..., __computedFunc__) ),
-      s.derivedProp(new NamedProperty('myProductCount', ..., __computedFunc__) ),
-    )
-  
-  })
-
-```
-Explain:
-- Usually the database can optimize the query. The `shop` and `shopCount` actually shared the same base of data.
-- Besides, you query all you want in one go. More efficient
-
-In good practice, you should defined these logic into a schema, so that the query can be reusable
-
-```javascript
-class Query extends Dual {
-  static register(schema) {
-    schema.computedProp('myShops', ..., __computedFunc__)
-    schema.computedProp('myShopCount', ..., __computedFunc__)
-    ...
-  }
-}
-
-class Shop extends Entity {
-  static register(schema) {
-    ...
-  }
-}
-
-class Product extends Entity {
-  static register(schema) {
-    ...
-  }
-}
-
-//query the data
-let records = await Query.find((stmt, s)=> stmt.select(s.$myShops(), s.$myShopCount(),....))
-
-```
-
-
-# Concepts:
-
-- `ComputedFunction`
-  - It is a data selection logics
-  - defined by SQL builder
-
-- `NamedProperty`
-  - Represent the property of a Data Model
-  - It consists of the name and the data type (can be Entity or primitive types)
-  - It can be a real table field or a virtual field `ComputedProperty`.
-  
-- `ComputedProperty`
-  - It is virtual field.
-  - It embedded `ComputedFunction`
-
-- `CompiledNamedProperty`
-  - It is a compiled version of `NamedProperty`. A `NamedProperty` is not ready for query before it is compiled.
-  - During the compilation, it embedded the runtime information such as the alias name of the property's Parent. These information is important for Table Joining.
-
-- `Selector`
-  - It is a dictionary that access runtime information and schema of a Entity. 
-  - In below example, `root` is the selector instance of `Shop`
-   - `root.all`: all properties of `Shop`
-   - `root._`: dictionary of `namedProperty` of `Shop`
-   - `root.pk`: the primary key of `Shop`
-   - `root.$`: dictionary of `computedProperty` of `Shop`
-   - `root.$.products()` include the `computedProperty` named `products`
-  ```javascript
-  await Shop.find( (stmt, root) => {
-    return stmt.select(root.$.products()).where(root.id, '=', 1)
-  })
-  ```
 
 # Acknowledgement
 Thanks Knex. The project is heavily using Knex.

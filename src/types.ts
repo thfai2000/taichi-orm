@@ -1,7 +1,7 @@
 // import { Knex } from "knex"
 import { Knex } from "knex"
 import { DatabaseContext } from "."
-import { Dataset } from "./Builder"
+import { Dataset } from "./builder"
 import { makeid, quote, SimpleObject, SQLString, thenResult } from "./util"
 
 
@@ -58,7 +58,7 @@ export interface ParsableObjectTrait<I> extends ParsableTrait<I> {
 // }
 
 // export type PropertyDefinitionOptions = { compute?: ComputeFunction | null}
-export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
+export class PropertyType<I> implements ParsableTrait<I> {
     protected options = {}
     get nullable() {
         return true
@@ -89,7 +89,7 @@ export class PropertyTypeDefinition<I> implements ParsableTrait<I> {
     }
 }
 
-export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+export abstract class FieldPropertyTypeDefinition<I> extends PropertyType<I> {
 
     constructor(options?: any){
         super(options)
@@ -102,7 +102,7 @@ export abstract class FieldPropertyTypeDefinition<I> extends PropertyTypeDefinit
 //     abstract parseProperty(propertyvalue: I, context: Entitycontext<any>, prop: string): any
 // }
 
-export abstract class ComputePropertyTypeDefinition<I> extends PropertyTypeDefinition<I> {
+export abstract class ComputePropertyTypeDefinition<I> extends PropertyType<I> {
 
     constructor(options?: any){
         super(options)
@@ -111,7 +111,7 @@ export abstract class ComputePropertyTypeDefinition<I> extends PropertyTypeDefin
     // abstract parseProperty(propertyvalue: I, context: Entitycontext<any>, prop: string): any
 }
 
-// export class UnknownPropertyTypeDefinition extends PropertyTypeDefinition<any> {
+// export class UnknownPropertyTypeDefinition extends PropertyType<any> {
 //     constructor(options?: any){
 //         super(options)
 //     }

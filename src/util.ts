@@ -1,8 +1,8 @@
 import { ComputeFunction } from ".";
-import { Dataset, Prefixed, Scalar } from "./Builder";
-import { Model } from "./Model";
-import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyTypeDefinition } from "./PropertyType";
-import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./Schema";
+import { Dataset, Prefixed, Scalar } from "./builder";
+import { Model } from "./model";
+import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
+import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -33,7 +33,7 @@ export function expand<T>(o: T): Expand<T>{
 //     return o as any
 // }
 
-export type ScalarDictToValueTypeDict<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyTypeDefinition<infer D>, any>? D: never}
+export type ScalarDictToValueTypeDict<SelectedScalars> = {[key in keyof SelectedScalars]: SelectedScalars[key] extends Scalar<PropertyType<infer D>, any>? D: never}
 
 
 export type SimpleObject = { [key:string]: any}
@@ -53,16 +53,16 @@ export type ExtractSchemaFieldOnlyFromSchema<CurrentSchema extends Schema<any>> 
 
 export type ConstructMutationFromValueTypeDict<D> = {
     [key in keyof D]: 
-            D[key] | Scalar<PropertyTypeDefinition<D[key]>, any>
+            D[key] | Scalar<PropertyType<D[key]>, any>
 }
 
 
 export type ExtractValueTypeFromProperty<T> = 
     T extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
         (
-            T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyTypeDefinition<infer X>, any> >>? X: 
+            T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer X>, any> >>? X: 
                         (
-                    T extends ScalarProperty<Scalar<PropertyTypeDefinition<infer Primitive>, any>>? Primitive:
+                    T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
                     T
                 )
         )
@@ -183,10 +183,10 @@ export const quote = (client: string, name: string) => {
 
 
 // export const META_FIELD_DELIMITER = '___'
-// const map1 = new Map<PropertyTypeDefinition, string>()
-// const map2 = new Map<string, PropertyTypeDefinition>()
+// const map1 = new Map<PropertyType, string>()
+// const map2 = new Map<string, PropertyType>()
 
-// export const registerGlobalPropertyTypeDefinition = function(d: PropertyTypeDefinition): string{
+// export const registerGlobalPropertyTypeDefinition = function(d: PropertyType): string{
 //     let r = map1.get(d)
 //     if(!r){
 //         let key = makeid(3)
@@ -197,7 +197,7 @@ export const quote = (client: string, name: string) => {
 //     return r
 // }
 
-// export const findGlobalPropertyTypeDefinition = function(propAlias: string): PropertyTypeDefinition {
+// export const findGlobalPropertyTypeDefinition = function(propAlias: string): PropertyType {
 //     let r = map2.get(propAlias)
 //     if(!r){
 //         throw new Error(`Cannot find the Property by '${propAlias}'. Make sure it is registered before.`)
@@ -205,7 +205,7 @@ export const quote = (client: string, name: string) => {
 //     return r
 // }
 
-// export const metaFieldAlias = function(name: string, p: PropertyTypeDefinition): string{
+// export const metaFieldAlias = function(name: string, p: PropertyType): string{
 //     let propAlias = registerGlobalPropertyTypeDefinition(p)
 //     return `${name}${META_FIELD_DELIMITER}${propAlias}`
 // }
