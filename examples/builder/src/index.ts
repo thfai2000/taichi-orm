@@ -250,16 +250,16 @@ import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dis
     // Done: deleteStatement
     // Done: repository.scalar() & scalar.execute
     // Done: orderBy
+    // Done: equalOrGreaterThan, equalOrLessThan
+    // Done: greaterThan, lessThan
+    // Done: MODEL: CRUD...delete()
 
+    // minus, plus, divide, times
     // TODO: having
-    // MODEL: CRUD...delete()
     // TODO: Model.count
     // fix all unit tests
     // TODO: addSelectProps
     // EXISTS, NOT, BETWEEN, 
-    // greaterThan, lessThan
-    // equalOrGreaterThan, equalOrLessThan
-    // minus, plus
     // SUM, MAX, MIN
     // TODO: manyToMany Relation helper function
     // Scalar.boolean, Scalar.string

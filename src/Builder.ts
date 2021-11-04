@@ -871,8 +871,7 @@ export class InsertStatement<T extends TableSchema<{
                     const executionFuncton = async() => {
                         // let afterMutationHooks = schema.hooks.filter()
 
-                        if (!this.queryAffectedFunctionArg || context.client().startsWith('pg')) {
-                            console.log('efffff', this)
+                        if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
                             const queryBuilder = statement.toNativeBuilder(context)
                             const insertStmt = queryBuilder.toString()
                             // let insertedId: number
@@ -915,9 +914,9 @@ export class InsertStatement<T extends TableSchema<{
                     
                     const insertedIds = await executionFuncton()
 
-                    if(this.queryAffectedFunctionArg){
+                    if(this.latestQueryAffectedFunctionArg){
     
-                        const queryAffectedFunctionArg = this.queryAffectedFunctionArg
+                        const queryAffectedFunctionArg = this.latestQueryAffectedFunctionArg
                         
                         const queryAffectedFunction = async() => {
                             
@@ -1108,7 +1107,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                 let updatedIds = await context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
-                    if(!this.preflightFunctionArg && !this.queryAffectedFunctionArg){
+                    if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
                         const nativeSql = await statement.toNativeBuilder(context)
                         let result = await context.executeStatement(nativeSql, {}, executionOptions)
                         if (context.client().startsWith('pg')) {
@@ -1118,7 +1117,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         return null
                     } else {
 
-                        if(!this.preflightFunctionArg){
+                        if(!this.latestPreflightFunctionArg){
                             throw new Error('Unexpected')
                         }
                         
@@ -1126,18 +1125,18 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
 
-                        const finalDataset = await this.preflightFunctionArg(dataset)
+                        const finalDataset = await this.latestPreflightFunctionArg(dataset)
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                 
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
-                        if(this.queryAffectedFunctionArg){
+                        if(this.latestQueryAffectedFunctionArg){
                             
                             const queryDataset = context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
 
-                            const finalDataset = await this.queryAffectedFunctionArg(queryDataset)
+                            const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
                             this.affectedResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                         }
 
@@ -1249,7 +1248,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                 let updatedIds = await context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
-                    if(!this.preflightFunctionArg && !this.queryAffectedFunctionArg){
+                    if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
                         const nativeSql = await statement.toNativeBuilder(context)
                         let result = await context.executeStatement(nativeSql, {}, executionOptions)
                         if (context.client().startsWith('pg')) {
@@ -1259,7 +1258,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         return null
                     } else {
 
-                        if(!this.preflightFunctionArg){
+                        if(!this.latestPreflightFunctionArg){
                             throw new Error('Unexpected')
                         }
                         
@@ -1267,18 +1266,18 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
 
-                        const finalDataset = await this.preflightFunctionArg(dataset)
+                        const finalDataset = await this.latestPreflightFunctionArg(dataset)
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                 
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
-                        if(this.queryAffectedFunctionArg){
+                        if(this.latestQueryAffectedFunctionArg){
                             
                             const queryDataset = context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
 
-                            const finalDataset = await this.queryAffectedFunctionArg(queryDataset)
+                            const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
                             this.affectedResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                         }
 
