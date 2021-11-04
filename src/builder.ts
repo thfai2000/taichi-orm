@@ -674,7 +674,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     }
 
     execute<S extends Schema<any>>(this: Dataset<S, any, any, any>, repo?: DatabaseContext<any>): 
-        DBQueryRunner<ExtractValueTypeDictFromSchema<S>[] >
+        DBQueryRunner<ExtractValueTypeDictFromSchema<S>[], false>
     {
         const context = repo ?? this.context
 
@@ -683,7 +683,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
         const current = this
 
-        return new DBQueryRunner< ExtractValueTypeDictFromSchema<S>[] >(
+        return new DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>(
 
                 async (executionOptions: ExecutionOptions) => {
 
@@ -1563,7 +1563,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     }
 
     execute(this: Scalar<T, Value>, repo?: DatabaseContext<any>)
-    : DBQueryRunner<ExpandRecursively< T extends PropertyType<infer D>? D: any >> 
+    : DBQueryRunner<T extends PropertyType<infer D>? D: any, false> 
         {
         const context = repo ?? this.context
 
@@ -1571,14 +1571,14 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             throw new Error('There is no repository provided.')
         }
 
-        return new DBQueryRunner<ExpandRecursively< T extends PropertyType<infer D>? D: any >>(
+        return new DBQueryRunner<T extends PropertyType<infer D>? D: any, false>(
             async (executionOptions: ExecutionOptions) => {
 
                 let result = await context.dataset().select({
                     root: this
                 }).execute().withOptions(executionOptions)
 
-                return result[0].root as ExpandRecursively< T extends PropertyType<infer D>? D: any >
+                return result[0].root as T extends PropertyType<infer D>? D: any
             }
         )
     }

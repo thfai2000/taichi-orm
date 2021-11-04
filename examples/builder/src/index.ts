@@ -1,12 +1,10 @@
-import { Dataset, Scalar } from "../../../dist/Builder"
+import { Dataset, Scalar } from "../../../dist/builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ConstructValueTypeDictBySelectiveArg, ORM, SelectorMap, SingleSourceArg } from "../../../dist"
+import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { ArrayType, FieldPropertyTypeDefinition, NumberNotNullType, NumberType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringType } from "../../../dist/PropertyType"
-import { UnionToIntersection, ExtractFieldPropDictFromModel, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExpandRecursively, Expand } from "../../../dist/util"
-import { ComputeProperty, Datasource, FieldProperty, Schema } from "../../../dist/Schema"
+import { NumberNotNullType, ObjectType } from "../../../dist/types"
 
 
 (async() => {

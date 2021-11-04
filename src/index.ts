@@ -495,13 +495,6 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return constructSqlKeywords(f)
     }
     
-    // {
-    //     And: (...args: Array<Expression<{}, any >>) => new AndOperator(makeExpressionResolver(this.op), ...args),
-    //     Or: (...args: Array<Expression<{}, any >>) => new OrOperator(makeExpressionResolver(this.op), ...args),
-    //     Not: (arg: Expression<{}, any >) => new NotOperator(makeExpressionResolver(this.op), arg),
-    //     Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(makeExpressionResolver(this.op), dataset),
-    // }
-
     update = () => {
         return new UpdateStatement(this)
     }
@@ -645,7 +638,33 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     }
 } 
 
-export class DBQueryRunner<I> extends DBActionRunnerBase<I> {
+export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
+
+    protected parent: DBQueryRunner<any, any> | null = null
+    protected isFullCount: boolean = false
+    protected fullCountResult: number | null = null
+
+    constructor(action: DBAction<I>, 
+        args?: {
+            parent?: DBQueryRunner<any, any>
+            isFullCount?: boolean
+        }
+        ){
+        super(action)
+        this.parent = args?.parent ?? null
+        this.isFullCount = this.isFullCount
+    }
+
+    get ancestor(): DBQueryRunner<any, any>{
+        let parent: DBQueryRunner<any, any> = this
+        while(parent && parent.parent){
+            parent = parent.parent
+        }
+        if(!parent){
+            return this
+        }
+        return parent
+    }
 
     async failIfNone(){
         this.options = {
@@ -658,9 +677,9 @@ export class DBQueryRunner<I> extends DBActionRunnerBase<I> {
     getFirstRow(){
         type NewI = I extends Array<infer T>? T: never
         
-        let m = new DBQueryRunner<NewI>(
-            async (executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => {
-                let result = await this.action(executionOptions, options)
+        let m = new DBQueryRunner<NewI, isFullCount>(
+            async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+                let result = await this.ancestor.action.call(this, executionOptions, options)
                 if(Array.isArray(result)){
                     return result[0] as NewI
                 }
@@ -669,13 +688,33 @@ export class DBQueryRunner<I> extends DBActionRunnerBase<I> {
         return m
     }
 
+    withFullCount(){
+        type NewI = {
+            result: I,
+            fullCount: isFullCount extends true? number: never,
+        }
+        let m = new DBQueryRunner<NewI, isFullCount>(
+            async function(this: DBQueryRunner<NewI, isFullCount>,
+                executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) {
+                const result = await this.ancestor.action.call(this, executionOptions, options)
+                return {
+                    result,
+                    fullCount: this.fullCountResult
+                } as NewI
+            }, {
+                parent: this,
+                isFullCount: true
+            })
+
+        return m
+    }
 }
 
 type AffectedOne<X> = X extends Array<infer T>? T: never
 
-export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType, AffectedRecordType, isPreflight, isAffected> extends DBQueryRunner<I>{
+export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType, AffectedRecordType, isPreflight, isAffected> extends DBActionRunnerBase<I>{
 
-    protected execOptions: MutationExecutionOptions<S>
+    // protected execOptions: MutationExecutionOptions<S>
 
     // protected preflightFunction: <D extends Dataset<Schema<any>>>(
     //     this: DBMutationRunner<any, S, PreflightRecordType, AffectedRecordType, isPreflight, isAffected>, dataset: D) => Promise<ExtractValueTypeDictFromDataset<D>>
@@ -699,7 +738,6 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         }
         ){
         super(action)
-        this.execOptions = {}
         this.parent = args?.parent ?? null
         this.preflightFunctionArg = args?.preflightFunctionArg ?? null
         this.queryAffectedFunctionArg = args?.queryAffectedFunctionArg ?? null
@@ -787,8 +825,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
             async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
+                const result = await this.ancestor.action.call(this, executionOptions, options)
                 return {
-                    result: await this.ancestor.action.call(this, executionOptions, options),
+                    result,
                     preflight: this.preflightResult,
                     affected: this.affectedResult
                 } as NewI
@@ -810,8 +849,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>(
             async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
+                const result = await this.ancestor.action.call(this, executionOptions, options)
                 return {
-                    result: await this.ancestor.action.call(this, executionOptions, options),
+                    result,
                     preflight: this.preflightResult,
                     affected: this.affectedResult
                 } as NewI
