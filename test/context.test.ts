@@ -19,14 +19,12 @@ import { PrimaryKeyType,
 class Shop extends Model {
   id= this.field(PrimaryKeyType)
   name =this.field(StringNotNullType)
-  uuid = this.field(StringNotNullType)
   location = this.field(new StringNotNullType({length:255}))
   products = Shop.hasMany(Product, 'shopId')
 }
 
 class Product extends Model{
   id= this.field(PrimaryKeyType)
-  uuid = this.field(StringNotNullType)
   name = this.field(StringType)
   isActive = this.field(BooleanType)
   price = this.field(new DecimalType({precision: 7, scale: 2}))
@@ -40,7 +38,6 @@ let config = JSON.parse(process.env.ENVIRONMENT)
 
 let orm = new ORM({
   models: {Shop, Product},
-  enableUuid: true,
   entityNameToTableName: (className: string) => snakeCase(className),
   propNameTofieldName: (propName: string) => snakeCase(propName),
   knexConfig: config
