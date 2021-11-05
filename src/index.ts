@@ -1,6 +1,6 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { v4 as uuidv4 } from 'uuid'
+// import { v4 as uuidv4 } from 'uuid'
 export { PropertyType as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, SQLKeywords, ExpressionResolver} from './builder'
@@ -248,8 +248,8 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     useNullAsDefault?: boolean
     // useSoftDeleteAsDefault: boolean
     // primaryKeyName: string
-    enableUuid: boolean
-    uuidPropName: string
+    // enableUuid: boolean
+    // uuidPropName: string
 }
 
 
@@ -260,9 +260,9 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
     defaultORMConfig: ORMConfig<any> = {
         // primaryKeyName: 'id',
-        enableUuid: false,
+        // enableUuid: false,
         // useSoftDeleteAsDefault: true,
-        uuidPropName: 'uuid',
+        // uuidPropName: 'uuid',
         // createModels: false,
         // types: {},
         models: {},
@@ -768,7 +768,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     get latestQueryAffectedFunctionArg(): null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>){
         let target: DBMutationRunner<any, any, any, any, any, any> | null = this
         while( target && !target.queryAffectedFunctionArg) {
-            target = this.parent
+            target = target.parent
         }
 
         return target?.queryAffectedFunctionArg ?? null
@@ -787,14 +787,16 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return this.execOptions
     }
 
-    getAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< AffectedRecordType, S, PreflightRecordType, AffectedRecordType, isPreflight, true> {
+
+    getAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
+        onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
         
-        return new DBMutationRunner<AffectedRecordType, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async function(this: DBMutationRunner<AffectedRecordType, S, PreflightRecordType, AffectedRecordType, isPreflight, true>, 
+        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
-                return this.affectedResult as AffectedRecordType
+                return this.affectedResult as ExtractValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
                 queryAffectedFunctionArg: onQuery ?? ((dataset: any) => dataset)
@@ -802,10 +804,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     getAffectedOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< AffectedOne<AffectedRecordType>, S, PreflightRecordType, AffectedRecordType, isPreflight, true> {
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true> {
         
-        return new DBMutationRunner<AffectedOne<AffectedRecordType>, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async function(this: DBMutationRunner<AffectedOne<AffectedRecordType>, S, PreflightRecordType, AffectedRecordType, isPreflight, true>, 
+        return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>(
+            async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
                 if(Array.isArray(this.affectedResult)){
@@ -822,10 +824,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         type NewI = {
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: AffectedRecordType 
+            affected: ExtractValueTypeDictFromDataset<D> 
         }
-        let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>(
-            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, isPreflight, true>,
+        let m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>(
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
                 const result = await this.ancestor.action.call(this, executionOptions, options)
                 return {

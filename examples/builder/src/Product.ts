@@ -1,6 +1,6 @@
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/PropertyType"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/types"
 import Shop from "./Shop"
-import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/Model"
+import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
 import { CFReturn } from "../../../dist"
 
 
@@ -8,7 +8,6 @@ export default class Product extends Model {
 
     id = this.field(PrimaryKeyType)
     ddd = this.field(NumberType)
-    uuid = this.field(StringNotNullType)
     name = this.field(StringType)
     shopId = this.field(NumberType)
     shop = Product.belongsTo(Shop, 'shopId', 'id')

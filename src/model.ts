@@ -1,5 +1,5 @@
 import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg } from "."
-import { v4 as uuidv4 } from 'uuid'
+// import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix } from "./builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
@@ -29,7 +29,7 @@ export abstract class Model {
     #schema: TableSchema<any> | null = null
 
     abstract id: FieldProperty<PrimaryKeyType>
-    uuid?: FieldProperty<StringNotNullType> = undefined
+    // uuid?: FieldProperty<StringNotNullType> = undefined
 
     constructor(repository: ModelRepository<any>, entityName: string){
         this.#repository = repository
@@ -96,7 +96,7 @@ export abstract class Model {
                 }
             }
 
-            let schema = new TableSchema(this.#entityName, props, this.id, this.uuid)
+            let schema = new TableSchema(this.#entityName, props, this.id)
             // schema.uuid = this.uuid
             // schema.id = this.id
             

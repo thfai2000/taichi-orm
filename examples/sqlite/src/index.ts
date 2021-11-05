@@ -145,7 +145,6 @@ let productColorData = [
   await configure({
       models: {Shop, Product, Color, ProductColor},
       createModels: true,
-      enableUuid: true,
       entityNameToTableName: (className: string) => snakeCase(className),
       propNameTofieldName: (propName: string) => snakeCase(propName),
       knexConfig: {

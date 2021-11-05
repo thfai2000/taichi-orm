@@ -8,10 +8,10 @@ import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, Table
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
 // expands object types recursively
-export type ExpandRecursively<T> = T extends object
-  ? (T extends infer O ? { [K in keyof O]: ExpandRecursively<O[K]> } : never)
-  : T;
-
+export type ExpandRecursively<T> = 
+    T extends Date ? Date: 
+    T extends object ? (T extends infer O ? { [K in keyof O]: ExpandRecursively<O[K]> } : never):
+    T;
 
 export function undoExpandRecursively<T>(o: ExpandRecursively<T>): T {
     return o as any
@@ -135,7 +135,9 @@ Pick<E, ({
                     never
 })[keyof E]> 
 
-
+// export type PartialIfNull<Dict> = {
+//     [key in keyof Dict]: Dict[key] extends null? (Dict[key] | undefined) : Dict[key]
+// } 
 
 export function thenResultArray<T, R>(
     value: Array<T | Promise<T>>, 

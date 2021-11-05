@@ -248,13 +248,11 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
     overridedTableName?: string
 
     id: FieldProperty<PrimaryKeyType>
-    uuid?: FieldProperty<StringNotNullType> = undefined
 
-    constructor(entityName: string, props: PropertyDict, id: FieldProperty<PrimaryKeyType>, uuid?: FieldProperty<StringNotNullType>){
+    constructor(entityName: string, props: PropertyDict, id: FieldProperty<PrimaryKeyType>){
         super(props)
         this.#entityName = entityName
         this.id = id
-        this.uuid = uuid
     }
 
     tableName(context: DatabaseContext<any>, options?: TableOptions){

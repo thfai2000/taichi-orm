@@ -11,7 +11,6 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
 
     const orm = new ORM({
         models: {Shop: ShopClass, Product: ProductClass},
-        enableUuid: true,
         entityNameToTableName: (className: string) => snakeCase(className),
         propNameTofieldName: (propName: string) => snakeCase(propName),
         knexConfig: {
@@ -62,6 +61,9 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
         let product = await insert(Product.schema).values([{
             ddd: 5,
             name: 'hello',
+            availableStart: new Date(),
+            availableEnd: new Date(),
+            remainingStock: 2,
             shopId: shop1.id
         }])
         .execute().getAffectedOne()
@@ -76,10 +78,16 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
     let anotherProducts = await insert(Product.schema).values([{
         ddd: 5,
         name: 'hello',
+        availableStart: new Date(),
+        availableEnd: new Date(),
+        remainingStock: 2,
         shopId: shop1.id
     }, {
         ddd: 8,
         name: 'hello2',
+        availableStart: new Date(),
+        availableEnd: new Date(),
+        remainingStock: 2,
         shopId: shop1.id
     }])
     .execute().withAffected()
@@ -203,7 +211,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
             onSqlRun: console.log
         }).withPreflight()
 
-    console.log('xxx', deleted)
+    console.log('deleted', deleted)
 
     console.log('d2', await dataset()
         .from(Shop.datasource("myShop"))

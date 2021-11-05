@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { v4 as uuidv4 } from 'uuid'
+// import { v4 as uuidv4 } from 'uuid'
 import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
@@ -731,26 +731,26 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
 export class InsertStatement<T extends TableSchema<{
         id: FieldProperty<PrimaryKeyType>,
-        uuid?: FieldProperty<StringNotNullType>
+        // uuid?: FieldProperty<StringNotNullType>
     }>> 
     extends StatementBase {
     [x: string]: any
 
     #insertIntoSchema: T
     #insertItems: { [key: string]: Scalar<any, any> }[] | null = null
-    #uuidForInsertion: string | null = null
+    // #uuidForInsertion: string | null = null
 
     constructor(insertToSchema: T, context?: DatabaseContext<any> | null){
         super(context)
         this.#insertIntoSchema = insertToSchema
     }
 
-    insertInfo(){
-        return {
-            schema: this.#insertIntoSchema,
-            uuid: this.#uuidForInsertion
-        }
-    }
+    // insertInfo(){
+    //     return {
+    //         schema: this.#insertIntoSchema,
+    //         // uuid: this.#uuidForInsertion
+    //     }
+    // }
 
     values<S extends Partial<ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
     (arrayOfkeyValues: S[] | ((map: Y ) => S[] )): InsertStatement<T>{
@@ -800,26 +800,25 @@ export class InsertStatement<T extends TableSchema<{
         let targetSchema = this.#insertIntoSchema
         const schemaPrimaryKeyFieldName = targetSchema.id.fieldName(context.orm)
         const schemaPrimaryKeyPropName = targetSchema.id.name
-        const schemaUUIDPropName = targetSchema.uuid?.name
-        const schemaUUIDFieldName = targetSchema.uuid?.fieldName(context.orm)
+        // const schemaUUIDPropName = targetSchema.uuid?.name
+        // const schemaUUIDFieldName = targetSchema.uuid?.fieldName(context.orm)
 
-        let useUuid: boolean = !!context.orm.ormConfig.enableUuid
-        if (context.client().startsWith('sqlite')) {
-            if (!context.orm.ormConfig.enableUuid ){
-                throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
-            }
-        }
-
-        let additionalFields = {}
-        if(useUuid){
-            if(!schemaUUIDPropName) {
-                throw new Error('No UUID')
-            }
-            additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`, [], new StringNotNullType() )}
-        }
+        // let useUuid: boolean = !!context.orm.ormConfig.enableUuid
+        // if (context.client().startsWith('sqlite')) {
+        //     if (!context.orm.ormConfig.enableUuid ){
+        //         throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
+        //     }
+        // }
+        // let additionalFields = {}
+        // if(useUuid){
+        //     if(!schemaUUIDPropName) {
+        //         throw new Error('No UUID')
+        //     }
+        //     additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`, [], new StringNotNullType() )}
+        // }
         const filteredInsertItems = atRowIdx === null? this.#insertItems : [this.#insertItems[atRowIdx]]
 
-        const insertItems = await Promise.all(filteredInsertItems.map( async(insertItem) => await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, insertItem, additionalFields), context)))
+        const insertItems = await Promise.all(filteredInsertItems.map( async(insertItem) => await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, insertItem), context)))
         
         nativeQB.insert( insertItems )
 
@@ -842,8 +841,6 @@ export class InsertStatement<T extends TableSchema<{
         }
         type I = {
             id: number;
-        }[] | {
-            uuid: string;
         }[] | null
         //@ts-ignore
         const statement = this
@@ -894,9 +891,11 @@ export class InsertStatement<T extends TableSchema<{
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString()
-                                    let uuid = uuidv4()
-                                    const r = await context.executeStatement(insertStmt, {uuid}, executionOptions)
-                                    return {uuid}
+                                    // let uuid = uuidv4()
+                                    await context.executeStatement(insertStmt, {}, executionOptions)
+                                    let result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
+                                    // console.log('inserted id...', result)
+                                    return {id: result[0].id}
                                 }))
                 
                             } else {
@@ -915,40 +914,18 @@ export class InsertStatement<T extends TableSchema<{
                         
                         const queryAffectedFunction = async() => {
                             
-                            //@ts-ignore
-                            let isId = insertedIds[0].id
-
-                            if(!isId){
-
-                                const i = insertedIds as {uuid: string}[]
-
-                                // let info = ds.insertInfo()
-                                const schema = statement.#insertIntoSchema as TableSchema<{uuid: FieldProperty<any>}>
-                                                            
-                                const queryDataset = context.dataset()
-                                    .from(schema.datasource('root'))
-                                    .where( ({root}) => root.uuid.contains(i.map(r => r.uuid)) )
-                                    .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
-
-                                const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
-                               
-                                let result = await finalDs.execute().withOptions(executionOptions) 
-                                return result 
+                            const i = insertedIds as {id: number}[]
+                            const schema = statement.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
+    
+                            let queryDataset = context.dataset()
+                                .from(schema.datasource('root'))
+                                .where( ({root}) => root.id.contains(i.map(r => r.id)) )
+                                .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
                             
-                            } else {
-
-                                const i = insertedIds as {id: number}[]
-                                const schema = statement.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
-        
-                                let queryDataset = context.dataset()
-                                    .from(schema.datasource('root'))
-                                    .where( ({root}) => root.id.contains(i.map(r => r.id)) )
-                                    .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
-                                
-                                const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
-                                let result = await finalDs.execute().withOptions(executionOptions) 
-                                return result
-                            }
+                            const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
+                            let result = await finalDs.execute().withOptions(executionOptions) 
+                            return result
+                            
                         }
     
                         this.affectedResult = (await queryAffectedFunction()) as any[]
@@ -1260,13 +1237,13 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         let dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
-
+                        
                         const finalDataset = await this.latestPreflightFunctionArg(dataset)
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
-                
+                        
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
+                        
                         if(this.latestQueryAffectedFunctionArg){
-                            
                             const queryDataset = context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
@@ -1275,7 +1252,6 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                             const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
                             this.affectedResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                         }
-
                         return updatedIds
                     }
                     
@@ -1497,8 +1473,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             })
 
         })
-
-        // console.log('xxxxxxxx', raw.toString())
         return raw
 
     }
