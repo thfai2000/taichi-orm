@@ -1,61 +1,54 @@
-import {builder, raw, configure, Schema, Entity, Types, models, globalContext} from '../dist/'
-import {snakeCase, omit} from 'lodash'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-// const itif = (condition:boolean) => condition ? it : it.skip;
-// import {clearSysFields} from './util'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
+
+
+class Shop extends Model {
+  id= this.field(PrimaryKeyType)
+  name =this.field(StringNotNullType)
+  uuid = this.field(StringNotNullType)
+  location = this.field(new StringNotNullType({length:255}))
+  products = Shop.hasMany(Product, 'shopId')
+}
+
+class Product extends Model{
+  id= this.field(PrimaryKeyType)
+  uuid = this.field(StringNotNullType)
+  name = this.field(StringType)
+  isActive = this.field(BooleanType)
+  price = this.field(new DecimalType({precision: 7, scale: 2}))
+  createdAt = this.field(new DateTimeType({precision: 6}))
+  shopId = this.field(NumberType)
+  shop = Product.belongsTo(Shop, 'shopId')
+}
 
 // @ts-ignore
 let config = JSON.parse(process.env.ENVIRONMENT)
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
-
-      static register(schema: Schema){
-          schema.prop('name', Types.String({nullable: true, length: 255}))
-          schema.prop('location', Types.String({nullable: false, length: 255}))
-      }
-    }
-    
-    class Product extends Entity{
-    
-      static register(schema: Schema){
-          schema.prop('name', Types.String({nullable: true, length: 255}))
-          schema.prop('isActive', Types.Boolean())
-          schema.prop('price', Types.Decimal({precision: 7, scale: 2}))
-          schema.prop('createdAt', Types.DateTime({precision: 6}))
-          schema.prop('shopId', Types.Number())
-      }
-    }
+let orm = new ORM({
+  models: {Shop, Product},
+  enableUuid: true,
+  entityNameToTableName: (className: string) => snakeCase(className),
+  propNameTofieldName: (propName: string) => snakeCase(propName),
+  knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
 
 
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    await configure({
-        models: {Shop, Product},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
-}
-
-const clearDatabase = () => {
-
-}
-
-beforeEach( async () => {
-    await initializeDatabase();
-});
-
-afterEach(() => {
-    return clearDatabase();
-});
 
 describe('Test Context Usage', () => {
 
@@ -63,8 +56,12 @@ describe('Test Context Usage', () => {
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     
-    let record = await globalContext.withTransaction( async(ctx) => {
-      let record = await ctx.models.Shop.createOne(shopData)
+    let repo = orm.getContext({tablePrefix: tablePrefix()})
+    await repo.createModels()
+    let {Shop, Product} = repo.models
+
+    let record = await  repo.startTransaction( async(ctx) => {
+      let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
       return record
     })
 
@@ -73,7 +70,7 @@ describe('Test Context Usage', () => {
     }))
 
     // try to find it again, to prove it is committed
-    let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
+    let found = await Shop.findOne({where: {id: shopData.id}})
     expect(found).toEqual( expect.objectContaining({
       ...shopData
     }))
@@ -85,22 +82,27 @@ describe('Test Context Usage', () => {
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     let errorMessage = 'It is failed.'
 
-    const t = async() => await globalContext.withTransaction( async(ctx) => {
-    let record = await ctx.models.Shop.createOne(shopData)
-    expect(record).toEqual( expect.objectContaining({
-        ...shopData
-    }))
-      let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
-    expect(found).toEqual( expect.objectContaining({
-        ...shopData
-    }))
-    throw new Error(errorMessage)
+    let repo = orm.getContext({tablePrefix: tablePrefix()})
+    await repo.createModels()
+    let {Shop, Product} = repo.models
+
+
+    const t = async() => await repo.startTransaction( async(ctx) => {
+      let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
+      expect(record).toEqual( expect.objectContaining({
+          ...shopData
+      }))
+        let found = await Shop.findOne({where: {id: shopData.id}}).usingConnectionIfAny(ctx)
+      expect(found).toEqual( expect.objectContaining({
+          ...shopData
+      }))
+      throw new Error(errorMessage)
     })
 
     await expect(t()).rejects.toThrow(errorMessage)
 
     // try to find it again, to prove it is committed
-    let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
+    let found = await Shop.findOne(({where: {id: shopData.id}}))
     expect(found).toBeNull()
   })
 
@@ -110,18 +112,22 @@ describe('Test Context Usage', () => {
         let shopData = 
           { id: 5, name: 'Shop 5', location: 'Shatin'}
         
-        let record = await globalContext.withTransaction( async(ctx) => {
-            let record = await ctx.models.Shop.createOne(shopData)
+        let repo = orm.getContext({tablePrefix: tablePrefix()})
+        await repo.createModels()
+        let {Shop, Product} = repo.models
+        
+        let record = await repo.startTransaction( async(ctx) => {
+            let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
     
             let anotherShopData = { id: 6, name: 'Shop 6', location: 'Shatin'}
             let errorMessage = 'It is failed.'
     
-            const t = async() => await ctx.withNewTransaction( async(ctx) => {
-                let record = await ctx.models.Shop.createOne(anotherShopData)
+            const t = async() => await repo.startTransaction( async(ctx) => {
+                let record = await Shop.createOne(anotherShopData).usingConnectionIfAny(ctx)
                 expect(record).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
-              let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', anotherShopData.id) )
+              let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(ctx)
                 expect(found).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
@@ -130,7 +136,7 @@ describe('Test Context Usage', () => {
             await expect(t()).rejects.toThrow(errorMessage)
 
             // try to find it again, to prove it is committed
-          let found = await ctx.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', anotherShopData.id) )
+          let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(ctx)
 
             expect(found).toBeNull()
             return record
@@ -141,7 +147,7 @@ describe('Test Context Usage', () => {
         }))
     
         // try to find it again, to prove it is committed
-        let found = await globalContext.models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
+        let found = await Shop.findOne({where: {id: shopData.id}})
         expect(found).toEqual( expect.objectContaining({
           ...shopData
         }))
