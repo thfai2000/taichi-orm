@@ -267,6 +267,8 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
             }
             if(options?.tablePrefix){
                 name = options.tablePrefix + name
+            } else if(context.config?.tablePrefix){
+                name = context.config?.tablePrefix + name
             }
             return name
         }

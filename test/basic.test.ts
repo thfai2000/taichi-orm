@@ -1,4 +1,5 @@
-import {Entity, ORM, TableSchema} from '../dist/'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
@@ -12,23 +13,17 @@ import { PrimaryKeyType,
         DateTimeNotNullType,
         NumberType,
         NumberNotNullType
-      } from '../dist/PropertyType'
+      } from '../dist/types'
       
 
-class ShopSchema extends TableSchema {
+class Shop extends Model {
     id= this.field(PrimaryKeyType)
     uuid = this.field(StringNotNullType)
     location = this.field(new StringNotNullType({length:255}))
-    get products(){
-        return this.hasMany(Product.schema, schema => schema.shopId)
-    }
+    products = Shop.hasMany(Product, 'shopId')
 }
 
-class Shop extends Entity {
-    static schema = new ShopSchema()
-}
-
-class ProductSchema extends TableSchema{
+class Product extends Model{
     id= this.field(PrimaryKeyType)
     uuid = this.field(StringNotNullType)
     name = this.field(StringType)
@@ -36,13 +31,10 @@ class ProductSchema extends TableSchema{
     price = this.field(new DecimalType({precision: 7, scale: 2}))
     createdAt = this.field(new DateTimeType({precision: 6}))
     shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId')
 }
 
-class Product extends Entity {
-    static schema = new ProductSchema()
-}
-
-class StrictProductSchema extends TableSchema{
+class StrictProduct extends Model{
     id= this.field(PrimaryKeyType)
     uuid = this.field(StringNotNullType)
     name = this.field(StringNotNullType)
@@ -52,10 +44,6 @@ class StrictProductSchema extends TableSchema{
     shopId = this.field(NumberNotNullType)
 }
 
-
-class StrictProduct extends Entity{
-    static schema = new StrictProductSchema()
-}
 // @ts-ignore
 let config = JSON.parse(process.env.ENVIRONMENT)
 
@@ -73,7 +61,7 @@ describe('Basic Read and Write', () => {
 
   test('Create and Find Shop', async () => {
 
-    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    let repo = orm.getContext({tablePrefix: tablePrefix()})
     await repo.createModels()
     let {Shop, Product} = repo.models
 
@@ -178,7 +166,7 @@ describe('Type Parsing', () => {
 
   test('Parsing Value', async () => {
 
-    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    let repo = orm.getContext({tablePrefix: tablePrefix()})
     await repo.createModels()
     let {Product} = repo.models
 
@@ -200,7 +188,7 @@ describe('Type Parsing', () => {
 
   test('Parsing Null', async () => {
 
-    let repo = orm.getRepository({tablePrefix: tablePrefix()})
+    let repo = orm.getContext({tablePrefix: tablePrefix()})
     await repo.createModels()
     let {Product} = repo.models
 

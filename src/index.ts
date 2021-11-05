@@ -675,15 +675,17 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     }
 
     getFirstRow(){
-        type NewI = I extends Array<infer T>? T: never
+        type NewI = I extends Array<infer T>? (T|null): never
         
         let m = new DBQueryRunner<NewI, isFullCount>(
             async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 let result = await this.ancestor.action.call(this, executionOptions, options)
                 if(Array.isArray(result)){
-                    return result[0] as NewI
+                    return (result[0] ?? null) as NewI
                 }
                 throw new Error('Only array is allowed to use getFirstRow')
+            }, {
+                parent: this
             })
         return m
     }
@@ -710,7 +712,7 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     }
 }
 
-type AffectedOne<X> = X extends Array<infer T>? T: never
+type AffectedOne<X> = X extends Array<infer T>? (T|null): never
 
 export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType, AffectedRecordType, isPreflight, isAffected> extends DBActionRunnerBase<I>{
 
@@ -807,7 +809,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
                 if(Array.isArray(this.affectedResult)){
-                    return this.affectedResult[0]
+                    return this.affectedResult[0] ?? null
                 }
                 throw new Error('Only array is allowed to use getAffectedOne')
             }, {
