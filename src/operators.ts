@@ -234,6 +234,24 @@ export class LessThanOrEqualsOperator extends LeftAndRightAssertionOperator {
     }
 }
 
+export class BetweenOperator extends LeftAndRightAssertionOperator {
+    constructor(leftOperand: Scalar<any, any>,  rightOperand1: Scalar<any, any>, rightOperand2: Scalar<any, any>){
+        super(leftOperand, rightOperand1, rightOperand2)
+    }
+    leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
+        return context.raw(`${left} BETWEEN ? AND ?`, [rights[0], rights[1]])
+    }
+}
+export class NotBetweenOperator extends LeftAndRightAssertionOperator {
+    constructor(leftOperand: Scalar<any, any>,  rightOperand1: Scalar<any, any>, rightOperand2: Scalar<any, any>){
+        super(leftOperand, rightOperand1, rightOperand2)
+    }
+    leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
+        return context.raw(`${left} NOT BETWEEN ? AND ?`, [rights[0], rights[1]])
+    }
+}
+
+
 // export type ConditionOperatorCall<Props> = (...condition: Array<Expression<Props> > ) => ConditionOperator<Props>
 // const Or = (...condition: Array<Expression<any>>) => new OrOperator<any>(...condition)
 // const Not = (condition: Expression<any>) => new NotOperator<any>(condition)

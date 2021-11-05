@@ -22,7 +22,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
         }
     })
 
-
+    
     let {
         createModels,
         dataset, 
@@ -85,7 +85,6 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
     .execute().withAffected()
 
     console.log('product', anotherProducts.affected)
-    
 
     console.log('finished')
 

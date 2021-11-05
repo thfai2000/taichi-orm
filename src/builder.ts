@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
 import { v4 as uuidv4 } from 'uuid'
 import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
-import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator } from "./operators"
+import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
@@ -319,7 +319,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
         return nameMap
     }
-
 
     protected propNameArray2ScalarMap(properties: string[]){
         let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
@@ -1373,6 +1372,15 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     lessThanOrEquals(rightOperand: any): Scalar<BooleanNotNullType, any> {
         return new LessThanOrEqualsOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
+
+    between(rightOperand1: any, rightOperand2: any[]): Scalar<BooleanNotNullType, any> {
+        return new BetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
+    }
+
+    notBetween(rightOperand1: any, rightOperand2: any[]): Scalar<BooleanNotNullType, any> {
+        return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
+    }
+
 
     // private toRealRaw() {
     //     return this.expressionOrDataset
