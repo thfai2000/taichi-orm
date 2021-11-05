@@ -684,7 +684,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
         return new DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>(
 
-                async (executionOptions: ExecutionOptions) => {
+                async function(this: DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>, executionOptions: ExecutionOptions){
 
                     const nativeSql = await current.toNativeBuilder(context)
 
@@ -719,6 +719,11 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                 
                     // console.timeEnd('parsing')
                     // console.log('parsed', parsedRows)
+
+                    if(this.options.failIfNone && (Array.isArray(parsedRows) && parsedRows[0].length === 0) ){
+                        throw new Error('The query result is empty')
+                    }
+
                     return parsedRows
                 })
     }
@@ -1566,7 +1571,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
     // }
 
-    toScalar<T>(this: T): T{
+    toScalar<C extends Scalar<T, Value>>(this: C): C{
         return this
     }
 
@@ -1578,15 +1583,20 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         if(!context){
             throw new Error('There is no repository provided.')
         }
+        const currentScalar = this
 
-        return new DBQueryRunner<T extends PropertyType<infer D>? D: any, false>(
-            async (executionOptions: ExecutionOptions) => {
+        return new DBQueryRunner<T extends PropertyType<infer D>? D: never, false>(
+            async function(this: DBQueryRunner<T extends PropertyType<infer D>? D: never, false>, executionOptions: ExecutionOptions) {
 
                 let result = await context.dataset().select({
-                    root: this
+                    root: currentScalar
                 }).execute().withOptions(executionOptions)
 
-                return result[0].root as T extends PropertyType<infer D>? D: any
+                if(this.options.failIfNone && (!result[0].root || (Array.isArray(result[0].root) && result[0].root.length === 0) ) ){
+                    throw new Error('The query result is empty')
+                }
+
+                return result[0].root as Promise<T extends PropertyType<infer D>? D: never>
             }
         )
     }

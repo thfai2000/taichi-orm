@@ -666,7 +666,7 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
         return parent
     }
 
-    async failIfNone(){
+    failIfNone(){
         this.options = {
             ...this.options,
             failIfNone: true
