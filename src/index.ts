@@ -804,10 +804,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     getAffectedOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true> {
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
         
-        return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>(
-            async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>, 
+        return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
                 if(Array.isArray(this.affectedResult)){
@@ -824,10 +824,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         type NewI = {
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: ExtractValueTypeDictFromDataset<D> 
+            affected: ExtractValueTypeDictFromDataset<D>[] 
         }
-        let m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>(
-            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>, isPreflight, true>,
+        let m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
                 const result = await this.ancestor.action.call(this, executionOptions, options)
                 return {
@@ -843,15 +843,48 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return m
     }
 
+    getPreflight<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
+        onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
+        
+        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
+                await this.ancestor.action.call(this, executionOptions, options)
+                return this.preflightResult as ExtractValueTypeDictFromDataset<D>[]
+            }, {
+                parent: this,
+                preflightFunctionArg : onQuery ?? ((dataset: any) => dataset)
+            })
+    }
+
+    getPreflightOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
+        onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
+        
+        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+                executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
+                await this.ancestor.action.call(this, executionOptions, options)
+                if(Array.isArray(this.preflightResult)){
+                    return this.preflightResult[0] ?? null
+                }
+                throw new Error('Only array is allowed to use getPreflightOne')
+            }, {
+                parent: this,
+                preflightFunctionArg : onQuery ?? ((dataset: any) => dataset)
+            })
+    }
+
     withPreflight<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>>>(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
 
         type NewI = {
             result: I,
-            preflight: PreflightRecordType,
+            preflight: ExtractValueTypeDictFromDataset<D>,
             affected: isAffected extends true? AffectedRecordType: never,
         }
-        let m = new DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>(
-            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, AffectedRecordType, true, isAffected>, 
+        let m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
+            async function(this: DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 const result = await this.ancestor.action.call(this, executionOptions, options)
                 return {

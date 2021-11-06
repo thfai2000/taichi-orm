@@ -1094,20 +1094,18 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         return null
                     } else {
 
-                        if(!this.latestPreflightFunctionArg){
-                            throw new Error('Unexpected')
-                        }
-                        
                         let dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
 
-                        const finalDataset = await this.latestPreflightFunctionArg(dataset)
-                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
-                
+                        const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
+                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions).onSqlRun(console.log) as any[]
+                        
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
+
+                        await statement.execute().withOptions(executionOptions)
+
                         if(this.latestQueryAffectedFunctionArg){
-                            
                             const queryDataset = context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
@@ -1234,19 +1232,17 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         }
                         return null
                     } else {
-
-                        if(!this.latestPreflightFunctionArg){
-                            throw new Error('Unexpected')
-                        }
                         
                         let dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
                         
-                        const finalDataset = await this.latestPreflightFunctionArg(dataset)
+                        const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                         
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
+
+                        await statement.execute().withOptions(executionOptions)
                         
                         if(this.latestQueryAffectedFunctionArg){
                             const queryDataset = context.dataset()

@@ -289,30 +289,24 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
 
 
     // TODO: fix all unit tests
-    // minus, plus, divide, times
-    // TODO: having
-    // TODO: Model.count
-    // TODO: addSelectProps
-    // TODO: failIfNone on Mutation
-    // SUM, MAX, MIN
-    // TODO: create values ...if not null and no default, become compulsory 
+    // TODO: give typescripts hint on dataset Preflight and Affected query
     // TODO: manyToMany Relation helper function
-    // Scalar.boolean, Scalar.string
-    // think about migrate issue
-    // TODO: avoid re-use same table alias
+    // TODO: minus, plus, divide, times, if case
+    // TODO: having
+    // TODO: SUM, MAX, MIN
+    // TODO: failIfNone on Mutation
+    // TODO: create values ...if not null and no default, become compulsory 
     // TODO: add PropertType (ArrayType of primitive)
+    // Scalar.boolean, Scalar.string
+    // Discuss: Model.count
+    // Discuss: addSelectProps
+    // Discuss: think about migrate issue
+    // TODO: avoid re-use same table alias
     // TODO: FullCount
+
 
     // - [ ] context allow global filter on specific tables (use case: soft delete)
     // - [ ] context allow read-only transaction... speed up query and safe to graphql query
-    // - [ ] query array of data with total count(before limit rows)
     // - [ ] relations test cases
-    // - [ ] vuepress to introduce ORM
-
-    // let allShops = await Shop.find({
-    //     where: ({root}) => root.name.equals('helloShopx')
-    // })
-    // console.log('aaa', allShops[0])
-    // console.time('simple')
-    
+    // - [ ] vuepress to introduce ORM    
 })();

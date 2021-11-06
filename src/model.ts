@@ -360,11 +360,11 @@ export class ModelRepository<MT extends typeof Model>{
     }
 
     delete(args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
-        return this.context.del().from(this.#model.schema().datasource('root')).where(args ?? {}).execute()
+        return this.context.del().from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getPreflight()
     }
 
     deleteOne(args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
-        return this.context.del().from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getAffectedOne()
+        return this.context.del().from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getPreflightOne()
     }
 }
 

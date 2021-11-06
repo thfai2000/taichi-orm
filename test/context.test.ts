@@ -113,18 +113,18 @@ describe('Test Context Usage', () => {
         await ctx.createModels()
         let {Shop, Product} = ctx.models
         
-        let record = await ctx.startTransaction( async(ctx) => {
-            let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
+        let record = await ctx.startTransaction( async(trx) => {
+            let record = await Shop.createOne(shopData).usingConnectionIfAny(trx)
     
             let anotherShopData = { id: 6, name: 'Shop 6', location: 'Shatin'}
             let errorMessage = 'It is failed.'
     
-            const t = async() => await ctx.startTransaction( async(ctx) => {
-                let record = await Shop.createOne(anotherShopData).usingConnectionIfAny(ctx)
+            const t = async() => await ctx.startTransaction( async(trx) => {
+                let record = await Shop.createOne(anotherShopData).usingConnectionIfAny(trx)
                 expect(record).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
-              let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(ctx)
+              let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(trx)
                 expect(found).toEqual( expect.objectContaining({
                     ...anotherShopData
                 }))
@@ -133,7 +133,7 @@ describe('Test Context Usage', () => {
             await expect(t()).rejects.toThrow(errorMessage)
 
             // try to find it again, to prove it is committed
-          let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(ctx)
+          let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(trx)
 
             expect(found).toBeNull()
             return record
