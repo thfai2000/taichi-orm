@@ -1,59 +1,69 @@
-import {builder, raw, startTransaction, configure, Schema, Entity, Types, models} from '../dist/'
-import {snakeCase} from 'lodash'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
-      static register(schema: Schema){
-          schema.prop('name', Types.String({length: 255, nullable: false}))
-          schema.prop('location', Types.String({length: 255, nullable: false}))
-      }
-    }
 
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
-
-    await configure({
-        models: {Shop},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
+class Shop extends Model {
+  id= this.field(PrimaryKeyType)
+  name =this.field(StringNotNullType)
+  location = this.field(new StringNotNullType({length:255}))
+  products = Shop.hasMany(Product, 'shopId')
 }
 
-const clearDatabase = () => {
-
+class Product extends Model{
+  id= this.field(PrimaryKeyType)
+  name = this.field(StringType)
+  isActive = this.field(BooleanType)
+  price = this.field(new DecimalType({precision: 7, scale: 2}))
+  createdAt = this.field(new DateTimeType({precision: 6}))
+  shopId = this.field(NumberType)
+  shop = Product.belongsTo(Shop, 'shopId')
 }
 
-beforeEach( async () => {
-    await initializeDatabase();
-});
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
 
-afterEach(() => {
-    return clearDatabase();
-});
+let orm = new ORM({
+  models: {Shop, Product},
+  entityNameToTableName: (className: string) => snakeCase(className),
+  propNameTofieldName: (propName: string) => snakeCase(propName),
+  knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
+
+
 
 describe('Test Create - No transaction', () => {
 
   test('Create One', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
+
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     
-    let record = await models.Shop.createOne(shopData)
+    let record = await Shop.createOne(shopData)
     expect(record).toEqual( expect.objectContaining({
       ...shopData
     }))
 
     //try to find it again, to prove it can get it
-    let found = await models.Shop.findOne({id: 5})
+    let found = await Shop.findOne({where: {id: 5}})
     expect(found).toEqual( expect.objectContaining({
       ...shopData
     }))
@@ -61,6 +71,10 @@ describe('Test Create - No transaction', () => {
 
 
   test('Create Many', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
       { id: 2, name: 'Shop 2', location: 'Yuen Long'},
@@ -69,14 +83,14 @@ describe('Test Create - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    let records = await models.Shop.createEach(shopData)
+    let records = await Shop.createEach(shopData)
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
 
     //try to find it again, to prove it can get it
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -88,11 +102,17 @@ describe('Test Create - No transaction', () => {
 describe('Test Create - with transaction', () => {
 
   test('Create One - Success', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
+
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     
-    let record = await startTransaction( async(trx) => {
-      let record = await models.Shop.createOne(shopData).usingConnection(trx)
+    let record = await ctx.startTransaction( async(trx) => {
+      let record = await Shop.createOne(shopData).usingConnection(trx)
       return record
     })
 
@@ -101,7 +121,7 @@ describe('Test Create - with transaction', () => {
     }))
 
     // try to find it again, to prove it is committed
-    let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
+    let found = await Shop.findOne({where: {id: shopData.id}})
     expect(found).toEqual( expect.objectContaining({
       ...shopData
     }))
@@ -109,16 +129,23 @@ describe('Test Create - with transaction', () => {
   })
 
   test('Create One - Fail', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     let errorMessage = 'It is failed.'
     
-    const t = async() => await startTransaction( async(trx) => {
-      let record = await models.Shop.createOne(shopData).usingConnection(trx)
+    const t = async() => await ctx.startTransaction( async(trx) => {
+      let record = await Shop.createOne(shopData).usingConnection(trx)
       expect(record).toEqual( expect.objectContaining({
         ...shopData
       }))
-      let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) ).usingConnection(trx)
+      let found = await Shop.findOne({
+        where: {id: shopData.id}
+      }).usingConnection(trx)
       expect(found).toEqual( expect.objectContaining({
         ...shopData
       }))
@@ -127,11 +154,17 @@ describe('Test Create - with transaction', () => {
 
     await expect(t()).rejects.toThrow(errorMessage)
     // try to find it again, to prove it is committed
-    let found = await models.Shop.findOne((stmt, s) => stmt.toQueryBuilder().where(s.pk, '=', shopData.id) )
+    let found = await Shop.findOne({
+        where: {id: shopData.id}
+      })
     expect(found).toBeNull()
   })
 
   test('Create Many - Success', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
       { id: 2, name: 'Shop 2', location: 'Yuen Long'},
@@ -139,8 +172,8 @@ describe('Test Create - with transaction', () => {
       { id: 4, name: 'Shop 4', location: 'Tsuen Wan'},
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
-    let records = await startTransaction( async(trx) => {
-      return await models.Shop.createEach(shopData).usingConnection(trx)
+    let records = await ctx.startTransaction( async(trx) => {
+      return await Shop.createEach(shopData).usingConnection(trx)
     })
 
     expect(records).toHaveLength(shopData.length)
@@ -148,7 +181,7 @@ describe('Test Create - with transaction', () => {
       ...shop
     })))
     // try to find it again, to prove it is committed
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toEqual(shopData.map(shop => expect.objectContaining({
       ...shop
     })))
@@ -156,6 +189,10 @@ describe('Test Create - with transaction', () => {
   })
 
   test('Create Many - Fail', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
       { id: 2, name: 'Shop 2', location: 'Yuen Long'},
@@ -165,13 +202,13 @@ describe('Test Create - with transaction', () => {
     ]
     let errorMessage = 'It is failed.'
 
-    let t = async() => await startTransaction( async(trx) => {
-      let records = await models.Shop.createEach(shopData).usingConnection(trx)
+    let t = async() => await ctx.startTransaction( async(trx) => {
+      let records = await Shop.createEach(shopData).usingConnection(trx)
       expect(records).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))
       // find again
-      let found = await models.Shop.find().usingConnection(trx)
+      let found = await Shop.find().usingConnection(trx)
       expect(found).toEqual(shopData.map(shop => expect.objectContaining({
         ...shop
       })))
@@ -181,7 +218,7 @@ describe('Test Create - with transaction', () => {
     await expect(t()).rejects.toThrow(errorMessage)
 
     // try to find it again, to prove it is rollback
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toEqual([])
     
   })

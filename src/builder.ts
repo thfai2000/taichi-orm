@@ -879,6 +879,7 @@ export class InsertStatement<T extends TableSchema<{
                         } else {
                             if (context.client().startsWith('mysql')) {
                                 let insertedId: number
+                                //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
@@ -888,15 +889,19 @@ export class InsertStatement<T extends TableSchema<{
                                 }))
 
                             } else if (context.client().startsWith('sqlite')) {
-                                return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
+                                //only allow one by one insert
+                                return await statement.getInsertItems()!.reduce( async (preAcc, item, idx) => {
+                                    const acc = await preAcc
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString()
                                     // let uuid = uuidv4()
                                     await context.executeStatement(insertStmt, {}, executionOptions)
                                     let result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
                                     // console.log('inserted id...', result)
-                                    return {id: result[0].id}
-                                }))
+                                    acc.push({id: result[0].id})
+                                    return acc
+
+                                }, Promise.resolve([]) as Promise<{id: number}[]>) 
                 
                             } else {
                                 throw new Error('Unsupport client')
@@ -923,7 +928,7 @@ export class InsertStatement<T extends TableSchema<{
                                 .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
                             
                             const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
-                            let result = await finalDs.execute().withOptions(executionOptions) 
+                            let result = await finalDs.execute().withOptions(executionOptions)
                             return result
                             
                         }

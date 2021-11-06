@@ -57,9 +57,9 @@ describe('Basic Read and Write', () => {
 
   test('Create and Find Shop', async () => {
 
-    let repo = orm.getContext({tablePrefix: tablePrefix()})
-    await repo.createModels()
-    let {Shop, Product} = repo.models
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let expectedShop1 = {
       id: 1,
@@ -162,9 +162,9 @@ describe('Type Parsing', () => {
 
   test('Parsing Value', async () => {
 
-    let repo = orm.getContext({tablePrefix: tablePrefix()})
-    await repo.createModels()
-    let {Product} = repo.models
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Product} = ctx.models
 
     let expectedProduct1 = {
       id: 1,
@@ -184,9 +184,9 @@ describe('Type Parsing', () => {
 
   test('Parsing Null', async () => {
 
-    let repo = orm.getContext({tablePrefix: tablePrefix()})
-    await repo.createModels()
-    let {Product} = repo.models
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Product} = ctx.models
 
     let expectedProduct2 = {
       id: 2,

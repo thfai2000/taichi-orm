@@ -237,6 +237,32 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
 
     console.log('aaaa', shops)
 
+    let allShopsX = await Shop.find({
+        select: {
+            products: (P) => ({
+                select: {
+                    myABC: 5,
+                    shop: {
+                        select: {
+                            products: {}
+                        },
+                        where: ({root}) => root.name.equals('shop')
+                    }
+                }
+            })
+        },
+        where: ({root, Exists}) => Exists(
+            new Dataset().from(
+                Product.datasource('product')
+            ).where( ({product}) => root.id.equals(product.shopId) )
+        ),
+        offset: 0,
+        limit: 5000
+    })
+
+    console.log('aaaa', allShopsX[0])
+    console.timeEnd('simple')
+
     // let s2 = Shop.dataset({
     //     select: {
     //         products: {}
@@ -258,57 +284,35 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
     // Done: equalOrGreaterThan, equalOrLessThan
     // Done: greaterThan, lessThan
     // Done: MODEL: CRUD...delete()
+    // Done: failIfNone on query
+    // Done: EXISTS, NOT, BETWEEN, 
 
+
+    // TODO: fix all unit tests
     // minus, plus, divide, times
     // TODO: having
     // TODO: Model.count
-    // fix all unit tests
     // TODO: addSelectProps
-    // EXISTS, NOT, BETWEEN, 
+    // TODO: failIfNone on Mutation
     // SUM, MAX, MIN
+    // TODO: create values ...if not null and no default, become compulsory 
     // TODO: manyToMany Relation helper function
     // Scalar.boolean, Scalar.string
     // think about migrate issue
-    // handle actionOptions failIfNone
     // TODO: avoid re-use same table alias
     // TODO: add PropertType (ArrayType of primitive)
-    // TODO:
+    // TODO: FullCount
+
     // - [ ] context allow global filter on specific tables (use case: soft delete)
     // - [ ] context allow read-only transaction... speed up query and safe to graphql query
     // - [ ] query array of data with total count(before limit rows)
-    // - [ ] failIfNone and fetch()
     // - [ ] relations test cases
     // - [ ] vuepress to introduce ORM
-
 
     // let allShops = await Shop.find({
     //     where: ({root}) => root.name.equals('helloShopx')
     // })
     // console.log('aaa', allShops[0])
     // console.time('simple')
-    // let allShopsX = await Shop.find({
-    //     select: {
-    //         products: (P) => ({
-    //             select: {
-    //                 myABC: 5,
-    //                 shop: {
-    //                     select: {
-    //                         products: {}
-    //                     },
-    //                     where: ({root}) => root.name.equals('shop')
-    //                 }
-    //             }
-    //         })
-    //     },
-    //     where: ({root, Exists}) => Exists(
-    //         new Dataset().from(
-    //             Product.datasource('product')
-    //         ).where( ({product}) => root.id.equals(product.shopId) )
-    //     ),
-    //     offset: 0,
-    //     limit: 5000
-    // })
-
-    // console.log('aaaa', allShopsX[0])
-    // console.timeEnd('simple')
+    
 })();

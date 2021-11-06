@@ -712,7 +712,7 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     }
 }
 
-type AffectedOne<X> = X extends Array<infer T>? (T|null): never
+// type AffectedOne<X> = X extends Array<infer T>? (T|null): never
 
 export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType, AffectedRecordType, isPreflight, isAffected> extends DBActionRunnerBase<I>{
 
@@ -759,7 +759,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     get latestPreflightFunctionArg(): null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>){
         let target: DBMutationRunner<any, any, any, any, any, any> | null = this
         while( target && !target.preflightFunctionArg) {
-            target = this.parent
+            target = target.parent
         }
 
         return target?.preflightFunctionArg ?? null

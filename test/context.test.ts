@@ -53,11 +53,11 @@ describe('Test Context Usage', () => {
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     
-    let repo = orm.getContext({tablePrefix: tablePrefix()})
-    await repo.createModels()
-    let {Shop, Product} = repo.models
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
-    let record = await  repo.startTransaction( async(ctx) => {
+    let record = await  ctx.startTransaction( async(ctx) => {
       let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
       return record
     })
@@ -79,12 +79,12 @@ describe('Test Context Usage', () => {
       { id: 5, name: 'Shop 5', location: 'Shatin'}
     let errorMessage = 'It is failed.'
 
-    let repo = orm.getContext({tablePrefix: tablePrefix()})
-    await repo.createModels()
-    let {Shop, Product} = repo.models
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
 
-    const t = async() => await repo.startTransaction( async(ctx) => {
+    const t = async() => await ctx.startTransaction( async(ctx) => {
       let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
       expect(record).toEqual( expect.objectContaining({
           ...shopData
@@ -109,17 +109,17 @@ describe('Test Context Usage', () => {
         let shopData = 
           { id: 5, name: 'Shop 5', location: 'Shatin'}
         
-        let repo = orm.getContext({tablePrefix: tablePrefix()})
-        await repo.createModels()
-        let {Shop, Product} = repo.models
+        let ctx = orm.getContext({tablePrefix: tablePrefix()})
+        await ctx.createModels()
+        let {Shop, Product} = ctx.models
         
-        let record = await repo.startTransaction( async(ctx) => {
+        let record = await ctx.startTransaction( async(ctx) => {
             let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
     
             let anotherShopData = { id: 6, name: 'Shop 6', location: 'Shatin'}
             let errorMessage = 'It is failed.'
     
-            const t = async() => await repo.startTransaction( async(ctx) => {
+            const t = async() => await ctx.startTransaction( async(ctx) => {
                 let record = await Shop.createOne(anotherShopData).usingConnectionIfAny(ctx)
                 expect(record).toEqual( expect.objectContaining({
                     ...anotherShopData
