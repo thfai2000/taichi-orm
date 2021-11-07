@@ -1,8 +1,20 @@
-import {configure, Schema, Entity, Types, Builtin, models, raw, column, Selector} from '../dist'
-import {And, Contain, Like, Equal, NotEqual, Or, IsNotNull, IsNull, Not} from '../dist/Operator'
-import {snakeCase} from 'lodash'
+import {Model} from '../dist/model'
+import {CFReturn, ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-import { Knex } from 'knex'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
+      
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -42,6 +54,27 @@ let productColorData = [
   { productId: 3, colorId: 2, type: 'normal'},
   { productId: 3, colorId: 5, type: 'normal'},
 ]
+
+class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    name = this.field(new StringNotNullType({length: 255}))
+    location = this.field(new StringNotNullType({length:255}))
+    products = Shop.hasMany(Product, 'shopId')
+    // productCount = Shop.compute( (context, parent): CFReturn<NumberType> => {
+    //   return parent.selectorMap.products().transform( (value)=> value.select() )
+    // })
+}
+
+class Product extends Model{
+    id= this.field(PrimaryKeyType)
+    name = this.field(StringType)
+    isActive = this.field(BooleanType)
+    price = this.field(new DecimalType({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeType({precision: 6}))
+    shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId')
+}
+
 
 const initializeDatabase = async () => {
     // configure the orm

@@ -15,6 +15,7 @@ export type DetermineDatasetFromModelType<MT extends typeof Model> =
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
+//TODO: it is wrong to Scalar can transform into dataset without SSA
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => Scalar< ArrayType< ParsableObjectTrait<
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
             > >, DetermineDatasetFromModelType<MT>>
