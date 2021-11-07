@@ -296,6 +296,10 @@ export class ModelRepository<MT extends typeof Model>{
         return this.dataset(args).execute().getOne()
     }
 
+    findOneOrNull<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
+        return this.dataset(args).execute().getOneOrNull()
+    }
+
     /**
      * find array of records
      * @param applyFilter 
@@ -306,7 +310,7 @@ export class ModelRepository<MT extends typeof Model>{
     }
 
     update(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
-        return this.context.update().set(data).from(this.#model.schema().datasource('root')).where(args ?? {}).execute()
+        return this.context.update().set(data).from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getAffected()
     }
 
     updateOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){

@@ -694,6 +694,30 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
         return m
     }
 
+    getOneOrNull(){
+        type NewI = I extends Array<infer T>? T | null: never
+        
+        let m = new DBQueryRunner<NewI, isFullCount>(
+            this.context,
+            async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+                
+                return await this.context.startTransaction( async (trx)=> {
+                    executionOptions = {...executionOptions, trx}
+                    let result = await this.ancestor.action.call(this, executionOptions, options)
+                    if(Array.isArray(result)){
+                        if(result.length > 1){
+                            throw new Error('getFirstOne finds Many Rows')
+                        }
+                        return result[0] ?? null as NewI
+                    }
+                    throw new Error('Only array is allowed to use getFirstRow')
+                }, executionOptions.trx)
+            }, {
+                parent: this
+            })
+        return m
+    }
+
     withFullCount(){
         type NewI = {
             result: I,

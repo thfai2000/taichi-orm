@@ -723,7 +723,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                     // if(this.options.failIfNone && (Array.isArray(parsedRows) && parsedRows[0].length === 0) ){
                     //     throw new Error('The query result is empty')
                     // }
-
                     return parsedRows
                 })
     }
@@ -1100,7 +1099,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
 
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
-                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions).onSqlRun(console.log) as any[]
+                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
                         
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
 
@@ -1240,7 +1239,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
                         
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
-                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
+                        this.preflightResult = await finalDataset.execute().withOptions(executionOptions).onSqlRun(console.log) as any[]
                         
                         const updatedIds = (this.preflightResult ?? []).map( (r:any) => r.id)
 

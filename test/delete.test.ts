@@ -149,11 +149,9 @@ describe('Test Delete - No transaction', () => {
     }))))
 
   })
-
-  //TODO: update One but found more than one record, throw error
-  //TODO: transaction update success updateOne
-  //TODO: transaction update fail updateOne
-  //TODO: transaction update success updateMany
-  //TODO: transaction update fail updateMany
+  
+  //TODO: delete One but found more than one record, throw error
 
 })
+
+//TODO: transaction again
