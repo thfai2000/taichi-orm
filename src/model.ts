@@ -293,7 +293,7 @@ export class ModelRepository<MT extends typeof Model>{
      * @returns the found record
      */
     findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
-        return this.dataset(args).execute().getFirstRow()
+        return this.dataset(args).execute().getOne()
     }
 
     /**

@@ -558,7 +558,9 @@ export type MutationExecutionOptions<S extends Schema<any> > = ExecutionOptions 
 export type DBActionResult<T> = T
 
 export type DBActionOptions = {
-    failIfNone: boolean
+    // failIfNone: boolean
+    // failIfNotOne: boolean
+    // failIfMoreThanOne: boolean
 }
 export type DBAction<I> = (executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
 
@@ -566,14 +568,16 @@ export type DBMutationAction<I, S extends Schema<any>> = (executionOptions: Muta
 
 
 export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >{
+    protected context: DatabaseContext<any>
     protected execOptions: ExecutionOptions
     protected action: DBAction<I>
     protected options: Partial<DBActionOptions> = {}
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(action: DBAction<I>, ){
+    constructor(context: DatabaseContext<any>, action: DBAction<I>, ){
         // this.beforeAction = beforeAction
+        this.context = context
         this.execOptions = {}
         this.action = action
     }
@@ -644,13 +648,13 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     protected isFullCount: boolean = false
     protected fullCountResult: number | null = null
 
-    constructor(action: DBAction<I>, 
+    constructor(context: DatabaseContext<any>, action: DBAction<I>, 
         args?: {
             parent?: DBQueryRunner<any, any>
             isFullCount?: boolean
         }
         ){
-        super(action)
+        super(context, action)
         this.parent = args?.parent ?? null
         this.isFullCount = this.isFullCount
     }
@@ -666,24 +670,24 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
         return parent
     }
 
-    failIfNone(){
-        this.options = {
-            ...this.options,
-            failIfNone: true
-        }
-        return this
-    }
-
-    getFirstRow(){
-        type NewI = I extends Array<infer T>? (T|null): never
+    getOne(){
+        type NewI = I extends Array<infer T>? T: never
         
         let m = new DBQueryRunner<NewI, isFullCount>(
+            this.context,
             async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
-                let result = await this.ancestor.action.call(this, executionOptions, options)
-                if(Array.isArray(result)){
-                    return (result[0] ?? null) as NewI
-                }
-                throw new Error('Only array is allowed to use getFirstRow')
+                
+                return await this.context.startTransaction( async (trx)=> {
+                    executionOptions = {...executionOptions, trx}
+                    let result = await this.ancestor.action.call(this, executionOptions, options)
+                    if(Array.isArray(result)){
+                        if(result.length !== 1){
+                            throw new Error('getFirstOne finds Zero or Many Rows')
+                        }
+                        return result[0] as NewI
+                    }
+                    throw new Error('Only array is allowed to use getFirstRow')
+                }, executionOptions.trx)
             }, {
                 parent: this
             })
@@ -696,6 +700,7 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
             fullCount: isFullCount extends true? number: never,
         }
         let m = new DBQueryRunner<NewI, isFullCount>(
+            this.context,
             async function(this: DBQueryRunner<NewI, isFullCount>,
                 executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) {
                 const result = await this.ancestor.action.call(this, executionOptions, options)
@@ -732,14 +737,16 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     protected affectedResult: AffectedRecordType | null = null
     protected parent: DBMutationRunner<any, any, any, any, any, any> | null = null
 
-    constructor(action: DBMutationAction<I, S>, 
+    constructor(
+        context: DatabaseContext<any>,
+        action: DBMutationAction<I, S>, 
         args?: {
             parent?: DBMutationRunner<any, any, any, any, any, any>,
             preflightFunctionArg?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>),
             queryAffectedFunctionArg?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>)
         }
         ){
-        super(action)
+        super(context, action)
         this.parent = args?.parent ?? null
         this.preflightFunctionArg = args?.preflightFunctionArg ?? null
         this.queryAffectedFunctionArg = args?.queryAffectedFunctionArg ?? null
@@ -793,6 +800,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
         
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
@@ -807,13 +815,22 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
         
         return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            this.context,
             async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
-                await this.ancestor.action.call(this, executionOptions, options)
-                if(Array.isArray(this.affectedResult)){
-                    return this.affectedResult[0] ?? null
-                }
-                throw new Error('Only array is allowed to use getAffectedOne')
+                    
+                return await this.context.startTransaction( async (trx)=> {
+                    executionOptions = {...executionOptions, trx}
+                    await this.ancestor.action.call(this, executionOptions, options)
+                    if(Array.isArray(this.affectedResult)){
+                        if(this.affectedResult.length !== 1){
+                            throw new Error('getAffectedOne finds Zero or Many Rows')
+                        }
+                        return this.affectedResult[0]
+                    }
+                    throw new Error('Only array is allowed to use getAffectedOne')
+                }, executionOptions.trx )
+                
             }, {
                 parent: this,
                 queryAffectedFunctionArg: onQuery ?? ((dataset: any) => dataset)
@@ -827,6 +844,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
             affected: ExtractValueTypeDictFromDataset<D>[] 
         }
         let m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+            this.context,
             async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
                 const result = await this.ancestor.action.call(this, executionOptions, options)
@@ -848,6 +866,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
         
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+            this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, executionOptions, options)
@@ -863,13 +882,21 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
         
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+            this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
-                await this.ancestor.action.call(this, executionOptions, options)
-                if(Array.isArray(this.preflightResult)){
-                    return this.preflightResult[0] ?? null
-                }
-                throw new Error('Only array is allowed to use getPreflightOne')
+
+                return await this.context.startTransaction( async (trx)=> {
+                    executionOptions = {...executionOptions, trx}
+                    await this.ancestor.action.call(this, executionOptions, options)
+                    if(Array.isArray(this.preflightResult)){
+                        if(this.preflightResult.length !== 1){
+                            throw new Error('getPreflightOne finds Zero or Many Rows')
+                        }
+                        return this.preflightResult[0]
+                    }
+                    throw new Error('Only array is allowed to use getPreflightOne')
+                }, executionOptions.trx)
             }, {
                 parent: this,
                 preflightFunctionArg : onQuery ?? ((dataset: any) => dataset)
@@ -884,6 +911,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
             affected: isAffected extends true? AffectedRecordType: never,
         }
         let m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
+            this.context,
             async function(this: DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 const result = await this.ancestor.action.call(this, executionOptions, options)

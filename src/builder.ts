@@ -683,20 +683,20 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         const current = this
 
         return new DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>(
-
+                context,
                 async function(this: DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>, executionOptions: ExecutionOptions){
 
-                    const nativeSql = await current.toNativeBuilder(context)
+                    const nativeSql = await current.toNativeBuilder(this.context)
 
-                    let data = await context.executeStatement(nativeSql, {}, executionOptions)
+                    let data = await this.context.executeStatement(nativeSql, {}, executionOptions)
         
                     // console.log('data', data)
                     let rows: any
-                    if(context.client().startsWith('mysql')){
+                    if(this.context.client().startsWith('mysql')){
                         rows = data[0][0]
-                    } else if(context.client().startsWith('sqlite')){
+                    } else if(this.context.client().startsWith('sqlite')){
                         rows = data
-                    } else if(context.client().startsWith('pg')){
+                    } else if(this.context.client().startsWith('pg')){
                         rows = data.rows[0]
                     } else {
                         throw new Error('Unsupport client.')
@@ -709,20 +709,20 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                     const len = rows.length
                     const schema = current.schema()
                     
-                    await schema.prepareForParsing(context)
+                    await schema.prepareForParsing(this.context)
 
                     let parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]
                     // console.log(schema)
                     for(let i=0; i <len;i++){
-                        parsedRows[i] = schema.parseRaw(rows[i], context)
+                        parsedRows[i] = schema.parseRaw(rows[i], this.context)
                     }
                 
                     // console.timeEnd('parsing')
                     // console.log('parsed', parsedRows)
 
-                    if(this.options.failIfNone && (Array.isArray(parsedRows) && parsedRows[0].length === 0) ){
-                        throw new Error('The query result is empty')
-                    }
+                    // if(this.options.failIfNone && (Array.isArray(parsedRows) && parsedRows[0].length === 0) ){
+                    //     throw new Error('The query result is empty')
+                    // }
 
                     return parsedRows
                 })
@@ -834,9 +834,9 @@ export class InsertStatement<T extends TableSchema<{
     }
 
     execute(repo?: DatabaseContext<any>) {
-        const context = repo ?? this.context
+        const ctx = repo ?? this.context
 
-        if(!context){
+        if(!ctx){
             throw new Error('There is no repository provided.')
         }
         type I = {
@@ -846,7 +846,7 @@ export class InsertStatement<T extends TableSchema<{
         const statement = this
 
         return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
-
+            ctx,
             async function(
                 this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 executionOptions: MutationExecutionOptions<T>) {
@@ -855,7 +855,7 @@ export class InsertStatement<T extends TableSchema<{
                     throw new Error('Unexpected')
                 }
 
-                return await context.startTransaction(async (trx) => {
+                return await this.context.startTransaction(async (trx) => {
 
                     //replace the trx
                     executionOptions = {...executionOptions, trx: trx}
@@ -863,13 +863,13 @@ export class InsertStatement<T extends TableSchema<{
                     const executionFuncton = async() => {
                         // let afterMutationHooks = schema.hooks.filter()
 
-                        if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
-                            const queryBuilder = statement.toNativeBuilder(context)
+                        if (!this.latestQueryAffectedFunctionArg || this.context.client().startsWith('pg')) {
+                            const queryBuilder = statement.toNativeBuilder(this.context)
                             const insertStmt = queryBuilder.toString()
                             // let insertedId: number
-                            const r = await context.executeStatement(insertStmt, {}, executionOptions)
+                            const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
 
-                            if(context.client().startsWith('pg')){
+                            if( this.context.client().startsWith('pg')){
                                 return Object.keys(r.rows[0]).map(k => ({id: r.rows[0][k] as number }) )
                             } else {
                                 return null
@@ -877,26 +877,26 @@ export class InsertStatement<T extends TableSchema<{
                             // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
             
                         } else {
-                            if (context.client().startsWith('mysql')) {
+                            if (this.context.client().startsWith('mysql')) {
                                 let insertedId: number
                                 //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
                                     const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
-                                    const r = await context.executeStatement(insertStmt, {}, executionOptions)
+                                    const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
                                     insertedId = r[0][0].id
                                     return {id: insertedId}
                                 }))
 
-                            } else if (context.client().startsWith('sqlite')) {
+                            } else if (this.context.client().startsWith('sqlite')) {
                                 //only allow one by one insert
                                 return await statement.getInsertItems()!.reduce( async (preAcc, item, idx) => {
                                     const acc = await preAcc
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
                                     const insertStmt = queryBuilder.toString()
                                     // let uuid = uuidv4()
-                                    await context.executeStatement(insertStmt, {}, executionOptions)
-                                    let result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
+                                    await this.context.executeStatement(insertStmt, {}, executionOptions)
+                                    let result = await this.context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
                                     // console.log('inserted id...', result)
                                     acc.push({id: result[0].id})
                                     return acc
@@ -922,7 +922,7 @@ export class InsertStatement<T extends TableSchema<{
                             const i = insertedIds as {id: number}[]
                             const schema = statement.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
     
-                            let queryDataset = context.dataset()
+                            let queryDataset = this.context.dataset()
                                 .from(schema.datasource('root'))
                                 .where( ({root}) => root.id.contains(i.map(r => r.id)) )
                                 .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
@@ -1065,8 +1065,8 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     execute(repo?: DatabaseContext<any>) {
 
-        const context = repo ?? this.context
-        if(!context){
+        const ctx = repo ?? this.context
+        if(!ctx){
             throw new Error('There is no repository provided.')
         }
 
@@ -1078,23 +1078,24 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         type I = number[] | null
 
         return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+            ctx,
             async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
-                let updatedIds = await context.startTransaction(async (trx) => {
+                let updatedIds = await this.context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder(context)
-                        let result = await context.executeStatement(nativeSql, {}, executionOptions)
-                        if (context.client().startsWith('pg')) {
+                        const nativeSql = await statement.toNativeBuilder(this.context)
+                        let result = await this.context.executeStatement(nativeSql, {}, executionOptions)
+                        if (this.context.client().startsWith('pg')) {
                             const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
                             return updatedIds
                         }
                         return null
                     } else {
 
-                        let dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
+                        let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
 
@@ -1106,7 +1107,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         await statement.execute().withOptions(executionOptions)
 
                         if(this.latestQueryAffectedFunctionArg){
-                            const queryDataset = context.dataset()
+                            const queryDataset = this.context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
@@ -1204,8 +1205,8 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     execute(repo?: DatabaseContext<any>) {
 
-        const context = repo ?? this.context
-        if(!context){
+        const ctx = repo ?? this.context
+        if(!ctx){
             throw new Error('There is no repository provided.')
         }
 
@@ -1217,23 +1218,24 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
         type I = number[] | null
 
         return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+            ctx,
             async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
-                let updatedIds = await context.startTransaction(async (trx) => {
+                let updatedIds = await this.context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder(context)
-                        let result = await context.executeStatement(nativeSql, {}, executionOptions)
-                        if (context.client().startsWith('pg')) {
+                        const nativeSql = await statement.toNativeBuilder(this.context)
+                        let result = await this.context.executeStatement(nativeSql, {}, executionOptions)
+                        if (this.context.client().startsWith('pg')) {
                             const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
                             return updatedIds
                         }
                         return null
                     } else {
                         
-                        let dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
+                        let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
                         
@@ -1245,7 +1247,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         await statement.execute().withOptions(executionOptions)
                         
                         if(this.latestQueryAffectedFunctionArg){
-                            const queryDataset = context.dataset()
+                            const queryDataset = this.context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.contains(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
@@ -1553,23 +1555,24 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     execute(this: Scalar<T, Value>, repo?: DatabaseContext<any>)
     : DBQueryRunner<T extends PropertyType<infer D>? D: any, false> 
         {
-        const context = repo ?? this.context
+        const ctx = repo ?? this.context
 
-        if(!context){
+        if(!ctx){
             throw new Error('There is no repository provided.')
         }
         const currentScalar = this
 
         return new DBQueryRunner<T extends PropertyType<infer D>? D: never, false>(
+            ctx,
             async function(this: DBQueryRunner<T extends PropertyType<infer D>? D: never, false>, executionOptions: ExecutionOptions) {
 
-                let result = await context.dataset().select({
+                let result = await this.context.dataset().select({
                     root: currentScalar
                 }).execute().withOptions(executionOptions)
 
-                if(this.options.failIfNone && (!result[0].root || (Array.isArray(result[0].root) && result[0].root.length === 0) ) ){
-                    throw new Error('The query result is empty')
-                }
+                // if(this.options.failIfNone && (!result[0].root || (Array.isArray(result[0].root) && result[0].root.length === 0) ) ){
+                //     throw new Error('The query result is empty')
+                // }
 
                 return result[0].root as Promise<T extends PropertyType<infer D>? D: never>
             }
