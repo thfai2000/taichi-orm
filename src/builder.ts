@@ -432,7 +432,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         ((dataset: typeof this) => T)): Scalar<T, typeof this> {
 
         if(type instanceof PropertyType){
-            return new Scalar(this, type, this.context) //as unknown as Scalar<T> 
+            return new Scalar(this, type, this.context) 
         } else if(isFunction(type)){
             return new Scalar(this, type(this), this.context)
         } else {
@@ -1364,7 +1364,14 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 
-
+    count(this: Scalar<T, Value>, repo?: DatabaseContext<any>): Scalar<NumberNotNullType, any> {
+        return this.transform( (value)=> {
+            if(value instanceof Dataset){
+                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
+            }
+            throw new Error('count is only applicable to Dataset.')
+        })
+    }
     // private toRealRaw() {
     //     return this.expressionOrDataset
     // }
@@ -1576,18 +1583,23 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                 return result[0].root as Promise<T extends PropertyType<infer D>? D: never>
             }
         )
-    }
+    } 
 }
 
-// export class DScalar<DS extends Dataset<any>, T extends PropertyType<any>> extends Scalar<T> {
+// export class DScalar<T extends PropertyType<any>, DS extends Dataset<any>> extends Scalar<T, DS> {
 //     constructor(dataset: DS, 
 //         definition?: T | (new (...args: any[]) => T) | null,
 //         context?: DatabaseContext<any> | null){
 //             super(dataset, definition, context)
 //         }
 
-//     getDataset(): DS {
-//         return this.expressionOrDataset as DS
+//     count(this: Scalar<T, DS>, repo?: DatabaseContext<any>): Scalar<NumberNotNullType, any> {
+//         return this.transform( (value)=> {
+//             if(value instanceof Dataset){
+//                 return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
+//             }
+//             throw new Error('count is only applicable to Dataset.')
+//         })
 //     }
 // }
 

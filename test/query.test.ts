@@ -60,9 +60,13 @@ class Shop extends Model {
     name = this.field(new StringNotNullType({length: 255}))
     location = this.field(new StringNotNullType({length:255}))
     products = Shop.hasMany(Product, 'shopId')
-    // productCount = Shop.compute( (context, parent): CFReturn<NumberType> => {
-    //   return parent.selectorMap.products().transform( (value)=> value.select() )
-    // })
+    productCount = Shop.compute( (context, parent): CFReturn<number> => {
+      return parent.selectorMap.products().count()
+    })
+    hasProducts = Shop.compute( (context, parent): CFReturn<number> => {
+      return parent.selectorMap.products().exists()
+    })
+    
 }
 
 class Product extends Model{
