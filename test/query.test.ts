@@ -63,10 +63,24 @@ class Shop extends Model {
     productCount = Shop.compute( (context, parent): CFReturn<number> => {
       return parent.selectorMap.products().count()
     })
-    hasProducts = Shop.compute( (context, parent): CFReturn<number> => {
+    hasProducts = Shop.compute( (context, parent): CFReturn<boolean> => {
       return parent.selectorMap.products().exists()
     })
-    
+    hasNoProducts = Shop.compute( (context, parent): CFReturn<boolean> => {
+      return parent.selectorMap.products().exists().equals(false)
+    })
+    hasOver2Products =  Shop.compute( (context, parent): CFReturn<boolean> => {
+      return parent.selectorMap.products().count().greaterThan(2)
+    })
+    hasEnoughProducts = Shop.compute( (context, parent, arg?): CFReturn<boolean> => {
+      return parent.selectorMap.products().count().greaterThanOrEquals(arg ?? 1)
+    })
+    hasTwoProductsAndlocationHasLetterA = Shop.compute( (context, parent, arg?): CFReturn<boolean> => {
+      return context.op.And(
+        parent.selectorMap.products().count().equals(2),
+        parent.selectorMap.location.like('%A%')
+      )
+    })
 }
 
 class Product extends Model{
@@ -82,58 +96,7 @@ class Product extends Model{
 
 const initializeDatabase = async () => {
     // configure the orm
-    class Shop extends Entity{
-
-      static register(schema: Schema){
-        schema.prop('name', Types.String({length: 255}))
-        schema.prop('location', Types.String({length: 255}))
-        schema.prop('products', Types.ArrayOf(Types.ObjectOf('Product', {
-          compute: Builtin.ComputeFn.relatedFrom('Product', 'shopId')
-        }) ) )
-        schema.prop('productCount', Types.Number({
-          compute: (shop) => {
-            // let p = Product.selector()
-            // return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
-            return shop.$.products().count()
-          }
-        }))
-        schema.prop('hasProducts', Types.Boolean({
-          compute: (shop) => {
-            return shop.$.products().exists()
-          }
-        }))
-        schema.prop('hasNoProducts', Types.Boolean({
-          compute: (shop) => {
-            return shop.$.products().exists().is('=', false)
-          }
-        }))
-        schema.prop('hasOver2Products', Types.Boolean({
-          compute: (shop) => {
-            return shop.$.productCount().is('>', 2)
-          }
-        }))
-        schema.prop('hasProductsAsync', Types.Boolean({
-          compute: async (shop) => {
-            return await shop.$.products().exists()
-          }
-        }))
-        schema.prop('hasEnoughProducts', Types.Boolean({
-          compute: (shop, args) => {
-            return shop.$.productCount().is('>=', args.count)
-          }
-        }))
-
-        schema.prop('hasTwoProductsAndlocationHasLetterA', Types.Boolean({
-          compute: (shop, args) => {
-            return shop({
-              location: Like('%a%'),
-              productCount: 2
-            })
-          }
-        }))
-
-      }
-    }
+   
     
     class Product extends Entity{
     

@@ -954,10 +954,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
     let sqlkeywords: SQLKeywords<X, Y> = {
-        And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions),
-        Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions),
-        Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition),
-        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset)
+        And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions).toScalar(),
+        Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
+        Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
+        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar()
     }
     return sqlkeywords
 }
