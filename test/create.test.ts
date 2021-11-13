@@ -139,11 +139,11 @@ describe('Test Create - with transaction', () => {
     let errorMessage = 'It is failed.'
     
     const t = async() => await ctx.startTransaction( async(trx) => {
-      let record = await Shop.createOne(shopData).usingConnection(trx).onSqlRun(console.log)
+      let record = await Shop.createOne(shopData).usingConnection(trx)
       expect(record).toEqual( expect.objectContaining({
         ...shopData
       }))
-      // console.log('xxxxx', await Shop.find().usingConnection(trx))
+
       let found = await Shop.findOne({
         where: {id: shopData.id}
       }).usingConnection(trx)

@@ -61,8 +61,7 @@ describe('Test Delete - No transaction', () => {
     ]
 
     let findId = 5
-
-    let expectedShopData = shopData = shopData.filter(s => s.id !== findId)
+    let expectedShopData = shopData.filter(s => s.id !== findId)
 
     await Shop.createEach(shopData)
     let record2 = await Shop.deleteOne({
@@ -96,11 +95,9 @@ describe('Test Delete - No transaction', () => {
     ]
 
     await Shop.createEach(shopData)
-    let record = await Shop.deleteOne({
+    expect( async() => await Shop.deleteOne({
         id: 10
-    })
-    
-    expect(record).toEqual(null)
+    })).rejects.toThrow('getPreflightOne finds Zero or Many Rows')
 
     //try to find it again, to prove it is commit
     let found = await Shop.find()

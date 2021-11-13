@@ -99,8 +99,8 @@ describe('Test Context Usage', () => {
     await expect(t()).rejects.toThrow(errorMessage)
 
     // try to find it again, to prove it is committed
-    let found = await Shop.findOne(({where: {id: shopData.id}}))
-    expect(found).toBeNull()
+    let [found] = await Shop.find(({where: {id: shopData.id}}))
+    expect(found).toBeUndefined()
   })
 
   if(!config.client.startsWith('sqlite')){
@@ -133,9 +133,9 @@ describe('Test Context Usage', () => {
             await expect(t()).rejects.toThrow(errorMessage)
 
             // try to find it again, to prove it is committed
-          let found = await Shop.findOne({where: {id: anotherShopData.id}}).usingConnectionIfAny(trx)
+          let [found] = await Shop.find({where: {id: anotherShopData.id}}).usingConnectionIfAny(trx)
 
-            expect(found).toBeNull()
+            expect(found).toBeUndefined()
             return record
         })
     

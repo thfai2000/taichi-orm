@@ -1,4 +1,4 @@
-import {Model} from '../dist/model'
+import {Model, ModelObjectRecord} from '../dist/model'
 import {CFReturn, ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
@@ -14,6 +14,7 @@ import { PrimaryKeyType,
         NumberType,
         NumberNotNullType
       } from '../dist/types'
+import { FieldProperty } from '../dist/schema'
       
 
 let shopData = [
@@ -83,6 +84,17 @@ class Shop extends Model {
     })
 }
 
+class ProductColor extends Model{
+  id= this.field(PrimaryKeyType)
+  colorId = this.field(NumberNotNullType)
+  productId = this.field(NumberNotNullType)
+}
+
+class Color extends Model {
+  id = this.field(PrimaryKeyType)
+  type = this.field(StringNotNullType)
+}
+
 class Product extends Model{
     id= this.field(PrimaryKeyType)
     name = this.field(StringType)
@@ -91,6 +103,15 @@ class Product extends Model{
     createdAt = this.field(new DateTimeType({precision: 6}))
     shopId = this.field(NumberType)
     shop = Product.belongsTo(Shop, 'shopId')
+    colors = Product.hasManyThrough(ProductColor, Color, 'id', 'colorId', 'productId')
+    mainColor = Product.compute<typeof Product, ModelObjectRecord<typeof Color> >(
+      (context, parent, arg?): any => {
+        return parent.selectorMap.colors({
+          where: {
+            type: 'main'
+          }
+        })
+    })
 }
 
 

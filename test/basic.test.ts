@@ -127,11 +127,17 @@ describe('Basic Read and Write', () => {
     })
     expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
-    let foundShopNotExists = await Shop.findOne({
+    let foundShopNotExists = await Shop.find({
       where: {id: 100000}
     })
-    expect(foundShopNotExists).toBeNull()
+    expect(foundShopNotExists).toStrictEqual([])
 
+    const cannotFindThrowError = async () => await Shop.findOne({
+      where: {id: 100000}
+    })
+
+    await expect(cannotFindThrowError()).rejects.toThrow('getFirstOne finds Zero or Many Rows')
+    
     let foundAllShop = await Shop.find()
     expect(foundAllShop).toEqual(
       [

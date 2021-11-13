@@ -99,6 +99,8 @@ export type ExtractFieldPropNameFromModelType<MT extends typeof Model> = Extract
 export type ExtractFieldPropNameFromSchema<S extends Schema<any>> = S extends Schema<infer P>? (keyof ExtractFieldPropDictFromDict<P>) & string: never
 
 
+export type ExtractPropDictFromModel<M extends Model> = ExtractPropDictFromSchema< ExtractSchemaFromModel<M> >
+
 export type ExtractPropDictFromModelType<MT extends typeof Model> = ExtractPropDictFromSchema< ExtractSchemaFromModelType<MT> >
 
 export type ExtractFieldPropDictFromSchema<S extends Schema<any>> = ExtractFieldPropDictFromDict<

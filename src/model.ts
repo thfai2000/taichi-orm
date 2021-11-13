@@ -123,56 +123,25 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-
         //() => new ArrayType(relatedSchemaFunc())
         return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
             parent, //: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
             args?
         ) => {
 
-            let dataset = context.dataset()
-
             let relatedModel = context.getRepository(relatedModelType)
-            let relatedSource = relatedModel.datasource('root')
-
             let parentColumn = parent.getFieldProperty( parentKey  )
-            let relatedByColumn = relatedSource.getFieldProperty( relatedBy  )
-        
-            let newDataset = dataset.from(relatedSource)
 
-            let props = relatedSource.getAllFieldProperty()
+            let dataset = relatedModel.dataset(args)
+            let oldWhere = dataset.getWhere()
+            dataset.where( ({And, root}) => And(
+                oldWhere!,
+                parentColumn.equals( 
+                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                )
+            ))
+            return dataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
 
-            let resolvedArgs: SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> | undefined
-            
-            if(args){
-                if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap)
-                } else {
-                    resolvedArgs = args
-                }
-            }
-
-            if(resolvedArgs?.select){
-                let computed = resolvedArgs.select
-                let computedValues = Object.keys(computed).map(key => {
-                    //@ts-ignore
-                    let arg = computed[key]
-                    return { [key]: relatedSource.getComputeProperty(key)(arg) }
-                }).reduce( (acc,v) => Object.assign(acc, v), {})
-
-                dataset.select(Object.assign(props, computedValues))
-            }else {
-                dataset.select(props)
-            }
-            let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.where){
-               filters.push( resolvedArgs.where as any )
-            }
-            newDataset.where( ({And}) => And(...filters) )
-
-            let r = newDataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
-
-            return r
         })
     }
 
@@ -189,58 +158,61 @@ export abstract class Model {
             args?
         ) => {
 
-        // let computeFn = < SSA extends SingleSourceArg< ExtractSchemaFromModelType<RootModelType>> >(
-        //     context: DatabaseContext<any>,
-        //     parent: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-        //     args?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => SSA),
-        //     ): Scalarable< ObjectType<Parsable<
-        //         ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<RootModelType>, SSA>
-        //     >> > => {
-            
-            let dataset = context.dataset()
-            let relatedSchema = context.getRepository(relatedModelType)
-            let relatedSource = relatedSchema.datasource('root')
+            let relatedModel = context.getRepository(relatedModelType)
+            let parentColumn = parent.getFieldProperty( parentKey  )
 
-            let relatedByColumn = relatedSource.getFieldProperty( relatedBy )
-            let parentColumn = parent.getFieldProperty( parentKey )
+            let dataset = relatedModel.dataset(args)
+            let oldWhere = dataset.getWhere()
+            dataset.where( ({And, root}) => And(
+                oldWhere!,
+                parentColumn.equals(
+                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                )
+            ))
+
+            return dataset.toScalarWithType( (ds) => new ObjectType(ds.schema() )) as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
+
         
-            let newDataset = dataset.from(relatedSource)
-
-            let resolvedArgs: SingleSourceArg<ExtractSchemaFromModelType<RootModelType>> | undefined
-            
-            if(args){
-                if(args instanceof Function){
-                    resolvedArgs = args(relatedSource.selectorMap)
-                } else {
-                    resolvedArgs = args
-                }
-            }
-
-            let props = relatedSource.getAllFieldProperty()
-            if(resolvedArgs?.select){
-                let computed = resolvedArgs.select
-                let computedValues = Object.keys(computed).map(key => {
-                    //@ts-ignore
-                    let arg = computed[key]
-                    return { [key]: relatedSource.getComputeProperty(key)(arg)}
-                }).reduce( (acc,v) => Object.assign(acc, v), {})
-                dataset.select(Object.assign(props, computedValues))
-            }else {
-                dataset.select(props)
-            }
-            let filters = [parentColumn.equals( relatedByColumn )]
-            if(resolvedArgs?.where){
-               filters.push( resolvedArgs.where as any )
-            }
-            newDataset.where( ({And}) => And(...filters) )
-
-            let r = newDataset.toScalarWithType( (ds) => new ObjectType(ds.schema() ))
-
-            return r as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
         })
     }
-}
 
+    static hasManyThrough<ParentModelType extends typeof Model, RootModelType extends typeof Model, ThroughModelType extends typeof Model>(
+        this: ParentModelType,
+        throughModelType: ThroughModelType,
+        relatedModelType: RootModelType, 
+        relatedBy: string,
+        throughRelatedBy: string,
+        throughParentKey: string,
+        parentKey: string = 'id'
+        ){
+
+        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
+            parent,
+            args?
+        ) => {
+
+            let relatedModel = context.getRepository(relatedModelType)
+            let parentColumn = parent.getFieldProperty(parentKey)
+            let throughModel = context.getRepository(throughModelType)
+
+            let dataset = relatedModel.dataset(args)
+            dataset.innerJoin(throughModel.datasource('through'), 
+                ({And, through, root}) => 
+                    And(
+                        (through.$allFields as {[key:string]: Scalar<any, any>})[throughRelatedBy].equals(
+                            (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                        ),
+                       (through.$allFields as {[key:string]: Scalar<any, any>})[throughParentKey].equals(
+                            parentColumn
+                       )
+                    )
+                )
+            return dataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
+
+        })
+    }
+
+}
 
 export class ModelRepository<MT extends typeof Model>{
 
@@ -324,7 +296,7 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns dataset with selected all field Property
      */
-    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | undefined) {
+    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F) | undefined) {
         let source = this.model.datasource('root')
         let dataset = this.context.dataset().from(source)
 
