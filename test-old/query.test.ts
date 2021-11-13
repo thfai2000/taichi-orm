@@ -1,5 +1,5 @@
 import {Model, ModelObjectRecord} from '../dist/model'
-import {CFReturn, ORM} from '../dist'
+import {CFReturn, DatabaseContext, ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
@@ -15,6 +15,8 @@ import { PrimaryKeyType,
         NumberNotNullType
       } from '../dist/types'
 import { FieldProperty } from '../dist/schema'
+import { Scalar } from '../dist/builder'
+import { expand } from '../dist/util'
       
 
 let shopData = [
@@ -61,25 +63,31 @@ class Shop extends Model {
     name = this.field(new StringNotNullType({length: 255}))
     location = this.field(new StringNotNullType({length:255}))
     products = Shop.hasMany(Product, 'shopId')
-    productCount = Shop.compute( (context, parent): CFReturn<number> => {
+    productCount = Shop.compute( (parent): CFReturn<number> => {
       return parent.selectorMap.products().count()
     })
-    hasProducts = Shop.compute( (context, parent): CFReturn<boolean> => {
+    hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
       return parent.selectorMap.products().exists()
     })
-    hasNoProducts = Shop.compute( (context, parent): CFReturn<boolean> => {
+    hasProductsAsync = Shop.compute( (parent): CFReturn<boolean> => {
+      return new Scalar( async(context) => {
+        return parent.selectorMap.products().exists()
+      })
+    })
+    hasNoProducts = Shop.compute( (parent): CFReturn<boolean> => {
       return parent.selectorMap.products().exists().equals(false)
     })
-    hasOver2Products =  Shop.compute( (context, parent): CFReturn<boolean> => {
+    hasOver2Products =  Shop.compute( (parent): CFReturn<boolean> => {
       return parent.selectorMap.products().count().greaterThan(2)
     })
-    hasEnoughProducts = Shop.compute( (context, parent, arg?): CFReturn<boolean> => {
+    hasEnoughProducts = Shop.compute( (parent, arg?): CFReturn<boolean> => {
       return parent.selectorMap.products().count().greaterThanOrEquals(arg ?? 1)
     })
-    hasTwoProductsAndlocationHasLetterA = Shop.compute( (context, parent, arg?): CFReturn<boolean> => {
-      return context.op.And(
-        parent.selectorMap.products().count().equals(2),
-        parent.selectorMap.location.like('%A%')
+    hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
+      return new Scalar( (context) => context.op.And(
+          parent.selectorMap.products().count().equals(2),
+          parent.selectorMap.location.like('%A%')
+        )
       )
     })
 }
@@ -88,11 +96,12 @@ class ProductColor extends Model{
   id= this.field(PrimaryKeyType)
   colorId = this.field(NumberNotNullType)
   productId = this.field(NumberNotNullType)
+  type = this.field(new StringNotNullType({length: 50}))
 }
 
 class Color extends Model {
   id = this.field(PrimaryKeyType)
-  type = this.field(StringNotNullType)
+  code = this.field(new StringNotNullType({length: 50}))
 }
 
 class Product extends Model{
@@ -105,130 +114,79 @@ class Product extends Model{
     shop = Product.belongsTo(Shop, 'shopId')
     colors = Product.hasManyThrough(ProductColor, Color, 'id', 'colorId', 'productId')
     mainColor = Product.compute<typeof Product, ModelObjectRecord<typeof Color> >(
-      (context, parent, arg?): any => {
+      (parent): any => {
         return parent.selectorMap.colors({
-          where: {
-            type: 'main'
-          }
+          where: ({through}) => through.type.equals('main')
         })
     })
 }
 
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
 
-const initializeDatabase = async () => {
-    // configure the orm
-   
-    
-    class Product extends Entity{
-    
-      static register(schema: Schema){
-        schema.prop('name', Types.String({length: 255}))
-        schema.prop('createdAt', Types.DateTime({precision: 6}))
-        schema.prop('shopId', Types.Number())
-        // computeProp - not a actual field. it can be relations' data or formatted value of another field. It even can accept arguments...
-        schema.prop('shop', Types.ObjectOf('Shop', {
-          compute: Builtin.ComputeFn.relatesTo('Shop', 'shopId')
-        }))
-
-        schema.prop('colors', 
-          Types.ArrayOf(Types.ObjectOf('Color', {
-            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId') 
-          }))
-        )
-        
-        schema.prop('mainColor', 
-          Types.ObjectOf('Color', {
-            compute: Builtin.ComputeFn.relatesThrough('Color', 'ProductColor', 'colorId', 'productId', (stmt, relatedSelector, throughSelector) => {
-              return stmt.toQueryBuilder().andWhereRaw('?? = ?', [throughSelector._.type, 'main'])
-            })
-          })
-        )
-      }
-    }
-    
-    class Color extends Entity{
-      static register(schema: Schema){
-        schema.prop('code', Types.String({
-          nullable: false,
-          length: 50
-        }))
-      }
-    }
-
-    class ProductColor extends Entity{
-      static register(schema: Schema){
-        schema.prop('productId', Types.Number({nullable: false}))
-        schema.prop('colorId', Types.Number({nullable: false}))
-        schema.prop('type', Types.String({nullable: false, length: 50}))
-      }
-    }
+let orm = new ORM({
+    models: {Shop, Product, Color, ProductColor},
+    entityNameToTableName: (className: string) => snakeCase(className),
+    propNameTofieldName: (propName: string) => snakeCase(propName),
+    knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
 
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
+const loadData = async (ctx: DatabaseContext<{
+    Shop: typeof Shop;
+    Product: typeof Product;
+    Color: typeof Color;
+    ProductColor: typeof ProductColor;
+}>) => {
+  await ctx.createModels()
+  let {Shop, Product, Color, ProductColor} = ctx.models
+  await Promise.all(shopData.map( async(d) => {
+    return await Shop.createOne(d)
+  }))
 
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
+  await Promise.all(productData.map( async(d) => {
+    return await Product.createOne(d)
+  }))
 
-    await configure({
-        models: {Shop, Product, Color, ProductColor},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
+  await Promise.all(colorData.map( async(d) => {
+    return await Color.createOne(d)
+  }))
 
-    await Promise.all(shopData.map( async(d) => {
-      return await models.Shop.createOne(d)
-    }))
-
-    
-    await Promise.all(productData.map( async(d) => {
-      return await models.Product.createOne(d)
-    }))
-
-
-    await Promise.all(colorData.map( async(d) => {
-      return await models.Color.createOne(d)
-    }))
-
-    await Promise.all(productColorData.map( async(d) => {
-      return await models.ProductColor.createOne(d)
-    }))
+  await Promise.all(productColorData.map( async(d) => {
+    return await ProductColor.createOne(d)
+  }))
 }
-
-const clearDatabase = () => {
-
-}
-
-beforeAll( async () => {
-    await initializeDatabase();
-});
-
-afterAll(() => {
-    return clearDatabase();
-});
-
 
 
 describe('Select - Simple Query', () => {
 
   test('Query by object filter', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
     let id = 2
-    let record = await models.Shop.findOne({id})
+    let record = await Shop.findOne({where: {id}})
 
     expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
   })
 
 
   test('Query by object filter + select computed fields', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
     let id = 2
-    let record = await models.Shop.findOne({
-      select: ['products', 'productCount', 'hasProductsAsync'],
-      filter: {id}
+    let record = await Shop.findOne({
+      select: {
+        products: {},
+        productCount: null,
+        hasProductsAsync: null
+      },
+      where: {id}
     })
 
     expect(record).toEqual( expect.objectContaining({
@@ -242,9 +200,13 @@ describe('Select - Simple Query', () => {
   })
 
   test('Query with limit', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
     let limit = 2
-    let records = await models.Shop.find( function(stmt, root){
-        return stmt.toQueryBuilder().where(root.pk, '>', 2).limit(limit)
+    let records = await Shop.find({
+      where: ({root}) => root.id.greaterThan(2),
+      limit
     })
 
     expect(records).toHaveLength(limit)
@@ -254,9 +216,16 @@ describe('Select - Simple Query', () => {
 
 describe('Select - Computed Fields using Standard Relations', () => {
   test('Query computed fields - has', async () => {
-    let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let records = await Shop.find({
+
     })
+
+    //  (stmt, root) => {
+    //     return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
+    // }
 
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(expect.arrayContaining(

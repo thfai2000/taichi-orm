@@ -12,24 +12,8 @@ import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, S
 import {ExtractComputePropDictFromSchema} from './util'
 import { AndOperator, ExistsOperator, NotOperator, OrOperator } from './operators'
 
-// type ComputeFunction_PropertyTypeDefinition<C extends ComputeFunction<any, any, any>> = (C extends ComputeFunction<infer ARG, infer P> ? P: any) & (new (...args: any[]) => any) & typeof PropertyType
-// type FindSchema<F extends SingleSourceArg<any>> = F extends SingleSourceArg<infer S>?S:never
-
-// type VirtualSchemaWithComputed<F extends SingleSourceArg<any>> = EntityFieldPropertyKeyValues< FindSchema<F> > 
-//     & { 
-//         [k in keyof F["select"]]: 
-//             (
-//                 (FindSchema<F>[k] extends ComputeProperty<infer P, any, any, any>? 
-//                 P:
-//                 FindSchema<F>[k] extends FieldProperty<infer P>?
-//                 P:never) extends PropertyType<infer T> ? ExpectedInstance<>
-//             ) 
-
-// }
 
 export type CFReturn<D> = Scalar<PropertyType<D>, any>
-
-// export type CFReturnModelArray<Model> = Scalarable<PropertyType< ExtractVa >>
 
 export type QueryOrderBy = ( (string| Scalar<any, any> ) | {column: (string|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
@@ -43,7 +27,6 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
         ExtractComputePropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
                 Arg: never           
 }
-
 
 export type SingleSourceArg<S extends Schema<any> > = {
     select?: SingleSourceSelect<S>,
@@ -63,27 +46,23 @@ export type SingleSourceWhere<S extends Schema<any> > = Expression<
 
 export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
 
-// export type SingleSourceArgFunction<S extends TableSchema> = (root: SelectorMap< S>) => SingleSourceArg<S>
 
-export type TwoSourcesArg<Root extends Schema<any>, RootName extends string, Related extends Schema<any>, RelatedName extends string> = {
-
-    props?: Partial<ConstructComputePropertyArgsDictFromSchema<Related>>,
-    filter?: Expression< 
-        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< Root>, '', ''> | AddPrefix< ExtractPropDictFromSchema< Root>, RootName> | AddPrefix< ExtractPropDictFromSchema< Related>, RelatedName> >,
-        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
-                > | 
-                ExpressionFunc< 
-        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< Root>, '', ''> | AddPrefix< ExtractPropDictFromSchema< Root>, RootName> | AddPrefix< ExtractPropDictFromSchema< Related>, RelatedName> >,
-        UnionToIntersection< { [key in RootName ]: SelectorMap< Root> } | { [key in RelatedName ]: SelectorMap< Related> } >        
-                >
+export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
+    select?: SingleSourceSelect<S>,
+    where?: TwoSourceWhere<S, S2>
     limit?: number,
     offset?: number,
     orderBy?: QueryOrderBy
 }
 
+export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S>, 'through': SelectorMap<S2> }  >        
+                > | ExpressionFunc<
+        UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
+        UnionToIntersection< { 'root': SelectorMap< S>, 'through': SelectorMap<S2> }  >         
+        >
 
-export type TwoSourcesArgFunction<Root extends Schema<any>, RootName extends string, Related extends Schema<any>, RelatedName extends string> =
-    (root: Datasource<Root, RootName>, related: Datasource<Related, RelatedName>) => TwoSourcesArg<Root, RootName, Related, RelatedName>
 
 
 export type SelectorMap<E extends Schema<any>> = {
@@ -109,61 +88,22 @@ export type SelectorMap<E extends Schema<any>> = {
     }
 }
 
-export interface Scalarable<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
-    toScalar(): Scalar<T, Value>
-    // castToScalar<D extends PropertyType<any>>(type?: D | (new (...args: any[]) => D) ): Scalar<D>
-    // toRaw(repository: EntityRepository<any>): Promise<Knex.Raw> | Knex.Raw
-}
+// export interface Scalarable<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
+//     toScalar(): Scalar<T, Value>
+// }
 
 
-
-// export type ComputeFunction<DS extends Datasource<any, any>, 
-//     CompiledComputeFunction2<any, ARG, R>
-// > = (context: DatabaseContext<any>, source: DS, arg?: ARG) => Scalarable<P> | Promise<Scalarable<P>>
-
-// export type CompiledComputeFunction2<Name extends string, ARG, R extends PropertyType<any> > = (args?: ARG) => Column<Name, R>
-
-
-// type AA<C> = (a: C) => number 
-
-// type CC<T> = (a: T) => T extends boolean? string: boolean
-
-// type B<A extends ((...args: any[]) => any) >= (f: Parameters<A>[0] ) => ReturnType<A>
-
-
-
-// let b: B<AA<boolean>>
-
-// let c: B<CC<boolean>>
-
-// let x = b!(true)
-
-// let y = c!(true)
-
-// let p: (f: (...args: any[]) => any ) => void
-
-// p!( c! )
 export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
 
-// export type ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
-//     CCF extends CompiledComputeFunctionDynamicReturn
-// > = {
-//     (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]): Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>,
-// }
 
 export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
     S extends Scalar<PropertyType<any>, any>
 >{
-    fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>
-    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: ARG) => S | Promise<S>){
+    fn: (source: DS, arg?: ARG) => S
+    constructor(fn: (source: DS, arg?: ARG) => S ){
         this.fn = fn
     }
 }
-
-// export type CCFScalarable<CCF extends CompiledComputeFunctionDynamicReturn > = Scalarable<
-//     ReturnType<CCF> extends Scalar<infer P, any>? P: never,
-//     ReturnType<CCF> extends Scalar<any, infer Value>? Value: never
-//     >
 
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends CompiledComputeFunctionDynamicReturn
@@ -174,8 +114,8 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
 
     mode: 'dynamic' = 'dynamic'
     // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
-    constructor(fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => 
-        ReturnType<CCF> | Promise<ReturnType<CCF>>
+    constructor(fn: (source: DS, arg?: Parameters<CCF>[0]) => 
+        ReturnType<CCF>
     ){
         super(fn)
     }
@@ -192,13 +132,27 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
 export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
    
 
-type SelectiveArg = {select?:{}}
+type SelectiveArg = {select?: any}
 type SelectiveArgFunction = ((root: SelectorMap<Schema<any>>) => SelectiveArg )
 
-type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
- 
+// type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
 
-type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
+// type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = SSA extends SelectiveArgFunction? 
+//                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
+//                 :  (
+//                     SSA extends SelectiveArg?
+//                     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
+//                     : 
+//                     ExtractValueTypeFromComputeProperty< S>
+//                 )
+
+type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => { select?: {}}), any>>? S: never
+
+type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = 
+
+        S extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<any>) => { select?: {}}), any>>?
+            
+            (SSA extends SelectiveArgFunction? 
                 ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
                 :  (
                     SSA extends SelectiveArg?
@@ -206,6 +160,8 @@ type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = SS
                     : 
                     ExtractValueTypeFromComputeProperty< S>
                 )
+            )
+            : ExtractValueTypeFromComputeProperty< S>
 
 
 type ExtractSpecificPropertyFromSchema<S extends Schema<any>, name extends string> = S extends Schema<infer PropertyDict>? (

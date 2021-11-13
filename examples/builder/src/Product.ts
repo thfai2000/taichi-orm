@@ -2,6 +2,7 @@ import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNul
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
 import { CFReturn } from "../../../dist"
+import { Scalar } from "../../../dist/builder"
 
 
 export default class Product extends Model {
@@ -15,12 +16,12 @@ export default class Product extends Model {
     availableEnd = this.field(DateNotNullType)
     remainingStock = this.field(NumberNotNullType)
 
-    isActive = Product.compute((context, parent, arg?: number): CFReturn<boolean> => {
-        return context.op.And(
+    isActive = Product.compute((parent, arg?: number): CFReturn<boolean> => {
+        return new Scalar( (context) => context.op.And(
             parent.selectorMap.availableStart.lessThan( new Date() ),
             parent.selectorMap.availableEnd.greaterThan( new Date() ),
             parent.selectorMap.remainingStock.greaterThan(0)
-        ).toScalar()
+        ))
     })
 
     abc = Product.compute((context, parent, arg?: number): CFReturn<number> => {

@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 // import { v4 as uuidv4 } from 'uuid'
-import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, Scalarable, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
+import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
 import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
@@ -264,7 +264,8 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
 export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourcePropMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
     extends WhereClauseBase<SourceProps, SourcePropMap, FromSource>
-    implements Scalarable<ArrayType<ExistingSchema>, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > {
+    // implements Scalarable<ArrayType<ExistingSchema>, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > 
+    {
 
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
@@ -420,8 +421,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
 
-    toScalar<T extends Dataset<any, any, any, any>>(this: T): Scalar<ArrayType<ExistingSchema>, T> {
-        return new Scalar(this, new ArrayType(this.schema()), this.context) //as unknown as Scalar<T> 
+    toScalar<T extends Dataset<any, any, any, any>, isArray extends boolean>(this: T, isArray: isArray): DScalar<isArray, T> {
+        return new DScalar(this, isArray, this.context)
     }
 
     toScalarWithType<T extends PropertyType<any>>(
@@ -1285,18 +1286,20 @@ function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{
     return ( ('sql' in value) && ('args' in value))
 }
 
-export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any>  > implements Scalarable<T, Value> {
+
+
+export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any>  > {
     // __type: 'Scalar'
     // __definition: PropertyType | null
-
     // #cachedDefinition: PropertyType<any> | null = null
-    readonly declaredDefinition?: T | null
+
+    readonly declaredDefinition?: PropertyType<any> | null
     protected expressionOrDataset: RawExpression<T>
     protected context: DatabaseContext<any> | null = null
     #calculatedDefinition: PropertyType<any> | null = null
     #calculatedRaw: Knex.Raw | null = null
     #lastContext: DatabaseContext<any> | null = null
-    #afterResolvedHook: ((value: Value) => void | Promise<void>) | null = null
+    // #afterResolvedHook: ((value: Value) => void | Promise<void>) | null = null
     
     // protected dataset:  | null = null
     constructor(expressionOrDataset: RawExpression<T>, 
@@ -1368,23 +1371,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 
-    count(this: Scalar<T, Value>): Scalar<NumberNotNullType, any> {
-        return this.transform( (value, ctx)=> {
-            if(value instanceof Dataset){
-                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
-            }
-            throw new Error('count is only applicable to Dataset.')
-        })
-    }
 
-    exists(this: Scalar<T, Value>): Scalar<BooleanNotNullType, any> {
-        return this.transform( (value, ctx)=> {
-            if(value instanceof Dataset){
-                return ctx.op.Exists(value).toScalar()
-            }
-            throw new Error('count is only applicable to Dataset.')
-        })
-    }
     // private toRealRaw() {
     //     return this.expressionOrDataset
     // }
@@ -1404,7 +1391,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return new Scalar(this.toRealRaw(), d, this.context)
     // }
 
-    definitionForParsing(){
+    definitionForParsing(): PropertyType<any>{
         return this.#calculatedDefinition ?? this.declaredDefinition ?? new PropertyType()
     }
 
@@ -1432,33 +1419,32 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return s
     }
 
+    protected async resolveDefinition(ctx: DatabaseContext<any>, ex: RawExpression): Promise<PropertyType<any>> {
+        return thenResult(ex, ex => {
+            if(ex instanceof Dataset){
+                return this.resolveDefinition(ctx, ex.toScalar(true))
+            } else if(ex instanceof Scalar ){
+                if(ex.declaredDefinition){
+                    return ex.declaredDefinition
+                } else {
+                    let raw = ex.expressionOrDataset
+                    return this.resolveDefinition(ctx, raw)
+                }
+            } else if(ex instanceof Function) {
+                return this.resolveDefinition(ctx, ex(ctx))
+            } else {
+                return new PropertyDefinition()
+            }
+        })
+    }
+
     private async calculateDefinition(context?: DatabaseContext<any>):  Promise<PropertyType<any>>  {
         const ctx = (context ?? this.context)
         if(!ctx){
             throw new Error('There is no repository provided')
         }
-
-        const resolveDefinition = (ex: RawExpression ): PropertyType<any> | Promise<PropertyType<any>>  => {
-            return thenResult(ex, ex => {
-                if(ex instanceof Dataset){
-                    return resolveDefinition(ex.toScalar())
-                } else if(ex instanceof Scalar ){
-
-                    if(ex.declaredDefinition){
-                        return ex.declaredDefinition
-                    } else {
-                        let raw = ex.expressionOrDataset
-                        return resolveDefinition(raw)
-                    }
-                } else if(ex instanceof Function) {
-                    return resolveDefinition(ex(ctx))
-                } else {
-                    return new PropertyDefinition()
-                }
-            })
-        }
         
-        return await resolveDefinition(this)
+        return await this.resolveDefinition(ctx, this)
         // this.#cachedDefinition = await resolveDefinition(this)
         // console.log('cacched definition', this.#cachedDefinition)
         // return this.#cachedDefinition
@@ -1599,22 +1585,52 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     } 
 }
 
-// export class DScalar<T extends PropertyType<any>, DS extends Dataset<any>> extends Scalar<T, DS> {
-//     constructor(dataset: DS, 
-//         definition?: T | (new (...args: any[]) => T) | null,
-//         context?: DatabaseContext<any> | null){
-//             super(dataset, definition, context)
-//         }
+export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, any>> extends Scalar< isArray extends true? ArrayType< ReturnType<DS["schema"]>>: ObjectType< ReturnType<DS["schema"]> >, DS> {
+    
+    #isArray: boolean
 
-//     count(this: Scalar<T, DS>, ctx?: DatabaseContext<any>): Scalar<NumberNotNullType, any> {
-//         return this.transform( (value)=> {
-//             if(value instanceof Dataset){
-//                 return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
-//             }
-//             throw new Error('count is only applicable to Dataset.')
-//         })
-//     }
-// }
+    constructor(
+            dataset: Dataset<any, any, any, any> | 
+            ( (context: DatabaseContext<any>) => Dataset<any, any, any, any>) | 
+            ( (context: DatabaseContext<any>) => Promise<Dataset<any, any, any, any>>),
+            isArray: boolean = true,
+        context?: DatabaseContext<any> | null){
+            super(
+                    (async (context: DatabaseContext<any>) => {
+                        let resolved: Dataset<any, any, any, any>
+                        if(dataset instanceof Function){
+                            resolved = await dataset(context)
+                        } else {
+                            resolved = dataset
+                        }
+                        if(isArray){
+                            return resolved.toScalarWithType( (ds) => new ArrayType(ds.schema()) )
+                        } else {
+                            return resolved.toScalarWithType( (ds) => new ObjectType(ds.schema()) )
+                        }
+                    }) as RawExpression<any>
+                    , null, context)
+            this.#isArray = isArray
+        }
+    
+    count(this: DScalar<isArray, DS>): Scalar<NumberNotNullType, any> {
+        return this.transform( (value, ctx)=> {
+            if(value instanceof Dataset){
+                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
+            }
+            throw new Error('count is only applicable to Dataset.')
+        })
+    }
+
+    exists(this: DScalar<isArray, DS>): Scalar<BooleanNotNullType, any> {
+        return this.transform( (value, ctx)=> {
+            if(value instanceof Dataset){
+                return ctx.op.Exists(value).toScalar()
+            }
+            throw new Error('count is only applicable to Dataset.')
+        })
+    }
+}
 
 // export class Column<Name extends string, T extends PropertyType<any>> extends Scalar<T>{
 //     alias: Name
@@ -1679,7 +1695,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            return value.toScalar()
+            return value.toScalar(true)
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {

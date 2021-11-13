@@ -1,7 +1,7 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, Scalarable, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema } from "./util"
-import {  Scalar, Dataset, AddPrefix } from "./builder"
+import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
 // import util from 'util'
@@ -15,14 +15,37 @@ export type DetermineDatasetFromModelType<MT extends typeof Model> =
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
-//TODO: it is wrong to Scalar can transform into dataset without SSA
-export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => Scalar< ArrayType< ParsableObjectTrait<
-                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            > >, DetermineDatasetFromModelType<MT>>
-export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => Scalar< ObjectType< ParsableObjectTrait<
-            ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-        > >, DetermineDatasetFromModelType<MT>>
+export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
+        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
+            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
+        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
+
+export type ConstructDatasetBySelectiveArgSimple<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
+        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
+            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
+        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
+
+//TODO: it is wrong to Scalar can transform into dataset without SSA, but sadly circular dependencies encountered
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+            DScalar<true, 
+                // ArrayType< ParsableObjectTrait<
+                //     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
+                // > >, DetermineDatasetFromModelType<MT>
+                DetermineDatasetFromModelType<MT>
+            >
+export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+        DScalar<false, 
+            // ObjectType< ParsableObjectTrait<
+            // ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
+            // > >, DetermineDatasetFromModelType<MT>
+            DetermineDatasetFromModelType<MT>
+        >
         
+export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeof Model> = <MSA extends TwoSourceArg< ExtractSchemaFromModelType<MT>, ExtractSchemaFromModelType<MT2>>>(arg?: MSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>, through: SelectorMap<ExtractSchemaFromModelType<MT2>>) => MSA) ) => 
+            DScalar<true, 
+                DetermineDatasetFromModelType<MT>
+            >
+
 export abstract class Model {
 
     #entityName: string
@@ -50,11 +73,11 @@ export abstract class Model {
     }
 
     static compute<M extends typeof Model, 
-        ARG,
-        S extends Scalar<any, any>
+        S extends Scalar<any, any>,
+        ARG = null
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S | Promise< S >
+            compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
         )
             : ComputeProperty<
                 ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>
@@ -64,7 +87,7 @@ export abstract class Model {
             CCF extends CompiledComputeFunctionDynamicReturn
         >(
             this: M,
-            compute: (context: DatabaseContext<any>, source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF> | Promise<ReturnType<CCF>> 
+            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF>
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
@@ -124,23 +147,21 @@ export abstract class Model {
         ){
 
         //() => new ArrayType(relatedSchemaFunc())
-        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
-            parent, //: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            args?
-        ) => {
-
-            let relatedModel = context.getRepository(relatedModelType)
-            let parentColumn = parent.getFieldProperty( parentKey  )
-
-            let dataset = relatedModel.dataset(args)
-            let oldWhere = dataset.getWhere()
-            dataset.where( ({And, root}) => And(
-                oldWhere!,
-                parentColumn.equals( 
-                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
-                )
-            ))
-            return dataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
+        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args?) => {
+            return new DScalar( (context: DatabaseContext<any>) => {
+                let relatedModel = context.getRepository(relatedModelType)
+                let parentColumn = parent.getFieldProperty( parentKey  )
+    
+                let dataset = relatedModel.dataset(args)
+                let oldWhere = dataset.getWhere()
+                dataset.where( ({And, root}) => And(
+                    oldWhere!,
+                    parentColumn.equals( 
+                        (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                    )
+                ))
+                return dataset //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
+            }, true)
 
         })
     }
@@ -153,25 +174,23 @@ export abstract class Model {
         )
         {
                
-        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((context: DatabaseContext<any>,
-            parent,//: Datasource< ExtractSchemaFromModelType<ParentModelType>, any>, 
-            args?
-        ) => {
+        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((parent, args?) => {
+            return new DScalar((context: DatabaseContext<any>) => {
+                let relatedModel = context.getRepository(relatedModelType)
+                let parentColumn = parent.getFieldProperty( parentKey  )
 
-            let relatedModel = context.getRepository(relatedModelType)
-            let parentColumn = parent.getFieldProperty( parentKey  )
+                let dataset = relatedModel.dataset(args)
+                let oldWhere = dataset.getWhere()
+                dataset.where( ({And, root}) => And(
+                    oldWhere!,
+                    parentColumn.equals(
+                        (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                    )
+                ))
 
-            let dataset = relatedModel.dataset(args)
-            let oldWhere = dataset.getWhere()
-            dataset.where( ({And, root}) => And(
-                oldWhere!,
-                parentColumn.equals(
-                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
-                )
-            ))
-
-            return dataset.toScalarWithType( (ds) => new ObjectType(ds.schema() )) as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
-
+                return dataset
+                //.toScalarWithType( (ds) => new ObjectType(ds.schema() )) as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
+            }, false)
         
         })
     }
@@ -186,29 +205,42 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >((context: DatabaseContext<any>,
-            parent,
-            args?
-        ) => {
-
-            let relatedModel = context.getRepository(relatedModelType)
-            let parentColumn = parent.getFieldProperty(parentKey)
-            let throughModel = context.getRepository(throughModelType)
-
-            let dataset = relatedModel.dataset(args)
-            dataset.innerJoin(throughModel.datasource('through'), 
-                ({And, through, root}) => 
-                    And(
-                        (through.$allFields as {[key:string]: Scalar<any, any>})[throughRelatedBy].equals(
-                            (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
-                        ),
-                       (through.$allFields as {[key:string]: Scalar<any, any>})[throughParentKey].equals(
-                            parentColumn
-                       )
+        return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType> >((parent, args?) => {
+            return new DScalar( (context: DatabaseContext<any>) => {
+                let relatedModel = context.getRepository(relatedModelType)
+                let parentColumn = parent.getFieldProperty(parentKey)
+                let throughModel = context.getRepository(throughModelType)
+                let throughDatasource = throughModel.datasource('through')
+    
+                let dataset = relatedModel.dataset((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => {
+                    let resolved
+                    if(args instanceof Function){
+                        args = args(root, throughDatasource.selectorMap)
+                    } else {
+                        resolved = args
+                    }
+                    if(resolved?.where instanceof Function){
+                        let oldWhere = resolved.where
+                        resolved.where = (map) => {
+                            return oldWhere({...map, through: throughDatasource.selectorMap})
+                        }
+                    }
+                    return resolved as SingleSourceArg<ExtractSchemaFromModelType<RootModelType>>
+                })
+                dataset.innerJoin(throughDatasource, 
+                    ({And, through, root}) => 
+                        And(
+                            (through.$allFields as {[key:string]: Scalar<any, any>})[throughRelatedBy].equals(
+                                (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
+                            ),
+                           (through.$allFields as {[key:string]: Scalar<any, any>})[throughParentKey].equals(
+                                parentColumn
+                           )
+                        )
                     )
-                )
-            return dataset.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
-
+                return dataset
+                //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
+            })
         })
     }
 
@@ -265,11 +297,11 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
+    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F)) {
         return this.dataset(args).execute().getOne()
     }
 
-    findOneOrNull<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
+    findOneOrNull<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F)) {
         return this.dataset(args).execute().getOneOrNull()
     }
 
@@ -278,7 +310,7 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F) {
+    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F)) {
         return this.dataset(args).execute()
     }
 
@@ -327,13 +359,8 @@ export class ModelRepository<MT extends typeof Model>{
         } else {
             dataset.select(props)
         }
-        return dataset as unknown as Dataset<Schema<ConstructScalarPropDictBySelectiveArg<
-            ExtractSchemaFromModelType<MT>, F
-        > >,
-        UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
-            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>;
-        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">
-        >
+
+        return dataset as unknown as ConstructDatasetBySelectiveArg<MT, F>
     }
 
     delete(args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){

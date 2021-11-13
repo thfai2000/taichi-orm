@@ -2,7 +2,7 @@ import {Scalar, ExpressionResolver, Expression, Dataset} from './builder'
 import {Knex} from 'knex'
 import { BooleanNotNullType } from './types'
 import { thenResult, thenResultArray } from './util'
-import { DatabaseContext, Scalarable } from '.'
+import { DatabaseContext } from '.'
 
 abstract class SQLFunction<Props, SourcePropMap> {
     resolver: ExpressionResolver<Props, SourcePropMap>
@@ -26,7 +26,7 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
     abstract toScalar(): Scalar<BooleanNotNullType, any>
 }
 
-export abstract class AssertionOperator implements Scalarable<any, any>{
+export abstract class AssertionOperator{
 
     abstract toScalar(): Scalar<BooleanNotNullType, any>
 }
