@@ -69,7 +69,7 @@ export abstract class Model {
 
     static compute<M extends typeof Model, 
         S extends Scalar<any, any>,
-        ARG = never
+        ARG = unknown
         >(
             this: M,
             compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
@@ -343,7 +343,7 @@ export class ModelRepository<MT extends typeof Model>{
         }
 
         if (resolvedArgs?.selectProps) {
-            dataset.selectProps(resolvedArgs.selectProps as any)
+            dataset.selectProps(...(resolvedArgs.selectProps as any[]) )
         }
 
         if (resolvedArgs?.select) {
@@ -354,9 +354,9 @@ export class ModelRepository<MT extends typeof Model>{
                 return { [key]: source.getComputeProperty(key)(arg) }
             }).reduce((acc, v) => Object.assign(acc, v), {})
 
-            dataset.select(Object.assign(props, computedValues))
+            dataset.andSelect(Object.assign(props, computedValues))
         } else {
-            dataset.select(props)
+            dataset.andSelect(props)
         }
         return dataset as unknown as ConstructDatasetBySelectiveArg<MT, F>
     }

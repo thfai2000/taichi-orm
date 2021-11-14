@@ -161,7 +161,7 @@ const loadData = async (ctx: DatabaseContext<{
 
 describe('SelectProps - Custom Computed Fields with Where clause', () => {
 
-  test('Query computed field', async () => {
+  test.only('Query computed field', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
@@ -171,7 +171,7 @@ describe('SelectProps - Custom Computed Fields with Where clause', () => {
       where: {
         id
       }
-    })
+    }).onSqlRun(console.log)
     expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
   });
 })

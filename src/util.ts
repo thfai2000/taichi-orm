@@ -144,7 +144,7 @@ Pick<E, ({
 export type ExtractComputePropWithArgDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>? 
-            (Arg extends never? never: key)
+            (Arg extends unknown? never: key)
                 : never
 })[keyof E]>
 

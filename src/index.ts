@@ -132,7 +132,8 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
 }
-export type ExtractValueTypeFromComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
+export type ExtractValueTypeFromComputeProperty<T extends Property> = 
+    T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
    
 
 // type ActualSelectiveArg = { select: {[key:string]: any}} | {selectProps: string[] }

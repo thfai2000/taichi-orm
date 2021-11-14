@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
+import { SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
@@ -455,6 +455,20 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this as any
     }
 
+    andSelectProps<P extends keyof SourceProps>(...properties: P[]): 
+        Dataset<
+            Schema<
+                (ExistingSchema extends Schema<infer Props>? Props: never) &
+                SelectedPropsToScalarPropertyDict<SourceProps, P>
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource>{
+       
+        this.clearSchema()
+        this.#selectItems = Object.assign({}, this.#selectItems, this.propNameArray2ScalarMap(properties as string[]) )
+        return this as any
+    }
+
     groupByProps<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
         ExistingSchema
@@ -484,6 +498,23 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         const result = this.func2ScalarMap<S, Y>(named)
 
         this.#selectItems = result
+        return this as any
+    }
+
+    andSelect<S extends { [key: string]: Scalar<any, any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
+        ((map: Y ) => S ) ):
+        Dataset<
+            Schema<
+                (ExistingSchema extends Schema<infer Props>? Props: never) &
+                ScalarDictToScalarPropertyDict<S>
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource> {
+        
+        this.clearSchema()
+        const result = this.func2ScalarMap<S, Y>(named)
+
+        this.#selectItems = Object.assign({}, this.#selectItems, result)
         return this as any
     }
 
