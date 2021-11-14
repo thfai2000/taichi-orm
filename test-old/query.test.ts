@@ -80,7 +80,7 @@ class Shop extends Model {
     hasOver2Products =  Shop.compute( (parent): CFReturn<boolean> => {
       return parent.selectorMap.products().count().greaterThan(2)
     })
-    hasEnoughProducts = Shop.compute( (parent, arg?): CFReturn<boolean> => {
+    hasEnoughProducts = Shop.compute( (parent, arg?: number): CFReturn<boolean> => {
       return parent.selectorMap.products().count().greaterThanOrEquals(arg ?? 1)
     })
     hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
@@ -158,74 +158,31 @@ const loadData = async (ctx: DatabaseContext<{
   }))
 }
 
+describe('SelectProps - Custom Computed Fields with Where clause', () => {
 
-describe('Select - Simple Query', () => {
-
-  test('Query by object filter', async () => {
-
+  test('Query computed field', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
-
-    let id = 2
-    let record = await Shop.findOne({where: {id}})
-
-    expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
-  })
-
-
-  test('Query by object filter + select computed fields', async () => {
-    let ctx = orm.getContext({tablePrefix: tablePrefix()})
-    await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
-
     let id = 2
     let record = await Shop.findOne({
-      select: {
-        products: {},
-        productCount: null,
-        hasProductsAsync: null
-      },
-      where: {id}
+      selectProps: ['productCount'],
+      where: {
+        id
+      }
     })
-
-    expect(record).toEqual( expect.objectContaining({
-      ...shopData.find(s => s.id === id),
-      products: expect.arrayContaining(
-          productData.filter(p => p.shopId === id).map( p => expect.objectContaining(p) )
-      ),
-      productCount: productData.filter(p => p.shopId === id).length,
-      hasProductsAsync: productData.filter(p => p.shopId === id).length > 0
-    }))
-  })
-
-  test('Query with limit', async () => {
-    let ctx = orm.getContext({tablePrefix: tablePrefix()})
-    await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
-    let limit = 2
-    let records = await Shop.find({
-      where: ({root}) => root.id.greaterThan(2),
-      limit
-    })
-
-    expect(records).toHaveLength(limit)
+    expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
   });
-
 })
 
-describe('Select - Computed Fields using Standard Relations', () => {
-  test('Query computed fields - has', async () => {
+describe('SelectProps - Computed Fields using Standard Relations', () => {
+  test('Query computed fields - hasMany + other custom props', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
     let records = await Shop.find({
-
+      selectProps: ['products', 'productCount', 'hasProducts', 'hasNoProducts', 'hasOver2Products']
     })
-
-    //  (stmt, root) => {
-    //     return stmt.select(root.$.products(), root.$.productCount(), root.$.hasProducts(), root.$.hasNoProducts(), root.$.hasOver2Products())
-    // }
 
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(expect.arrayContaining(
@@ -243,8 +200,11 @@ describe('Select - Computed Fields using Standard Relations', () => {
   });
 
   test('Query computed fields - belongsTo', async () => {
-    let records = await models.Product.find( (stmt, root) => {
-        return stmt.select(root.$.shop())
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let records = await Product.find({
+      selectProps: ['shop']
     })
     expect(records).toHaveLength(productData.length)
     expect(records).toEqual(
@@ -260,11 +220,17 @@ describe('Select - Computed Fields using Standard Relations', () => {
   });
 
   test('Query computed fields - hasThrough + multiple level', async () => {
-    let records = await models.Shop.find( (stmt, root) => {
-        return stmt.select(root.$.products( (stmt, p) => {
-          return stmt.select(p.$.colors(), p.$.mainColor() )
-        }))
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let records = await Shop.find({
+      select: {
+        products: {
+          selectProps: ['colors', 'mainColor']
+        }
+      }
     })
+
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(
       expect.arrayContaining( 
@@ -289,62 +255,71 @@ describe('Select - Computed Fields using Standard Relations', () => {
     })))
     )
   });
-
 })
 
-describe('Select - Custom Computed Fields', () => {
+describe('Select - Simple Query', () => {
 
-  test('Query computed field', async () => {
+  test('Select - computed fields + Query by object filter', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
     let id = 2
-    let record = await models.Shop.findOne( (stmt, root) => {
-        return stmt.select(root.$.productCount()).toQueryBuilder().where(root.pk, '=', id)
+    let record = await Shop.findOne({
+      select: {
+        products: {}
+      },
+      where: {id}
     })
-    expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
 
+    expect(record).toEqual( expect.objectContaining({
+      ...shopData.find(s => s.id === id),
+      products: expect.arrayContaining(
+          productData.filter(p => p.shopId === id).map( p => expect.objectContaining(p) )
+      ),
+      productCount: productData.filter(p => p.shopId === id).length,
+      hasProductsAsync: productData.filter(p => p.shopId === id).length > 0
+    }))
+  })
+
+  test('Select - Query with limit', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let limit = 2
+    let records = await Shop.find({
+      where: ({root}) => root.id.greaterThan(2),
+      limit
+    })
+
+    expect(records).toHaveLength(limit)
   });
 
 })
 
+describe('Select - With Arguments', () => {
 
-describe('Select - Mixed Query', () => {
+  test('Mixed Select + SelectProps', async () => {
 
-  // test("Standard", async() => {
-  //   const time = '2020-01-01 12:20:01'
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
 
-  //   let records = await models.Shop.find({
-  //     select: {
-  //       'productCount': true, 
-  //       'products': {select: ['colors']} , 
-  //       'currentTime': Types.DateTime({ compute: s => column(raw(`'${time}'`)) })
-  //     },
-  //   })
+    let records = await Shop.find({
+      selectProps: ['productCount'],
+      select: {
+        products: {
+          selectProps: ['colors'],
+          select: {
+            shop: {
+              selectProps: ['products']
+            }
+          }
+        }
+      }
+    })
 
-  //   expect(records).toEqual( expect.arrayContaining(
-  //     shopData.map( shop => expect.objectContaining({
-  //         ...shop,
-  //         products: expect.arrayContaining(
-  //           productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
-  //             ...p,
-  //             colors: expect.arrayContaining( productColorData.filter(pc => pc.productId === p.id)
-  //               .map( pc => expect.objectContaining( colorData.find(c => c.id === pc.colorId))) )
-  //           }))
-  //         ),
-  //         productCount: productData.filter(p => p.shopId === shop.id).length,
-  //         currentTime: new Date(time)
-  //       })
-  //     )
-  //   ))
-
-  // })
-
-  test('Query computed field', async () => {
-
-    let records = await models.Shop.find( (stmt, root) => 
-      stmt.select(root.$.productCount(), root.$.products({
-        select: ['colors']
-      }))
-    )
-
+    //TODO: fix the expected result
     expect(records).toEqual( expect.arrayContaining(
       shopData.map( shop => expect.objectContaining({
           ...shop,
@@ -367,24 +342,20 @@ describe('Select - Mixed Query', () => {
 describe('Select - Use Query Arguments', () => {
 
   test('Use Query Arguments', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
     let expectedCount = 3
-    let records = await models.Shop.find({
+    let records = await Shop.find({
       select: {
-        'products': true,
-        'hasEnoughProducts': { 
-          args: {count : expectedCount}
-        }
+        hasEnoughProducts: 5
       }
     })
 
     expect(records).toEqual( expect.arrayContaining(
       shopData.map( shop => expect.objectContaining({
           ...shop,
-          products: expect.arrayContaining(
-            productData.filter(p => p.shopId === shop.id).map( p => expect.objectContaining( {
-              ...p
-            }))
-          ),
           hasEnoughProducts: productData.filter(p => p.shopId === shop.id).length >= expectedCount
         })
       )
@@ -394,11 +365,31 @@ describe('Select - Use Query Arguments', () => {
 
 })
 
+describe('Where', () => {
+    test('Simple Where By Id', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let id = 2
+    let record = await Shop.findOne({where: {id}})
+
+    expect(record).toEqual( expect.objectContaining(shopData.find(s => s.id === id)) )
+  })
+})
+
 describe('Where - Operators', () => {
 
-  test('Query by object filter - Equal and IsNull', async () => {
+  test('Query by object filter - Equal', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
     let id = 2
-    let records = await models.Shop.find({id: Equal(id)})
+    let records = await Shop.find({
+      where: ({root}) => root.id.equals(id)
+    })
 
     expect(records).toHaveLength(1)
     expect(records).toEqual( expect.arrayContaining(

@@ -1302,7 +1302,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     // #afterResolvedHook: ((value: Value) => void | Promise<void>) | null = null
     
     // protected dataset:  | null = null
-    constructor(expressionOrDataset: RawExpression<T>, 
+    constructor(expressionOrDataset: RawExpression<T> | ((context: DatabaseContext<any>) => Value) | ((context: DatabaseContext<any>) => Promise<Value>), 
         definition?: T | (new (...args: any[]) => T) | null,
         context?: DatabaseContext<any> | null){
         if(definition instanceof PropertyType){

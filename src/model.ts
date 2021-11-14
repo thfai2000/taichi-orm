@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ConstructValueTypeDictBySelectiveArg, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
@@ -16,11 +16,6 @@ export type DetermineDatasetFromModelType<MT extends typeof Model> =
     >
 
 export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
-        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
-            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
-        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
-
-export type ConstructDatasetBySelectiveArgSimple<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
         Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
             root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
         }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
@@ -74,7 +69,7 @@ export abstract class Model {
 
     static compute<M extends typeof Model, 
         S extends Scalar<any, any>,
-        ARG = null
+        ARG = never
         >(
             this: M,
             compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
@@ -347,6 +342,10 @@ export class ModelRepository<MT extends typeof Model>{
             dataset.where(resolvedArgs.where)
         }
 
+        if (resolvedArgs?.selectProps) {
+            dataset.selectProps(resolvedArgs.selectProps as any)
+        }
+
         if (resolvedArgs?.select) {
             let computed = resolvedArgs.select
             let computedValues = Object.keys(computed).map(key => {
@@ -359,7 +358,6 @@ export class ModelRepository<MT extends typeof Model>{
         } else {
             dataset.select(props)
         }
-
         return dataset as unknown as ConstructDatasetBySelectiveArg<MT, F>
     }
 

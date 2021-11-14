@@ -115,6 +115,10 @@ export type ExtractComputePropDictFromSchema<S extends Schema<any>> = ExtractCom
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
+export type ExtractComputePropWithArgDictFromSchema<S extends Schema<any>> = ExtractComputePropWithArgDictFromDict<
+    S extends Schema<infer PropertyDict>? PropertyDict: never
+>
+
 export type FilterPropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: 
@@ -136,6 +140,13 @@ Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<any>? key:
                     never
 })[keyof E]> 
+
+export type ExtractComputePropWithArgDictFromDict<E> = 
+Pick<E, ({
+    [key in keyof E]: E[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>? 
+            (Arg extends never? never: key)
+                : never
+})[keyof E]>
 
 // export type PartialIfNull<Dict> = {
 //     [key in keyof Dict]: Dict[key] extends null? (Dict[key] | undefined) : Dict[key]
