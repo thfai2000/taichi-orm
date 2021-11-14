@@ -130,13 +130,13 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
     }
 }
 
-export class ContainOperator extends LeftAndRightAssertionOperator {
+export class InOperator extends LeftAndRightAssertionOperator {
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
         return context.raw(`${left} IN (${rights.map(o => '?')})`, [...rights])
     }
 }
 
-export class NotContainOperator extends LeftAndRightAssertionOperator {
+export class NotInOperator extends LeftAndRightAssertionOperator {
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
         return context.raw(`${left} NOT IN (${rights.map(o => '?')})`, [...rights])
     }
@@ -249,6 +249,23 @@ export class NotBetweenOperator extends LeftAndRightAssertionOperator {
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
         return context.raw(`${left} NOT BETWEEN ? AND ?`, [rights[0], rights[1]])
     }
+}
+
+export type SQLKeywords<Props, PropMap> = {
+    And: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
+    Or: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
+    Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
+    Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>
+}
+
+export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
+    let sqlkeywords: SQLKeywords<X, Y> = {
+        And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions).toScalar(),
+        Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
+        Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
+        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar()
+    }
+    return sqlkeywords
 }
 
 

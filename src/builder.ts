@@ -1,33 +1,11 @@
 import { Knex}  from "knex"
-// import { v4 as uuidv4 } from 'uuid'
-import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions, constructSqlKeywords } from "."
-import { AndOperator, ConditionOperator, ContainOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator } from "./operators"
+import { ConstructComputePropertyArgsDictFromSchema, SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
+import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
-
-// type Dataset<TRecord = any, TResult = any> = {
-//     [Property in keyof Knex.QueryBuilder<TRecord, TResult>]: 
-//         Knex.QueryBuilder<TRecord, TResult>[Property] extends (...a: any) => Knex.QueryBuilder<TRecord, TResult> ? 
-//             ReplaceReturnType< Knex.QueryBuilder<TRecord, TResult>[Property], Dataset> : ( Knex.QueryBuilder<TRecord, TResult>[Property] extends Knex.QueryBuilder<TRecord, TResult> ?  Dataset : Knex.QueryBuilder<TRecord, TResult>[Property]  )
-// }
-
-// declare module "knex" {
-//     export namespace Knex {
-//         interface QueryBuilder{
-//             toRow(): Dataset<any, any, any>
-//             // toRaw(): Knex.Raw
-//             toQueryBuilder(): Knex.QueryBuilder
-//         }
-
-//         interface Raw {
-//             clone: Function
-//             __type: 'Raw' | 'Scalar' | 'FromClause' | 'Dataset'
-//         }
-//     }
-// }
 
 type ScalarDictToScalarPropertyDict<D> = {
     [key in keyof D]: D[key] extends Scalar<any, any>? ScalarProperty<D[key]>: never
@@ -65,21 +43,6 @@ type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
                         ): never
             }
 
-
-// export type ExtractEntityKeyValuesFromPropDict<E> = {
-//     [key in keyof E]:
-//         E[key] extends Prefixed<any, any, infer C>? (
-//                 C extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D, any> ): never): never
-//              ): E[key] extends FieldProperty<infer D>? (D extends FieldPropertyTypeDefinition<infer Primitive>? (Primitive | Scalar<D, any> ): never): never
-             
-// }
-
-export type SQLKeywords<Props, PropMap> = {
-    And: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
-    Or: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
-    Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
-    Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>
-}
 
 export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
 
@@ -924,7 +887,7 @@ export class InsertStatement<T extends TableSchema<{
     
                             let queryDataset = this.context.dataset()
                                 .from(schema.datasource('root'))
-                                .where( ({root}) => root.id.contains(i.map(r => r.id)) )
+                                .where( ({root}) => root.id.in(i.map(r => r.id)) )
                                 .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
                             
                             const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
@@ -1109,7 +1072,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         if(this.latestQueryAffectedFunctionArg){
                             const queryDataset = this.context.dataset()
                             .from( schema.datasource('root') )
-                            .where( ({root}) => root.id.contains(...updatedIds) )
+                            .where( ({root}) => root.id.in(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
 
                             const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
@@ -1249,7 +1212,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         if(this.latestQueryAffectedFunctionArg){
                             const queryDataset = this.context.dataset()
                             .from( schema.datasource('root') )
-                            .where( ({root}) => root.id.contains(...updatedIds) )
+                            .where( ({root}) => root.id.in(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
 
                             const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
@@ -1289,9 +1252,6 @@ function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{
 
 
 export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any>  > {
-    // __type: 'Scalar'
-    // __definition: PropertyType | null
-    // #cachedDefinition: PropertyType<any> | null = null
 
     readonly declaredDefinition?: PropertyType<any> | null
     protected expressionOrDataset: RawExpression<T>
@@ -1332,19 +1292,65 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         }
         return new Scalar(args[0], NumberNotNullType)
     }
+
+    isNull(): Scalar<BooleanNotNullType, any> {
+        return new IsNullOperator(this).toScalar()
+    }
+
+    isNotNull(): Scalar<BooleanNotNullType, any> {
+        return new IsNotNullOperator(this).toScalar()
+    }
+
+    looseEquals(rightOperand: any | DScalar<any, any>): Scalar<BooleanNotNullType, any> {
+        if(rightOperand === null || rightOperand === undefined){
+            return this.isNull()
+        } else if(rightOperand instanceof DScalar){
+            let d = rightOperand
+            if(d.isArray){
+                return this.in(rightOperand)
+            }
+        }
+        return this.equals(rightOperand)
+    }
+
+    looseNotEquals(rightOperand: any | DScalar<any, any>): Scalar<BooleanNotNullType, any> {
+        if(rightOperand === null || rightOperand === undefined){
+            return this.isNotNull()
+        } else if(rightOperand instanceof DScalar){
+            let d = rightOperand
+            if(d.isArray){
+                return this.notIn(rightOperand)
+            }
+        }
+        return this.notEquals(rightOperand)
+    }
     
     equals(rightOperand: any): Scalar<BooleanNotNullType, any> {
         return new EqualOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+    }
+
+    notEquals(rightOperand: any): Scalar<BooleanNotNullType, any> {
+        return new NotEqualOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     like(rightOperand: any): Scalar<BooleanNotNullType, any> {
         return new LikeOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
-    contains(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
+    notLike(rightOperand: any): Scalar<BooleanNotNullType, any> {
+        return new NotLikeOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+    }
+
+    in(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
         const rights = rightOperands.length === 1 && Array.isArray(rightOperands[0]) ? rightOperands[0]: rightOperands
 
-        return new ContainOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
+        return new InOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
+    }
+
+    notIn(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
+        const rights = rightOperands.length === 1 && Array.isArray(rightOperands[0]) ? rightOperands[0]: rightOperands
+
+        return new NotInOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
     }
 
     greaterThan(rightOperand: any): Scalar<BooleanNotNullType, any>{
@@ -1370,7 +1376,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     notBetween(rightOperand1: any, rightOperand2: any[]): Scalar<BooleanNotNullType, any> {
         return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
-
 
     // private toRealRaw() {
     //     return this.expressionOrDataset
@@ -1549,10 +1554,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return this.#calculatedRaw
     }
 
-    // asColumn<Name extends string>(propName: Name): Column<Name, T> {
-    //     return new Column(propName, this.expressionOrDataset, this.declaredDefinition, this.context)
-    // }
-
     toScalar<C extends Scalar<T, Value>>(this: C): C{
         return this
     }
@@ -1575,10 +1576,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                     root: currentScalar
                 }).execute().withOptions(executionOptions)
 
-                // if(this.options.failIfNone && (!result[0].root || (Array.isArray(result[0].root) && result[0].root.length === 0) ) ){
-                //     throw new Error('The query result is empty')
-                // }
-
                 return result[0].root as Promise<T extends PropertyType<infer D>? D: never>
             }
         )
@@ -1587,7 +1584,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
 export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, any>> extends Scalar< isArray extends true? ArrayType< ReturnType<DS["schema"]>>: ObjectType< ReturnType<DS["schema"]> >, DS> {
     
-    #isArray: boolean
+    readonly isArray: boolean
 
     constructor(
             dataset: Dataset<any, any, any, any> | 
@@ -1610,7 +1607,7 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
                         }
                     }) as RawExpression<any>
                     , null, context)
-            this.#isArray = isArray
+            this.isArray = isArray
         }
     
     count(this: DScalar<isArray, DS>): Scalar<NumberNotNullType, any> {
@@ -1631,28 +1628,6 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
         })
     }
 }
-
-// export class Column<Name extends string, T extends PropertyType<any>> extends Scalar<T>{
-//     alias: Name
-//     // scalarable: Scalarable<T> | Promise<Scalarable<T>>
-
-//     constructor(alias: Name, expressionOrDataset: RawExpression, 
-//         definition?: T | (new (...args: any[]) => T) | null, context?: DatabaseContext<any> | null){
-//         super(expressionOrDataset, definition, context)
-//         this.alias = alias
-//         // this.scalarable = scalarable
-//     }
-
-//     value(): { [key in Name]: Scalar<T> } {
-//         const key = this.alias
-//         //@ts-ignore
-//         return { [key]: new Scalar( this.expressionOrDataset, this.declaredDefinition, this.context) }
-//     }
-
-//     clone(): Column<Name, T> {
-//         return new Column(this.alias, this.expressionOrDataset, this.declaredDefinition, this.context)
-//     }
-// }
 
 export function resolveValueIntoScalar(value: any){
     if( value === null){
@@ -1728,8 +1703,6 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     let operator: AssertionOperator
                     if(rightOperatorEx instanceof AssertionOperator){
                         operator = rightOperatorEx
-                    }else if( Array.isArray(rightOperatorEx) ){
-                        operator = new ContainOperator(leftOperator, ...rightOperatorEx.map(r => resolver(r) ))
                     } else if(rightOperatorEx === null){
                         operator = new IsNullOperator(leftOperator)
                     } else {
