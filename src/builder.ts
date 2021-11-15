@@ -1596,9 +1596,9 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return this.#calculatedRaw
     }
 
-    toScalar<C extends Scalar<T, Value>>(this: C): C{
-        return this
-    }
+    // toScalar<C extends Scalar<T, Value>>(this: C): C{
+    //     return this
+    // }
 
     execute(this: Scalar<T, Value>, context?: DatabaseContext<any>)
     : DBQueryRunner<T extends PropertyType<infer D>? D: any, false> 
@@ -1626,7 +1626,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
 export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, any>> extends Scalar< isArray extends true? ArrayType< ReturnType<DS["schema"]>>: ObjectType< ReturnType<DS["schema"]> >, DS> {
     
-    readonly isArray: boolean
+    #isArray: boolean
 
     constructor(
             dataset: Dataset<any, any, any, any> | 
@@ -1642,16 +1642,20 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
                         } else {
                             resolved = dataset
                         }
-                        if(isArray){
+                        if(this.isArray){
                             return resolved.toScalarWithType( (ds) => new ArrayType(ds.schema()) )
                         } else {
                             return resolved.toScalarWithType( (ds) => new ObjectType(ds.schema()) )
                         }
                     }) as RawExpression<any>
                     , null, context)
-            this.isArray = isArray
+            this.#isArray = isArray
         }
     
+    get isArray(){
+        return this.#isArray
+    }
+
     count(this: DScalar<isArray, DS>): Scalar<NumberNotNullType, any> {
         return this.transform( (value, ctx)=> {
             if(value instanceof Dataset){
@@ -1664,10 +1668,15 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
     exists(this: DScalar<isArray, DS>): Scalar<BooleanNotNullType, any> {
         return this.transform( (value, ctx)=> {
             if(value instanceof Dataset){
-                return ctx.op.Exists(value).toScalar()
+                return ctx.op.Exists(value)
             }
             throw new Error('count is only applicable to Dataset.')
         })
+    }
+
+    toScalar<isArrayValue extends boolean>(this: DScalar<isArrayValue, DS>, isArray: isArrayValue): DScalar<isArrayValue, DS>{
+        this.#isArray = isArray
+        return this as DScalar<isArrayValue, DS>
     }
 }
 

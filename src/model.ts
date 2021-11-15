@@ -199,7 +199,7 @@ export abstract class Model {
                 let parentColumn = parent.getFieldProperty(parentKey)
                 let throughModel = context.getRepository(throughModelType)
                 let throughDatasource = throughModel.datasource('through')
-    
+
                 let dataset = relatedModel.dataset((root: SelectorMap<ExtractSchemaFromModelType<RootModelType>>) => {
                     let resolved
                     if(args instanceof Function){
@@ -207,13 +207,15 @@ export abstract class Model {
                     } else {
                         resolved = args
                     }
-                    if(resolved?.where instanceof Function){
-                        let oldWhere = resolved.where
-                        resolved.where = (map) => {
-                            return oldWhere({...map, through: throughDatasource.selectorMap})
+                    let newResolved = {...resolved}
+
+                    if(newResolved?.where instanceof Function){
+                        let oldWhere = newResolved.where
+                        newResolved.where = (map) => {
+                            return oldWhere({...map, through: throughDatasource.selectorMap })
                         }
                     }
-                    return resolved as SingleSourceArg<ExtractSchemaFromModelType<RootModelType>>
+                    return newResolved as SingleSourceArg<ExtractSchemaFromModelType<RootModelType>>
                 })
                 dataset.innerJoin(throughDatasource, 
                     ({And, through, root}) => 

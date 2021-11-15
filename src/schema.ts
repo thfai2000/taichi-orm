@@ -405,18 +405,9 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }else{
             const cProp = prop
             let c = (args?: ARG) => {
-
                 const subquery: S = cProp.compute.fn.call(cProp, this, args)
-
-                // let col = new Scalar((context: DatabaseContext<any>) => {
-                //     // console.log('getComputeProperty -> ', name, args)
-                //     const subquery: S | Promise<S > = cProp.compute.fn.call(cProp, context, this, args)
-                //     return subquery
-                // }, null) as S
-
                 return subquery
             }
-
             return c
         }
     }

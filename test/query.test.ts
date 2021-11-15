@@ -28,11 +28,11 @@ let shopData = [
 ]
 
 let productData = [
-  { id: 1, name: 'Product 1a', shopId: 1},
-  { id: 2, name: 'Product 1b', shopId: 1},
-  { id: 3, name: 'Product 2a', shopId: 2},
-  { id: 4, name: 'Product 2b', shopId: 2},
-  { id: 5, name: 'Product 2b', shopId: 2}
+  { id: 1, name: 'Product 1a', shopId: 1, price: null, createdAt: null, isActive: null},
+  { id: 2, name: 'Product 1b', shopId: 1, price: null, createdAt: null, isActive: null},
+  { id: 3, name: 'Product 2a', shopId: 2, price: null, createdAt: null, isActive: null},
+  { id: 4, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null},
+  { id: 5, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null}
 ]
 
 let colorData = [
@@ -115,8 +115,10 @@ class Product extends Model{
     mainColor = Product.compute<typeof Product, ModelObjectRecord<typeof Color> >(
       (parent): any => {
         return parent.selectorMap.colors({
-          where: ({through}) => through.type.equals('main')
-        })
+          where: ({through}) => {
+            return through.type.equals('main')
+          }
+        }).toScalar(false)
     })
 }
 
@@ -229,9 +231,6 @@ describe('SelectProps - Computed Fields using Standard Relations', () => {
         }
       }
     })
-
-
-
 
     expect(records).toHaveLength(shopData.length)
     expect(records).toEqual(
