@@ -24,16 +24,16 @@ export default class Product extends Model {
         ))
     })
 
-    abc = Product.compute((context, parent, arg?: number): CFReturn<number> => {
-        return context.scalar(`5 + ?`, [arg ?? 0], NumberNotNullType)
+    abc = Product.compute((parent, arg?: number): CFReturn<number> => {
+        return Scalar.number(`5 + ?`, [arg ?? 0])
     })
 
-    abc2 = Product.compute((context, parent, arg?: number): CFReturn<number> => {
-        return context.scalar(`5 + ? + ?`, [ parent.selectorMap.abc(), arg], NumberNotNullType)
+    abc2 = Product.compute((parent, arg?: number): CFReturn<number> => {
+        return Scalar.number(`5 + ? + ?`, [ parent.selectorMap.abc(), arg] )
     })
 
     shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
-        (context, parent, args?): any => {
+        (parent, args?): any => {
         return parent.selectorMap.shop(args).transform( ds => {
             const prevWhere = ds.getWhere()
 
@@ -42,7 +42,7 @@ export default class Product extends Model {
                         prevWhere? prevWhere: {},
                         parent.selectorMap.name.equals('hello')
                     )
-                ).toScalar()
+                ).toScalar(false)
         })
     })
 
