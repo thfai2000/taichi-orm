@@ -1,10 +1,11 @@
 import { Dataset, Scalar } from "../../../dist/builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { ORM } from "../../../dist"
+import { ORM, SelectorMap } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { NumberNotNullType, ObjectType } from "../../../dist/types"
+import { ExtractSchemaFromModelType } from "../../../dist/util"
 
 
 (async() => {
@@ -237,19 +238,20 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
 
     console.log('aaaa', shops)
 
+
     let allShopsX = await Shop.find({
+        // selectProps: ['products'],
         select: {
-            products: (P) => ({
+            products: {
                 select: {
-                    myABC: 5,
                     shop: {
                         select: {
                             products: {}
                         },
-                        where: ({root}) => root.name.equals('shop')
-                    }
+                        //where: root.name.equals('shop')
+                    },
                 }
-            })
+            }
         },
         where: ({root, Exists}) => Exists(
             new Dataset().from(
@@ -286,18 +288,16 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
     // Done: MODEL: CRUD...delete()
     // Done: failIfNone on query
     // Done: EXISTS, NOT, BETWEEN, 
-
+    // Done: manyToMany Relation helper function
 
     // TODO: fix all unit tests
     // TODO: give typescripts hint on dataset Preflight and Affected query
-    // TODO: manyToMany Relation helper function
     // TODO: minus, plus, divide, times, if case
     // TODO: having
     // TODO: SUM, MAX, MIN
-    // TODO: failIfNone on Mutation
     // TODO: create values ...if not null and no default, become compulsory 
     // TODO: add PropertType (ArrayType of primitive)
-    // Scalar.boolean, Scalar.string
+    // TODO: Scalar.boolean, Scalar.string
     // Discuss: Model.count
     // Discuss: addSelectProps
     // Discuss: think about migrate issue

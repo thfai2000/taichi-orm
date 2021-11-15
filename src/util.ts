@@ -4,6 +4,8 @@ import { Model } from "./model";
 import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
+export type NoArg = { a12321e383f2jfc23f2893rd2cin2f92323d: null}
+
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 

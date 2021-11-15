@@ -5,7 +5,7 @@ export { PropertyType as PropertyDefinition, FieldPropertyTypeDefinition as Fiel
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -138,31 +138,25 @@ export type ExtractValueTypeFromComputeProperty<T extends Property> =
 
 // type ActualSelectiveArg = { select: {[key:string]: any}} | {selectProps: string[] }
 type SelectiveArg = { select?: any, selectProps?: any }
-type SelectiveArgFunction = ((root: SelectorMap<Schema<any>>) => SelectiveArg )
+// type SelectiveArgFunction = ((root: SelectorMap<any>) => SingleSourceArg<any> )
 
 
-type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => SelectiveArg), any>>? S: never
+type ExtractSchemaFromSelectiveComputeProperty<T extends Property> = T extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => SingleSourceArg<any>), any>>? S: never
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, S extends Property> = 
-        
-        S extends ComputeProperty<ComputeFunction<any, SelectiveArg, any>>?
-            
-            (SSA extends SelectiveArgFunction? 
-                ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, ReturnType<SSA>>
-                :  (
-                    SSA extends SelectiveArg?
-                    ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromSelectiveComputeProperty<S>, SSA>
-                    : 
-                    ExtractValueTypeFromComputeProperty< S>
-                )
-            )
-        : ExtractValueTypeFromComputeProperty< S>
+        S extends FieldProperty<any>? never:
+        S extends ComputeProperty<ComputeFunction<any, NoArg, any>>? ExtractValueTypeFromComputeProperty< S>:
+        S extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+                (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
+            >
+        :ExtractValueTypeFromComputeProperty< S>
 
 
 type ExtractSpecificPropertyFromSchema<S extends Schema<any>, name extends string> = S extends Schema<infer PropertyDict>? (
         PropertyDict[name]
     ): never
                 
+
 export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA> = 
     ExtractValueTypeDictFromSchema_FieldsOnly<S>
     & (
@@ -174,11 +168,10 @@ export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA> =
     & (
         SSA extends {selectProps: string[]} ?
         {
-            [k in SSA["selectProps"][number]]: ConstructValueTypeDictBySelectiveArgAttribute<k, ExtractSpecificPropertyFromSchema<S, k>>
+            [k in SSA["selectProps"][number] & string]: ConstructValueTypeDictBySelectiveArgAttribute<{ select: {} }, ExtractSpecificPropertyFromSchema<S, k>>
         } : {}
     )
     
-
 
 export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA > = 
     ExtractFieldPropDictFromSchema<S>
@@ -193,8 +186,8 @@ export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA > =
     & (
         SSA extends {selectProps: string[]} ?
         {
-            [k in SSA["selectProps"][number]]: ScalarProperty<Scalar<PropertyType< 
-                ConstructValueTypeDictBySelectiveArgAttribute<k, ExtractSpecificPropertyFromSchema<S, k> >
+            [k in SSA["selectProps"][number] & string]: ScalarProperty<Scalar<PropertyType< 
+                ConstructValueTypeDictBySelectiveArgAttribute<{ select: {} }, ExtractSpecificPropertyFromSchema<S, k> >
             >, any>>
         } : {}
     )
