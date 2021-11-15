@@ -17,7 +17,6 @@ import { PrimaryKeyType,
 import { FieldProperty } from '../dist/schema'
 import { Scalar } from '../dist/builder'
 import { expand } from '../dist/util'
-      
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin', tel: null},
@@ -104,7 +103,6 @@ class Color extends Model {
   id = this.field(PrimaryKeyType)
   code = this.field(new StringNotNullType({length: 50}))
 }
-
 class Product extends Model{
     id= this.field(PrimaryKeyType)
     name = this.field(StringType)
@@ -161,17 +159,17 @@ const loadData = async (ctx: DatabaseContext<{
 
 describe('SelectProps - Custom Computed Fields with Where clause', () => {
 
-  test.only('Query computed field', async () => {
+  test('Query computed field', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
     let id = 2
     let record = await Shop.findOne({
-      selectProps: ['productCount'],
+      selectProps: ['productCount', 'products'],
       where: {
         id
       }
-    }).onSqlRun(console.log)
+    })
     expect(record.productCount).toBe( productData.filter(p => p.shopId === id).length)
   });
 })

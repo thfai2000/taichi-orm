@@ -148,13 +148,10 @@ export abstract class Model {
                 let parentColumn = parent.getFieldProperty( parentKey  )
     
                 let dataset = relatedModel.dataset(args)
-                let oldWhere = dataset.getWhere()
-                dataset.where( ({And, root}) => And(
-                    oldWhere!,
-                    parentColumn.equals( 
-                        (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
-                    )
+                dataset.andWhere( ({root}) => parentColumn.equals( 
+                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
                 ))
+
                 return dataset //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
             }, true)
 
@@ -175,12 +172,8 @@ export abstract class Model {
                 let parentColumn = parent.getFieldProperty( parentKey  )
 
                 let dataset = relatedModel.dataset(args)
-                let oldWhere = dataset.getWhere()
-                dataset.where( ({And, root}) => And(
-                    oldWhere!,
-                    parentColumn.equals(
-                        (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
-                    )
+                dataset.andWhere( ({root}) => parentColumn.equals( 
+                    (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
                 ))
 
                 return dataset

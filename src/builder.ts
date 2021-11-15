@@ -111,9 +111,9 @@ abstract class StatementBase {
 
 abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource extends Datasource<any, any> = Datasource<any, any>>  extends StatementBase {
 
-    protected fromItem: null | Datasource<Schema<any>, string> = null
+    protected fromItem: undefined | Datasource<Schema<any>, string> = undefined
     protected joinItems:  Array<{type: 'inner' | 'left' | 'right', source: Datasource<Schema<any>, string>, expression: Expression<any, any>}> = []
-    protected whereRawItem: null |  Expression<any, any> = null
+    protected whereRawItem: undefined |  Expression<any, any> = undefined
 
     protected getSelectorMap(): SourcePropMap {
         let sources = this.joinItems.map(item => item.source)
@@ -133,7 +133,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
     getFrom(){
         return this.fromItem
     }
-    getWhere(): Expression<any, any> | null{
+    getWhere(): Expression<any, any> | undefined{
         return this.whereRawItem
     }
 
@@ -406,6 +406,17 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     where<Y extends SourcePropMap & SQLKeywords< SourceProps, SourcePropMap >  >(expression: Expression< SourceProps, Y>): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
         return this.baseWhere(expression) as any
+    }
+
+    andWhere<Y extends SourcePropMap & SQLKeywords< SourceProps, SourcePropMap >  >(expression: Expression< SourceProps, Y>): Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>{
+        let prevWhere = this.getWhere()
+        if(prevWhere === undefined){
+            return this.baseWhere(expression) as any
+        } else {
+            const prev = prevWhere
+            const newExpression: ExpressionFunc< SourceProps, {}> = ({And}) =>  And(prev, expression) 
+            return this.baseWhere( newExpression ) as any
+        }
     }
 
     from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
@@ -751,7 +762,7 @@ export class InsertStatement<T extends TableSchema<{
         
         let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
         let selectorMap = {}
-        let resolver = makeExpressionResolver(selectorMap, null, [])
+        let resolver = makeExpressionResolver(selectorMap, undefined, [])
         
         if(arrayOfkeyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
@@ -1683,7 +1694,7 @@ export function resolveValueIntoScalar(value: any){
 
 export type ExpressionResolver<Props, M> = (expression: Expression<Props, M>) => Scalar<any, any>
 
-export const makeExpressionResolver = function<Props, M>(dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >, fromSource?: Datasource<any, any> | null, sources?: Datasource<any, any>[]) {
+export const makeExpressionResolver = function<Props, M>(dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >, fromSource?: Datasource<any, any>, sources?: Datasource<any, any>[]) {
 
     const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M>): Scalar<any, any> => {
         let value
