@@ -258,13 +258,14 @@ describe('SelectProps - Computed Fields using Standard Relations', () => {
 
 describe('Select - Simple Query', () => {
 
-  test('Select - computed fields + Query by object filter', async () => {
+  test('Mixed Select + SelectProps + Query by object filter', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
 
     let id = 2
     let record = await Shop.findOne({
+      selectProps: ['productCount', 'hasProductsAsync'],
       select: {
         products: {}
       },
@@ -281,24 +282,9 @@ describe('Select - Simple Query', () => {
     }))
   })
 
-  test('Select - Query with limit', async () => {
-    let ctx = orm.getContext({tablePrefix: tablePrefix()})
-    await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
-    let limit = 2
-    let records = await Shop.find({
-      where: ({root}) => root.id.greaterThan(2),
-      limit
-    })
+  
 
-    expect(records).toHaveLength(limit)
-  });
-
-})
-
-describe('Select - With Arguments', () => {
-
-  test('Mixed Select + SelectProps', async () => {
+  test('Mixed Select + SelectProps (With Multi Level)', async () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
@@ -335,6 +321,20 @@ describe('Select - With Arguments', () => {
     ))
 
   });
+
+  test('Select - Query with limit', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let limit = 2
+    let records = await Shop.find({
+      where: ({root}) => root.id.greaterThan(2),
+      limit
+    })
+
+    expect(records).toHaveLength(limit)
+  });
+
 })
 
 describe('Select - Use Query Arguments', () => {
@@ -347,7 +347,7 @@ describe('Select - Use Query Arguments', () => {
     let expectedCount = 3
     let records = await Shop.find({
       select: {
-        hasEnoughProducts: 5
+        hasEnoughProducts: expectedCount
       }
     })
 

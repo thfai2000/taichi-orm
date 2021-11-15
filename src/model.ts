@@ -351,6 +351,11 @@ export class ModelRepository<MT extends typeof Model>{
         } else {
             dataset.andSelect(props)
         }
+
+        if(resolvedArgs?.limit){
+            dataset.limit(resolvedArgs.limit)
+        }
+        
         return dataset as unknown as ConstructDatasetBySelectiveArg<MT, F>
     }
 

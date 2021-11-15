@@ -462,8 +462,9 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
 
     get op(): SQLKeywords<{}, any> {
-        let f = makeExpressionResolver<{}, any>(this.op)
-        return constructSqlKeywords(f)
+        let o = {}
+        let f = makeExpressionResolver<{}, any>(o)
+        return Object.assign(o, constructSqlKeywords(f))
     }
     
     update = () => {
