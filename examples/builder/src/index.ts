@@ -242,16 +242,16 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
     let allShopsX = await Shop.find({
         // selectProps: ['products'],
         select: {
-            products: {
+            products: (root) => ({
                 select: {
                     shop: {
                         select: {
                             products: {}
                         },
-                        //where: root.name.equals('shop')
+                        where: root.name.equals('shop')
                     },
                 }
-            }
+            })
         },
         where: ({root, Exists}) => Exists(
             new Dataset().from(

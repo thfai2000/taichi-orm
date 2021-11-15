@@ -1,5 +1,5 @@
 import {Model, ModelObjectRecord} from '../dist/model'
-import {CFReturn, DatabaseContext, ORM} from '../dist'
+import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
@@ -16,7 +16,7 @@ import { PrimaryKeyType,
       } from '../dist/types'
 import { FieldProperty } from '../dist/schema'
 import { Scalar } from '../dist/builder'
-import { expand } from '../dist/util'
+import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/util'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin', tel: null},

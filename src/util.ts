@@ -4,7 +4,7 @@ import { Model } from "./model";
 import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
-export type NoArg = { a12321e383f2jfc23f2893rd2cin2f92323d: null}
+export type NoArg = { it_is_a_unique_field_indicates_no_arg: null}
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -97,7 +97,6 @@ export type ExtractFieldPropDictFromModelType<MT extends typeof Model> = Extract
 
 
 export type ExtractFieldPropNameFromModelType<MT extends typeof Model> = ExtractFieldPropNameFromSchema< ExtractSchemaFromModelType<MT> >
-
 export type ExtractFieldPropNameFromSchema<S extends Schema<any>> = S extends Schema<infer P>? (keyof ExtractFieldPropDictFromDict<P>) & string: never
 
 
@@ -146,7 +145,7 @@ Pick<E, ({
 export type ExtractComputePropWithArgDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>? 
-            (Arg extends unknown? never: key)
+            (Arg extends NoArg? never: key)
                 : never
 })[keyof E]>
 
