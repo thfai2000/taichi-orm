@@ -25,7 +25,7 @@
     "knex": "^0.95.5",
     "lodash": "^4.17.21",
     "nodemon": "^2.0.12",
-    "sqlite3": "^5.0.2"
+    "sqlite3": "^4.2.0"
   },
   "devDependencies": {
     "@types/knex": "^0.16.1",
