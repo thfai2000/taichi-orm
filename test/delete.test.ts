@@ -1,50 +1,56 @@
-import {builder, raw, startTransaction, configure, Schema, Entity, Types, models} from '../dist'
-import {findIndex, snakeCase} from 'lodash'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
 
-      static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('location', new Types.String({nullable: false, length: 255}))
-      }
-    }
-
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
-
-    await configure({
-        models: {Shop},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
+class Shop extends Model {
+  id= this.field(PrimaryKeyType)
+  name =this.field(StringNotNullType)
+  location = this.field(new StringNotNullType({length:255}))
+  products = Shop.hasMany(Product, 'shopId')
 }
 
-const clearDatabase = () => {
-
+class Product extends Model{
+  id= this.field(PrimaryKeyType)
+  name = this.field(StringType)
+  isActive = this.field(BooleanType)
+  price = this.field(new DecimalType({precision: 7, scale: 2}))
+  createdAt = this.field(new DateTimeType({precision: 6}))
+  shopId = this.field(NumberType)
+  shop = Product.belongsTo(Shop, 'shopId')
 }
 
-beforeEach( async () => {
-    await initializeDatabase();
-});
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
 
-afterEach(() => {
-    return clearDatabase();
-});
+let orm = new ORM({
+  models: {Shop, Product},
+  entityNameToTableName: (className: string) => snakeCase(className),
+  propNameTofieldName: (propName: string) => snakeCase(propName),
+  knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
+
 
 describe('Test Delete - No transaction', () => {
 
   test('Delete One', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -55,11 +61,10 @@ describe('Test Delete - No transaction', () => {
     ]
 
     let findId = 5
+    let expectedShopData = shopData.filter(s => s.id !== findId)
 
-    let expectedShopData = shopData = shopData.filter(s => s.id !== findId)
-
-    await models.Shop.createEach(shopData)
-    let record2 = await models.Shop.deleteOne({}, {
+    await Shop.createEach(shopData)
+    let record2 = await Shop.deleteOne({
         id: findId
     })
     
@@ -68,7 +73,7 @@ describe('Test Delete - No transaction', () => {
     }))
 
     //try to find it again, to prove it is commit
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toHaveLength(expectedShopData.length)
     expect(found).toEqual(expect.arrayContaining(expectedShopData.map(shop => expect.objectContaining({
       ...shop
@@ -77,6 +82,9 @@ describe('Test Delete - No transaction', () => {
   })
 
   test('Delete One - Not found', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -86,15 +94,13 @@ describe('Test Delete - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    await models.Shop.createEach(shopData)
-    let record = await models.Shop.deleteOne({}, {
+    await Shop.createEach(shopData)
+    expect( async() => await Shop.deleteOne({
         id: 10
-    })
-    
-    expect(record).toEqual(null)
+    })).rejects.toThrow('getPreflightOne finds Zero or Many Rows')
 
     //try to find it again, to prove it is commit
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toHaveLength(shopData.length)
     expect(found).toEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
       ...shop
@@ -103,6 +109,10 @@ describe('Test Delete - No transaction', () => {
   })
 
   test('Delete Many', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
       { id: 2, name: 'Shop 2', location: 'Yuen Long'},
@@ -117,9 +127,9 @@ describe('Test Delete - No transaction', () => {
     let expectedDeleted = shopData.filter(s => s.location === findLocation)
     let expectedRemaining = shopData.filter(s => s.location !== findLocation)
 
-    await models.Shop.createEach(shopData)
+    await Shop.createEach(shopData)
 
-    let deleted = await models.Shop.delete({}, {
+    let deleted = await Shop.delete({
         location: findLocation
     })
 
@@ -129,20 +139,16 @@ describe('Test Delete - No transaction', () => {
     })))
 
     // try to find it again, to prove it is committed
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toHaveLength(expectedRemaining.length)
     expect(found).toEqual(expect.arrayContaining(expectedRemaining.map(shop => expect.objectContaining({
       ...shop
     }))))
 
   })
-
-  //TODO: update One but found more than one record, throw error
-  //TODO: transaction update success updateOne
-  //TODO: transaction update fail updateOne
-  //TODO: transaction update success updateMany
-  //TODO: transaction update fail updateMany
+  
+  //TODO: delete One but found more than one record, throw error
 
 })
 
-
+//TODO: transaction again

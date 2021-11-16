@@ -1,5 +1,5 @@
 import {omit} from 'lodash'
-import { Entity } from '../dist';
+import { Model } from '../dist';
 type SimpleObject = {
   [key: string]: any
 }
@@ -13,7 +13,7 @@ export const clearSysFields = (o: any): any => {
     return o.map( i => clearSysFields(i))
   } else if (
       (o instanceof Object && o.constructor === objectConstructor) ||
-      o instanceof Entity
+      o instanceof Model
     ){
     
       let item: SimpleObject = omit(o, ['uuid'])

@@ -1,50 +1,56 @@
-import {builder, raw, startTransaction, configure, Schema, Entity, Types, models} from '../dist/'
-import {snakeCase} from 'lodash'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
 
-      static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('location', new Types.String({nullable: false, length: 255}))
-      }
-    }
-
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
-
-    await configure({
-        models: {Shop},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
+class Shop extends Model {
+  id= this.field(PrimaryKeyType)
+  name =this.field(StringNotNullType)
+  location = this.field(new StringNotNullType({length:255}))
+  products = Shop.hasMany(Product, 'shopId')
 }
 
-const clearDatabase = () => {
-
+class Product extends Model{
+  id= this.field(PrimaryKeyType)
+  name = this.field(StringType)
+  isActive = this.field(BooleanType)
+  price = this.field(new DecimalType({precision: 7, scale: 2}))
+  createdAt = this.field(new DateTimeType({precision: 6}))
+  shopId = this.field(NumberType)
+  shop = Product.belongsTo(Shop, 'shopId')
 }
 
-beforeEach( async () => {
-    await initializeDatabase();
-});
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
 
-afterEach(() => {
-    return clearDatabase();
-});
+let orm = new ORM({
+  models: {Shop, Product},
+  entityNameToTableName: (className: string) => snakeCase(className),
+  propNameTofieldName: (propName: string) => snakeCase(propName),
+  knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
+
 
 describe('Test Update - No transaction', () => {
 
   test('Update One', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -64,8 +70,8 @@ describe('Test Update - No transaction', () => {
       }
     })
 
-    await models.Shop.createEach(shopData)
-    let record2 = await models.Shop.updateOne({location: newLocation}, {
+    await Shop.createEach(shopData)
+    let record2 = await Shop.updateOne({location: newLocation}, {
         id: findId
     })
     
@@ -75,7 +81,7 @@ describe('Test Update - No transaction', () => {
     }))
 
     //try to find it again, to prove it is commit
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toEqual(expect.arrayContaining(expectedShopData.map(shop => expect.objectContaining({
       ...shop
     }))))
@@ -83,6 +89,9 @@ describe('Test Update - No transaction', () => {
   })
 
   test('Update One - Not found', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -92,23 +101,21 @@ describe('Test Update - No transaction', () => {
       { id: 5, name: 'Shop 5', location: 'Tsuen Wan'}
     ]
 
-    await models.Shop.createEach(shopData)
-    let record = await models.Shop.updateOne({location: 'Nowhere'}, {
+    await Shop.createEach(shopData)
+
+    let t = async() => await Shop.updateOne({location: 'Nowhere'}, {
         id: 10
     })
     
-    // expect(record).toEqual(null)
-
-    // //try to find it again, to prove it is commit
-    // // try to find it again, to prove it is committed
-    // let found = await models.Shop.find()
-    // expect(found).toEqual(expect.arrayContaining(shopData.map(shop => expect.objectContaining({
-    //   ...shop
-    // }))))
+    await expect(t()).rejects.toThrow('getAffectedOne finds Zero or Many Rows')
 
   })
 
   test('Update Many', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
+
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
       { id: 2, name: 'Shop 2', location: 'Yuen Long'},
@@ -127,10 +134,10 @@ describe('Test Update - No transaction', () => {
       }
     })
 
-    await models.Shop.createEach(shopData)
+    await Shop.createEach(shopData)
 
 
-    let updated = await models.Shop.update({location: newLocation}, {
+    let updated = await Shop.update({location: newLocation}, {
         location: findLocation
     })
 
@@ -140,19 +147,18 @@ describe('Test Update - No transaction', () => {
     })))
 
     // try to find it again, to prove it is committed
-    let found = await models.Shop.find()
+    let found = await Shop.find()
     expect(found).toEqual(expect.arrayContaining(expectedShopData.map(shop => expect.objectContaining({
       ...shop
     }))))
 
   })
 
+
   //TODO: update One but found more than one record, throw error
-  //TODO: transaction update success updateOne
-  //TODO: transaction update fail updateOne
-  //TODO: transaction update success updateMany
-  //TODO: transaction update fail updateMany
 
 })
+
+//TODO: update with transaction
 
 

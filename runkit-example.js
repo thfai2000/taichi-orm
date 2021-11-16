@@ -9,9 +9,9 @@ class Shop extends Entity{
     schema.prop('name', new Types.String(true, 100))
     schema.prop('location', new Types.String(true, 255))
     schema.computedProp('products', new Types.ArrayOf(Product), Relations.has(Product, 'shopId') )
-    schema.computedProp('productCount', new Types.Number(),  (shop, applyFilters) => {
+    schema.computedProp('productCount', new Types.Number(),  (shop) => {
         let p = Product.selector()
-        return applyFilters( builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId])), p) 
+        return builder().select(raw('COUNT(*)') ).from(p.source).where( raw('?? = ??', [shop._.id, p._.shopId]))
     })
   }
 }

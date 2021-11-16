@@ -22,7 +22,8 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "prepare": "npm run build",
-    "dev": "npm install && rm -rf dist && rm -rf dist-test && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
+    "dev": "npm install && rm -rf dist && rm -rf dist-test && tsc --project tsconfig.json --watch",
+    "dev-test": "npm install && rm -rf dist && rm -rf dist-test && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
     "build": "rm -rf dist && tsc --project tsconfig.json",
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
@@ -57,12 +58,11 @@
     "mysql2": "^2.2.5",
     "nodemon": "^2.0.7",
     "pg": "^8.6.0",
-    "reflect-metadata": "^0.1.13",
-    "sqlite3": "^5.0.2",
-    "typescript": "^4.2.4"
+    "sqlite3": "^4.2.0",
+    "typescript": "^4.4.4",
+    "uuid": "^8.3.2"
   },
   "dependencies": {
-    "knex": "^0.95.5",
-    "uuid": "^3.4.0"
+    "knex": "^0.95.5"
   }
 }

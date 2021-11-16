@@ -1,83 +1,71 @@
-import {builder, raw, configure, Schema, Entity, Types, models, globalContext} from '../dist/'
-import {snakeCase, omit} from 'lodash'
+import {Model} from '../dist/model'
+import {ORM} from '../dist'
+import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-// import {clearSysFields} from './util'
+import { PrimaryKeyType, 
+        StringNotNullType, 
+        StringType,
+        BooleanType,
+        BooleanNotNullType,
+        DecimalType,
+        DecimalNotNullType,
+        DateTimeType,
+        DateTimeNotNullType,
+        NumberType,
+        NumberNotNullType
+      } from '../dist/types'
+      
 
-const initializeDatabase = async () => {
-    // configure the orm
-    class Shop extends Entity{
-
-      static register(schema: Schema){
-          schema.prop('location', new Types.String({nullable: false, length: 255}))
-      }
-    }
-    
-    class Product extends Entity{
-    
-      static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: true, length: 255}))
-          schema.prop('isActive', new Types.Boolean())
-          schema.prop('price', new Types.Decimal({precision: 7, scale: 2}))
-          schema.prop('createdAt', new Types.DateTime({precision: 6}))
-          schema.prop('shopId', new Types.Number())
-      }
-    }
-
-    class StrictProduct extends Entity{
-    
-      static register(schema: Schema){
-          schema.prop('name', new Types.String({nullable: false, length: 255}))
-          schema.prop('isActive', new Types.Boolean({nullable: false}))
-          schema.prop('price', new Types.Decimal({nullable: false, precision: 5, scale: 2}))
-          schema.prop('createdAt', new Types.DateTime({nullable: false}))
-          schema.prop('shopId', new Types.Number({nullable: false}))
-      }
-    }
-
-
-    let tablePrefix = `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
-
-    // @ts-ignore
-    let config = JSON.parse(process.env.ENVIRONMENT)
-
-    await configure({
-        models: {Shop, Product, StrictProduct},
-        createModels: true,
-        enableUuid: config.client.startsWith('sqlite'),
-        entityNameToTableName: (className: string) => snakeCase(className),
-        propNameTofieldName: (propName: string) => snakeCase(propName),
-        knexConfig: config,
-        globalContext: {
-          tablePrefix
-        }
-    })
+class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    location = this.field(new StringNotNullType({length:255}))
+    products = Shop.hasMany(Product, 'shopId')
 }
 
-const clearDatabase = () => {
-
+class Product extends Model{
+    id= this.field(PrimaryKeyType)
+    name = this.field(StringType)
+    isActive = this.field(BooleanType)
+    price = this.field(new DecimalType({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeType({precision: 6}))
+    shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId')
 }
 
-beforeEach( async () => {
-    await initializeDatabase();
-});
+class StrictProduct extends Model{
+    id= this.field(PrimaryKeyType)
+    name = this.field(StringNotNullType)
+    isActive = this.field(BooleanNotNullType)
+    price = this.field(new DecimalNotNullType({precision: 7, scale: 2}))
+    createdAt = this.field(new DateTimeNotNullType({precision: 6}))
+    shopId = this.field(NumberNotNullType)
+}
 
-afterEach(() => {
-    return clearDatabase();
-});
+// @ts-ignore
+let config = JSON.parse(process.env.ENVIRONMENT)
 
-// test('test jest', () => {
-//   expect([1,2,3]).toEqual([1,3,2]);
+let orm = new ORM({
+    models: {Shop, Product, StrictProduct},
+    entityNameToTableName: (className: string) => snakeCase(className),
+    propNameTofieldName: (propName: string) => snakeCase(propName),
+    knexConfig: config
+})
+let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
-// })
 
 describe('Basic Read and Write', () => {
+
   test('Create and Find Shop', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Shop, Product} = ctx.models
 
     let expectedShop1 = {
       id: 1,
       location: 'Shatin'
     }
-    let shop1 = await models.Shop.createOne({
+    let shop1 = await Shop.createOne({
       ...omit(expectedShop1, ['id'])
     })
     expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
@@ -86,7 +74,7 @@ describe('Basic Read and Write', () => {
       id: 2,
       location: 'Yuen Long'
     }
-    let shop2 = await models.Shop.createOne({
+    let shop2 = await Shop.createOne({
       ...omit(expectedShop2, ['id'])
     })
     expect(shop2).toMatchObject(expect.objectContaining(expectedShop2))
@@ -96,7 +84,7 @@ describe('Basic Read and Write', () => {
       name: 'Product 1',
       shopId: shop1.id
     }
-    let product1 = await models.Product.createOne({
+    let product1 = await Product.createOne({
       ...omit(expectedProduct1, ['id'])
     })
 
@@ -107,7 +95,7 @@ describe('Basic Read and Write', () => {
       name: 'Product 2',
       shopId: shop1.id
     }
-    let product2 = await models.Product.createOne({
+    let product2 = await Product.createOne({
       ...omit(expectedProduct2, ['id'])
     })
 
@@ -118,25 +106,39 @@ describe('Basic Read and Write', () => {
       name: 'Product 3',
       shopId: shop2.id
     }
-    let product3 = await models.Product.createOne({
+    let product3 = await Product.createOne({
       ...omit(expectedProduct3, ['id'])
     })
 
     expect(product3).toMatchObject(expect.objectContaining(expectedProduct3))
 
-    let foundShop1ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop1.id})))
-    let foundShop1ByLocation = await models.Shop.findOne( (stmt, s) => stmt.where(s({location: expectedShop1.location})))
+    let foundShop1ById = await Shop.findOne({
+      where: {id: shop1.id}
+    })
+    let foundShop1ByLocation = await Shop.findOne({
+      where: {location: expectedShop1.location}
+    })
 
     expect(foundShop1ById).toMatchObject(expect.objectContaining(foundShop1ByLocation))
     expect(foundShop1ById).toMatchObject(expect.objectContaining(expectedShop1))
 
-    let foundShop2ById = await models.Shop.findOne( (stmt, s) => stmt.where(s({id: shop2.id})))
+    let foundShop2ById = await Shop.findOne({
+      where: {id: shop2.id}
+    })
     expect(foundShop2ById).toMatchObject(expect.objectContaining(expectedShop2))
 
-    let foundShopNotExists =  await models.Shop.findOne( (stmt, s) => stmt.where(s({id: 100000})))
-    expect(foundShopNotExists).toBeNull()
+    let foundShopNotExists = await Shop.find({
+      where: {id: 100000}
+    })
+    expect(foundShopNotExists).toStrictEqual([])
 
-    let foundAllShop = await models.Shop.find()
+    const cannotFindThrowError = async () => await Shop.findOne({
+      where: {id: 100000}
+    })
+
+    await expect(cannotFindThrowError()).rejects.toThrow('getFirstOne finds Zero or Many Rows')
+    
+    let foundAllShop = await Shop.find()
     expect(foundAllShop).toEqual(
       [
         expect.objectContaining(expectedShop1), 
@@ -144,14 +146,18 @@ describe('Basic Read and Write', () => {
       ] 
     )
 
-    let foundProductsByShopId1 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop1.id})) )
+    let foundProductsByShopId1 = await Product.find({
+      where: {shopId: shop1.id}
+    })
     expect(foundProductsByShopId1).toEqual( 
       [
         expect.objectContaining(expectedProduct1), 
         expect.objectContaining(expectedProduct2)
       ]
     )
-    let foundProductsByShopId2 = await models.Product.find( (stmt, s) => stmt.where(s({shopId: shop2.id})) )
+    let foundProductsByShopId2 = await Product.find({
+      where: {shopId: shop2.id}
+    })
     expect(foundProductsByShopId2).toEqual( [expect.objectContaining(expectedProduct3)] )
 
   });
@@ -161,6 +167,11 @@ describe('Basic Read and Write', () => {
 describe('Type Parsing', () => {
 
   test('Parsing Value', async () => {
+
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Product} = ctx.models
+
     let expectedProduct1 = {
       id: 1,
       name: 'My Product',
@@ -169,7 +180,7 @@ describe('Type Parsing', () => {
       createdAt: new Date(),
       shopId: 2
     }
-    let product1 = await models.Product.createOne({
+    let product1 = await Product.createOne({
       ...expectedProduct1
     })
 
@@ -179,6 +190,10 @@ describe('Type Parsing', () => {
 
   test('Parsing Null', async () => {
 
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await ctx.createModels()
+    let {Product} = ctx.models
+
     let expectedProduct2 = {
       id: 2,
       name: null,
@@ -187,7 +202,7 @@ describe('Type Parsing', () => {
       createdAt: null,
       shopId: null
     }
-    let product2 = await models.Product.createOne({
+    let product2 = await Product.createOne({
       ...expectedProduct2
     })
 
@@ -200,4 +215,3 @@ describe('Type Parsing', () => {
   // TODO: test over length of string
 
 })
-

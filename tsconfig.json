@@ -14,7 +14,8 @@
     "typeRoots": [
       "src/customTypings",
       "node_modules/@types"
-    ]
+    ],
+    "noErrorTruncation": true
   },
   "include": ["src"],
   "watchOptions": {
