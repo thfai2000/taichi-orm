@@ -295,3 +295,19 @@ export function isFunction(funcOrClass: any): funcOrClass is ((...args: any[]) =
   const propertyNames = Object.getOwnPropertyNames(funcOrClass);
   return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
 }
+
+export function isArrayOfStrings(arr: any[]): arr is string[] {
+    return arr.every(item => typeof item === 'string')
+}
+
+export function isScalarMap(obj: any): obj is { [key: string]: Scalar<any, any> } {
+    if(typeof obj === 'object'){
+        let keys = Object.keys(obj)
+        for (const key in keys) {
+            if( (obj[keys[key]] instanceof Scalar)){
+                return true
+            }
+        }
+    }
+    return false
+}

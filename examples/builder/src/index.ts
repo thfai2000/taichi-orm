@@ -44,7 +44,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
     
     let p = Product.datasource('product')
 
-    let myShopDS = new Dataset().from(s).selectProps("shop.id", "shop.name")
+    let myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
     console.log('sql1', builder.toString() )
@@ -106,7 +106,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
             //     myShop,
             //     ({myShop, product, shop, And}) => And( myShop.id.equals(product.id), product.myABC(5) )
             // )
-            .selectProps(
+            .select(
                 "shop.id",
                 "shop.name"
             )
@@ -116,7 +116,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
                     product.name.equals('hello')
                 )
             )
-            .select(
+            .andSelect(
                 ({shop, product}) => ({
                     ...shop.$allFields,
                     hour: shop.hour,
@@ -128,7 +128,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
                         select: {
                             // products: {}
                         }
-                    }).transform( ds => ds.selectProps('root.products').toScalarWithType(ds => new ObjectType(ds.schema())) ),
+                    }).transform( ds => ds.select('root.products').toScalarWithType(ds => new ObjectType(ds.schema())) ),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -167,7 +167,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
             hour: 5
         })
         // .select( ({myShop}) => myShop.$allFields)
-        .selectProps('name','myShop.id','myShop.products')
+        .select('name','myShop.id','myShop.products')
         // .toScalar(new ArrayType(Shop.schema))
         .execute().withOptions({
             onSqlRun: console.log
@@ -181,12 +181,12 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
             myShop.hour.equals(myShop.hour),
             myShop.hour.equals(myShop.hour)
         ))
-        .groupByProps('hour')
+        .groupBy('hour')
         .select(({myShop}) => ({
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
-            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).selectProps('id').limit(1).toScalarWithType( 
+            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).select('id').limit(1)]),
+            a: new Dataset().from(Shop.datasource('a')).select('id').limit(1).toScalarWithType( 
                 (ds) => new ObjectType(ds.schema()) 
             )
         }))
@@ -236,7 +236,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
         })
     })
 
-    console.log('aaaa', shops)
+    console.log('aaaa1', shops)
 
 
     let allShopsX = await Shop.find({
@@ -256,14 +256,13 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
         where: ({root, Exists}) => Exists(
             new Dataset().from(
                 Product.datasource('product')
-            ).where( ({product}) => root.id.equals(product.shopId) )
+            ).where( ({product}) => root.id.equals(product.shopId) ).select('id')
         ),
         offset: 0,
         limit: 5000
     })
 
-    console.log('aaaa', allShopsX[0])
-    console.timeEnd('simple')
+    console.log('aaaa2', allShopsX[0])
 
     // let s2 = Shop.dataset({
     //     select: {

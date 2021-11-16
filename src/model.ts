@@ -338,7 +338,7 @@ export class ModelRepository<MT extends typeof Model>{
         }
 
         if (resolvedArgs?.selectProps) {
-            dataset.selectProps(...(resolvedArgs.selectProps as any[]) )
+            dataset.select(...(resolvedArgs.selectProps as any[]) )
         }
 
         if (resolvedArgs?.select) {
