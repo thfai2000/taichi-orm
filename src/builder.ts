@@ -3,7 +3,7 @@ import { SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction,
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings } from "./util"
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -567,38 +567,34 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
     }
 
-    orderBy<S extends Array<Scalar<any, any>>, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
-        ((map: Y ) => S ) ):
+    orderBy<Q extends ( ((keyof SourceProps) | Scalar<any, any> ) | {column: ((keyof SourceProps)|Scalar<any, any>), order: 'asc' | 'desc'}   )[], 
+        Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: Q | 
+        ((map: Y ) => Q ) ):
         Dataset<
         ExistingSchema
         , 
         SourceProps, SourcePropMap, FromSource>;
 
-    orderBy<P extends keyof SourceProps>(...properties: P[]): 
-        Dataset<
-        ExistingSchema
-        , 
-        SourceProps, SourcePropMap, FromSource>;
+    // orderBy<P extends keyof SourceProps>(...properties: P[]): 
+    //     Dataset<
+    //     ExistingSchema
+    //     , 
+    //     SourceProps, SourcePropMap, FromSource>;
 
     orderBy(...args: any[]){
     
         if(args.length === 0 ){
             throw new Error('select must have at least one argument')
         }
-        if(args.length === 1 && (isScalarMap(args[0]) || args[0] instanceof Function) ){
+        let resolved = null
+        if(args.length === 1 && args[0] instanceof Function ){
             let named = args[0]
-
-            const result = this.func2ScalarArray(named)
-
-            this.#orderByItems = result
-            return this as any
-        } else if(isArrayOfStrings(args)){
-            let properties = args
-       
-            const dict = this.propNameArray2ScalarMap(properties as string[])
-            this.#orderByItems = Object.keys(dict).map(k => dict[k])
-            return this as any
+            //TODO
+            const resolved = this.func2ScalarArray(named)
         }
+        //TODO
+        this.#orderByItems = resolved
+        return this as any
     }
 
 

@@ -15,7 +15,6 @@ import { AndOperator, constructSqlKeywords, ExistsOperator, NotOperator, OrOpera
 
 export type CFReturn<D> = Scalar<PropertyType<D>, any>
 
-export type QueryOrderBy = ( (string| Scalar<any, any> ) | {column: (string|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
 export type SelectableProps<E> = {
     [key in keyof E]: Scalar<any, any>
@@ -25,8 +24,10 @@ export type SelectableProps<E> = {
 export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = {
     [key in keyof ExtractComputePropWithArgDictFromSchema<E>]:
         ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
-                Arg: never           
+                Arg: never
 }
+
+export type QueryOrderBy<S extends Schema<any>> = ( ((keyof ExtractComputePropDictFromSchema<S>) | Scalar<any, any> ) | {column: ((keyof ExtractComputePropDictFromSchema<S>)|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
 export type SingleSourceArg<S extends Schema<any> > = {
     select?: SingleSourceSelect<S>,
@@ -34,7 +35,7 @@ export type SingleSourceArg<S extends Schema<any> > = {
     where?: SingleSourceWhere<S>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy
+    orderBy?: QueryOrderBy<S>
 }
 
 export type SingleSourceWhere<S extends Schema<any> > = Expression< 
@@ -55,7 +56,7 @@ export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
     where?: TwoSourceWhere<S, S2>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy
+    orderBy?: QueryOrderBy<S>
 }
 
 export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 

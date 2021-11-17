@@ -354,6 +354,14 @@ export class ModelRepository<MT extends typeof Model>{
             dataset.andSelect(props)
         }
 
+        if(resolvedArgs?.orderBy){
+            dataset.orderBy(resolvedArgs.orderBy as any)
+        }
+
+        if(resolvedArgs?.offset){
+            dataset.offset(resolvedArgs.offset)
+        }
+
         if(resolvedArgs?.limit){
             dataset.limit(resolvedArgs.limit)
         }
