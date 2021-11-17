@@ -4,6 +4,8 @@ import { Model } from "./model";
 import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
+export type Undetermined = 'undetermined'
+
 export type NoArg = { it_is_a_unique_field_indicates_no_arg: null}
 
 // expands object types one level deep

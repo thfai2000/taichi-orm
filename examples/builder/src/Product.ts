@@ -3,6 +3,7 @@ import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
 import { CFReturn } from "../../../dist"
 import { Scalar } from "../../../dist/builder"
+import { Undetermined } from "../../../dist/util"
 
 
 export default class Product extends Model {
@@ -32,19 +33,27 @@ export default class Product extends Model {
         return Scalar.number(`5 + ? + ?`, [ parent.selectorMap.abc(), arg] )
     })
 
-    shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
-        (parent, args?): any => {
-        return parent.selectorMap.shop(args).transform( ds => {
-            const prevWhere = ds.getWhere()
+    // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
+    //     (parent, args?): any => {
+    //         return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+    //             const prevWhere = ds.getWhere()
+    //             return ds.andWhere( () => 
+    //                 parent.selectorMap.name.equals('hello')
+    //             ).toScalar(false)
+    //         })
+    //     }
+    // )
 
-            return ds.where( ({And}) => 
-                    And(
-                        prevWhere? prevWhere: {},
-                        parent.selectorMap.name.equals('hello')
-                    )
+    shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
+        (parent, args?): any => {
+
+            return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+                return ds.andWhere( () => 
+                    parent.selectorMap.name.equals('hello')
                 ).toScalar(false)
-        })
-    })
+            })
+        }
+    )
 
     // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
     //     return root.selectorMap().myShop().cast(StringType)

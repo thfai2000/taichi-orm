@@ -1,11 +1,13 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
 // import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
+
+
 
 export type DetermineDatasetFromModelType<MT extends typeof Model> =
     Dataset<
@@ -21,19 +23,32 @@ export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends Si
         }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
 
 //TODO: it is wrong to Scalar can transform into dataset without SSA, but sadly circular dependencies encountered
-export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
-            DScalar<true, 
-                // ArrayType< ParsableObjectTrait<
-                //     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-                // > >, DetermineDatasetFromModelType<MT>
-                DetermineDatasetFromModelType<MT>
-            >
-export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+            
+        SSA extends Undetermined? 
+        DScalar<true, 
+            DetermineDatasetFromModelType<MT>
+        >:
+        DScalar<true, 
+            // ArrayType< ParsableObjectTrait<
+            //     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
+            // >>
+            // DetermineDatasetFromModelType<MT>
+            ConstructDatasetBySelectiveArg<MT, SSA>
+        >
+
+export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+        
+        SSA extends Undetermined?
+        DScalar<false, 
+            DetermineDatasetFromModelType<MT>
+        >:
         DScalar<false, 
             // ObjectType< ParsableObjectTrait<
             // ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
             // > >, DetermineDatasetFromModelType<MT>
-            DetermineDatasetFromModelType<MT>
+            // DetermineDatasetFromModelType<MT>
+            ConstructDatasetBySelectiveArg<MT, SSA>
         >
         
 export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeof Model> = <MSA extends TwoSourceArg< ExtractSchemaFromModelType<MT>, ExtractSchemaFromModelType<MT2>>>(arg?: MSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>, through: SelectorMap<ExtractSchemaFromModelType<MT2>>) => MSA) ) => 
@@ -91,6 +106,22 @@ export abstract class Model {
     static compute(...args: any[])
     {
         return new ComputeProperty(new ComputeFunction(args[0]))
+    }
+
+
+
+    static computeModelObject<M extends typeof Model,
+            R extends typeof Model,
+            SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>
+        >(
+            this: M,
+            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<R>>) => SSA) ) => DScalar<false, ConstructDatasetBySelectiveArg<R, SSA>>
+        ) 
+            : ComputeProperty< 
+                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >
+            >
+    {
+        return new ComputeProperty(new ComputeFunction(compute)) as any
     }
 
     hook(newHook: Hook){

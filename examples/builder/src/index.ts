@@ -120,30 +120,16 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
                 ({shop, product}) => ({
                     ...shop.$allFields,
                     hour: shop.hour,
-                    // nini: product.shopId.equals(10),
-                    // DDD: product.ddd,
-                    // a: product.abc(2),
                     b: product.abc2(2),
-                    c: product.shopWithName({
-                        select: {
-                            // products: {}
-                        }
-                    }).transform( ds => ds.select('root.products').toScalarWithType(ds => new ObjectType(ds.schema())) ),
+                    // c: product.shopWithName().toScalar(false),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
                             shop: {
-                                select: {
-                                    products: {}
-                                }
+                                selectProps: ['products']
                             }
                         }
-                    }),
-                    // x: product.shop({
-                    //     select: {
-                    //         products: {}
-                    //     }
-                    // }),
+                    })
                 })
             ).offset(0).limit(100).execute(context).withOptions({
                 onSqlRun: console.log
