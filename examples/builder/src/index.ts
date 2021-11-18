@@ -121,7 +121,11 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
                     ...shop.$allFields,
                     hour: shop.hour,
                     b: product.abc2(2),
-                    // c: product.shopWithName().toScalar(false),
+                    c: product.shopWithName({
+                        select: {
+                            products: {}
+                        }
+                    }).toScalar(false),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -227,7 +231,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
 
     let allShopsX = await Shop.find({
         // selectProps: ['products'],
-        select: {
+        select:{
             products: (root) => ({
                 select: {
                     shop: {

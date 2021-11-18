@@ -67,10 +67,14 @@ export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Exp
         UnionToIntersection< { 'root': SelectorMap< S>, 'through': SelectorMap<S2> }  >         
         >
 
-export type SelectorMap<E extends Schema<any>> = {
+export type SelectorMap<E extends Schema<any>, proprogate extends boolean = true> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
-        ArgR:
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, any, any>>?
+        (
+            proprogate extends true? 
+            (ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer CFF, any>>? CFF: never):
+            (ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, any, infer NF>>? NF: never)
+        ):
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer S>>?
         CompiledComputeFunction<Arg, S>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
@@ -106,7 +110,8 @@ export class ComputeFunction<DS extends Datasource<any, any>, ARG,
 }
 
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
-    CCF extends CompiledComputeFunctionDynamicReturn
+    CCF extends CompiledComputeFunctionDynamicReturn,
+    NF extends CompiledComputeFunctionDynamicReturn = (args?: any) => Scalar<any, any>
 > extends ComputeFunction<DS,
             Parameters<CCF>[0],
             ReturnType<CCF>

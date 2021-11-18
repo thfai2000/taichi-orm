@@ -1,6 +1,6 @@
 import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/types"
 import Shop from "./Shop"
-import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
+import { ModelArrayRecord, ModelObjectRecord, Model, ModelObjectRecordNoCircular } from "../../../dist/model"
 import { CFReturn } from "../../../dist"
 import { Scalar } from "../../../dist/builder"
 import { Undetermined } from "../../../dist/util"
@@ -33,9 +33,9 @@ export default class Product extends Model {
         return Scalar.number(`5 + ? + ?`, [ parent.selectorMap.abc(), arg] )
     })
 
-    // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
+    // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop>, ModelObjectRecordNoCircular<typeof Shop> >(
     //     (parent, args?): any => {
-    //         return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+    //         return (parent.selectorMap.shop as SimpleModelObjectRecord<typeof Shop>)(args).transform( ds => {
     //             const prevWhere = ds.getWhere()
     //             return ds.andWhere( () => 
     //                 parent.selectorMap.name.equals('hello')
@@ -46,14 +46,15 @@ export default class Product extends Model {
 
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
-
-            return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+            let p = parent.selectorNoCircular.shop(args).transform( ds => {
                 return ds.andWhere( () => 
                     parent.selectorMap.name.equals('hello')
                 ).toScalar(false)
             })
+            return p
         }
     )
+    
 
     // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
     //     return root.selectorMap().myShop().cast(StringType)

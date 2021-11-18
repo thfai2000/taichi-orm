@@ -311,6 +311,8 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     schema: E
     selectorMap: SelectorMap<E>
 
+    selectorNoCircular: SelectorMap<E, false>
+
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
     
@@ -331,6 +333,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
     readonly selectorMap: SelectorMap<E>
+    readonly selectorNoCircular: SelectorMap<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -363,6 +366,8 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                 }
             }
         }) as SelectorMap<E>
+
+        this.selectorNoCircular = this.selectorMap
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 

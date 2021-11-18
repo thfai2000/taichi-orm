@@ -1,56 +1,49 @@
 import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, SelectorMap, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined, ExtractSchemaFieldOnlyFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
 // import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
-
-
 export type DetermineDatasetFromModelType<MT extends typeof Model> =
     Dataset<
-        ExtractSchemaFromModelType<MT>,
-        UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
-        UnionToIntersection< { 'root': SelectorMap< ExtractSchemaFromModelType<MT> > }>, 
+        ExtractSchemaFieldOnlyFromSchema<ExtractSchemaFromModelType<MT>>,
+        UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'>>,
+        { 'root': SelectorMap< ExtractSchemaFromModelType<MT> > }, 
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
 export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
-        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
-            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
-        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
+        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, 
+        UnionToIntersection<AddPrefix<ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix<ExtractPropDictFromModelType<MT>, 'root'>>, 
+        { root: SelectorMap< ExtractSchemaFromModelType<MT> >}, 
+        Datasource<ExtractSchemaFromModelType<MT>, "root">>
 
 //TODO: it is wrong to Scalar can transform into dataset without SSA, but sadly circular dependencies encountered
-export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
-            
-        SSA extends Undetermined? 
-        DScalar<true, 
+export type ModelArrayRecordNoCircular<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+        DScalar<true,
             DetermineDatasetFromModelType<MT>
-        >:
-        DScalar<true, 
-            // ArrayType< ParsableObjectTrait<
-            //     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            // >>
-            // DetermineDatasetFromModelType<MT>
+        >
+
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+        DScalar<true,
             ConstructDatasetBySelectiveArg<MT, SSA>
+        >
+
+export type ModelObjectRecordNoCircular<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
+        
+        DScalar<false, 
+            DetermineDatasetFromModelType<MT>
         >
 
 export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
         
-        SSA extends Undetermined?
         DScalar<false, 
-            DetermineDatasetFromModelType<MT>
-        >:
-        DScalar<false, 
-            // ObjectType< ParsableObjectTrait<
-            // ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            // > >, DetermineDatasetFromModelType<MT>
-            // DetermineDatasetFromModelType<MT>
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
-        
+
 export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeof Model> = <MSA extends TwoSourceArg< ExtractSchemaFromModelType<MT>, ExtractSchemaFromModelType<MT2>>>(arg?: MSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>, through: SelectorMap<ExtractSchemaFromModelType<MT2>>) => MSA) ) => 
             DScalar<true, 
                 DetermineDatasetFromModelType<MT>
@@ -94,13 +87,14 @@ export abstract class Model {
             >;
 
     static compute<M extends typeof Model,
-            CCF extends CompiledComputeFunctionDynamicReturn
+            CCF extends CompiledComputeFunctionDynamicReturn,
+            NF extends CompiledComputeFunctionDynamicReturn,
         >(
             this: M,
             compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF>
         ) 
             : ComputeProperty< 
-                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
+                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF, NF>
             >;
 
     static compute(...args: any[])
@@ -173,7 +167,7 @@ export abstract class Model {
         ){
 
         //() => new ArrayType(relatedSchemaFunc())
-        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args?) => {
+        return this.compute<ParentModelType, ModelArrayRecord<RootModelType>, ModelArrayRecordNoCircular<RootModelType> >( (parent, args?) => {
             return new DScalar( (context: DatabaseContext<any>) => {
                 let relatedModel = context.getRepository(relatedModelType)
                 let parentColumn = parent.getFieldProperty( parentKey  )
@@ -197,7 +191,7 @@ export abstract class Model {
         )
         {
                
-        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((parent, args?) => {
+        return this.compute<ParentModelType, ModelObjectRecord<RootModelType>, ModelObjectRecordNoCircular<RootModelType> >((parent, args?) => {
             return new DScalar((context: DatabaseContext<any>) => {
                 let relatedModel = context.getRepository(relatedModelType)
                 let parentColumn = parent.getFieldProperty( parentKey  )
@@ -224,7 +218,7 @@ export abstract class Model {
         parentKey: string = 'id'
         ){
 
-        return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType> >((parent, args?) => {
+        return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType>, any >((parent, args?) => {
             return new DScalar( (context: DatabaseContext<any>) => {
                 let relatedModel = context.getRepository(relatedModelType)
                 let parentColumn = parent.getFieldProperty(parentKey)
@@ -349,7 +343,7 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns dataset with selected all field Property
      */
-    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F) | undefined) {
+    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args?: F | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => F) ) {
         let source = this.model.datasource('root')
         let dataset = this.context.dataset().from(source)
 
