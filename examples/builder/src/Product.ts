@@ -47,7 +47,7 @@ export default class Product extends Model {
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
 
-            return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+            return parent.selectorMap.shop(args).transform( ds => {
                 return ds.andWhere( () => 
                     parent.selectorMap.name.equals('hello')
                 ).toScalar(false)

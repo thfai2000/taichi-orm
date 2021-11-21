@@ -9,51 +9,38 @@ import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableData
 
 
 
-export type DetermineDatasetFromModelType<MT extends typeof Model> =
-    Dataset<
-        ExtractSchemaFromModelType<MT>,
+// export type DetermineDatasetFromModelType<MT extends typeof Model> =
+//     Dataset<
+//         ExtractSchemaFromModelType<MT>,
+//         UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
+//         UnionToIntersection< { 'root': SelectorMap< ExtractSchemaFromModelType<MT> > }>, 
+//         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
+//     >
+
+export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
+        Dataset<
+        Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>,
         UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
         UnionToIntersection< { 'root': SelectorMap< ExtractSchemaFromModelType<MT> > }>, 
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
-export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
-        Dataset<Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>, UnionToIntersection<AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "", ""> | AddPrefix<ExtractPropDictFromSchema<ExtractSchemaFromModel<InstanceType<MT>>>, "root", ".">>, {
-            root: SelectorMap<ExtractSchemaFromModel<InstanceType<MT>>>
-        }, Datasource<ExtractSchemaFromModel<InstanceType<MT>>, "root">>
-
 //TODO: it is wrong to Scalar can transform into dataset without SSA, but sadly circular dependencies encountered
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
             
-        SSA extends Undetermined? 
-        DScalar<true, 
-            DetermineDatasetFromModelType<MT>
-        >:
-        DScalar<true, 
-            // ArrayType< ParsableObjectTrait<
-            //     ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            // >>
-            // DetermineDatasetFromModelType<MT>
+        DScalar<true,
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
 
 export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>) => SSA) ) => 
         
-        SSA extends Undetermined?
         DScalar<false, 
-            DetermineDatasetFromModelType<MT>
-        >:
-        DScalar<false, 
-            // ObjectType< ParsableObjectTrait<
-            // ConstructValueTypeDictBySelectiveArg< ExtractSchemaFromModelType<MT>, SSA>
-            // > >, DetermineDatasetFromModelType<MT>
-            // DetermineDatasetFromModelType<MT>
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
         
 export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeof Model> = <MSA extends TwoSourceArg< ExtractSchemaFromModelType<MT>, ExtractSchemaFromModelType<MT2>>>(arg?: MSA | ((root: SelectorMap<ExtractSchemaFromModelType<MT>>, through: SelectorMap<ExtractSchemaFromModelType<MT2>>) => MSA) ) => 
             DScalar<true, 
-                DetermineDatasetFromModelType<MT>
+                ConstructDatasetBySelectiveArg<MT, MSA>
             >
 
 export abstract class Model {

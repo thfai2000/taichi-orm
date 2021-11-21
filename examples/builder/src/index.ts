@@ -1,11 +1,12 @@
 import { Dataset, Scalar } from "../../../dist/builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { ORM, SelectorMap } from "../../../dist"
+import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ORM, SelectorMap } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { NumberNotNullType, ObjectType } from "../../../dist/types"
-import { ExtractSchemaFromModelType } from "../../../dist/util"
+import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
+import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/schema"
 
 
 (async() => {
@@ -41,9 +42,24 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
     let eee = await scalar('5', [], NumberNotNullType).execute()
 
     let s = Shop.datasource('shop')
-    
+
     let p = Product.datasource('product')
 
+    // //@ts-expect-error
+    // let zzz = await p.selectorMap.shop({ 
+    //     select: {
+    //         products: {
+    //             select: {
+    //                 shop: {
+    //                     select: {
+
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }).execute()
+    
     let myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
@@ -74,8 +90,6 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
         console.log('product', product)
     }
 
- 
-        
     let anotherProducts = await insert(Product.schema).values([{
         ddd: 5,
         name: 'hello',
@@ -121,7 +135,11 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
                     ...shop.$allFields,
                     hour: shop.hour,
                     b: product.abc2(2),
-                    // c: product.shopWithName().toScalar(false),
+                    c: product.shopWithName({
+                        select: {
+                            products: {}
+                        }
+                    }).toScalar(false),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -228,7 +246,7 @@ import { ExtractSchemaFromModelType } from "../../../dist/util"
     let allShopsX = await Shop.find({
         // selectProps: ['products'],
         select: {
-            products: (root) => ({
+            products: (root: SelectorMap<typeof Shop["schema"]>) => ({
                 select: {
                     shop: {
                         select: {
