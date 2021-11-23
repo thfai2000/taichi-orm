@@ -64,29 +64,30 @@ class Shop extends Model {
     tel = this.field(StringType)
     products = Shop.hasMany(Product, 'shopId')
     productCount = Shop.compute( (parent): CFReturn<number> => {
-      return parent.selectorMap.products().count()
+      //@ts-expect-error
+      return parent.selector.products().count()
     })
     hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selectorMap.products().exists()
+      return parent.selector.products().exists()
     })
     hasProductsAsync = Shop.compute( (parent): CFReturn<boolean> => {
       return new Scalar( async(context) => {
-        return parent.selectorMap.products().exists()
+        return parent.selector.products().exists()
       })
     })
     hasNoProducts = Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selectorMap.products().exists().equals(false)
+      return parent.selector.products().exists().equals(false)
     })
     hasOver2Products =  Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selectorMap.products().count().greaterThan(2)
+      return parent.selector.products().count().greaterThan(2)
     })
     hasEnoughProducts = Shop.compute( (parent, arg?: number): CFReturn<boolean> => {
-      return parent.selectorMap.products().count().greaterThanOrEquals(arg ?? 1)
+      return parent.selector.products().count().greaterThanOrEquals(arg ?? 1)
     })
     hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
       return new Scalar( (context) => context.op.And(
-          parent.selectorMap.products().count().equals(2),
-          parent.selectorMap.location.like('%A%')
+          parent.selector.products().count().equals(2),
+          parent.selector.location.like('%A%')
         )
       )
     })
@@ -114,7 +115,7 @@ class Product extends Model{
     colors = Product.hasManyThrough(ProductColor, Color, 'id', 'colorId', 'productId')
     mainColor = Product.compute<typeof Product, ModelObjectRecord<typeof Color> >(
       (parent): any => {
-        return parent.selectorMap.colors({
+        return parent.selector.colors({
           where: ({through}) => {
             return through.type.equals('main')
           }
@@ -337,6 +338,31 @@ describe('Select - Simple Query', () => {
     expect(records).toHaveLength(limit)
   });
 
+})
+
+describe('Select - Query order by', () => {
+  test('Orderby', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+    let records = await Shop.find({
+      orderBy: ['productCount', {value: 'id', order: 'desc'}]
+    })
+
+    let data = shopData.map(s => ({
+      id: s.id,
+      productCount: productData.filter(p => p.shopId === s.id).length
+    }))
+
+    data.sort( (a, b) => {
+      let v = a.productCount  - b.productCount
+      if(v === 0){
+        return b.id - a.id
+      }
+      return v
+    })
+    expect(records.map(r => r.id)).toEqual( data.map(d => d.id))
+  })
 })
 
 describe('Select - Use Query Arguments', () => {

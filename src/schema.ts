@@ -1,6 +1,6 @@
 import util from 'util'
 import { Knex } from "knex"
-import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, SelectorMap, ComputeFunctionDynamicReturn } from "."
+import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, Selector, ComputeFunctionDynamicReturn } from "."
 import { Dataset, RawExpression, Scalar } from "./builder"
 import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
@@ -309,7 +309,7 @@ export type TableOptions = {
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
     schema: E
-    selectorMap: SelectorMap<E>
+    selector: Selector<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
@@ -330,7 +330,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
-    readonly selectorMap: SelectorMap<E>
+    readonly selector: Selector<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -343,7 +343,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
 
         const datasource = this
         //@ts-ignore
-        this.selectorMap = new Proxy( datasource, {
+        this.selector = new Proxy( datasource, {
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     if(sKey === '$allFields'){
@@ -362,7 +362,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                     }
                 }
             }
-        }) as SelectorMap<E>
+        }) as Selector<E>
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 

@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
+import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
@@ -123,9 +123,9 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
         const sourcePropMap = sources.reduce( (acc, source) => {
             const t = source.sourceAlias
-            acc[t] = source.selectorMap
+            acc[t] = source.selector
             return acc
-        }, {} as {[key:string]: SelectorMap<any> } )
+        }, {} as {[key:string]: Selector<any> } )
 
         return sourcePropMap as any
     }
@@ -145,7 +145,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
     protected baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         WhereClauseBase<
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, Datasource<S, SName>
         > {
             this.fromItem = source
             return this as any
@@ -153,7 +153,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
     protected baseInnerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -166,7 +166,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
      
     protected baseLeftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -179,7 +179,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
     protected baseRightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -236,7 +236,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     #selectItems: { [key: string]: Scalar<any, any> } | null = null
 
-    #orderByItems:  Scalar<any, any>[] | null = null
+    #orderByItems:  {value: Scalar<any, any>, order: 'asc'|'desc'}[] | null = null
     #groupByItems: Scalar<any, any>[] | null = null
     #limit: null | number = null
     #offset: null | number = null
@@ -284,7 +284,8 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return nameMap
     }
 
-    protected func2OrderItemArray<S extends ( (keyof SourceProps) | Scalar<any, any> | {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}   )[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+    protected func2OrderItemArray<S extends ( (keyof SourceProps) | Scalar<any, any> | {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}   )[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S))
+    : {value: Scalar<any, any>, order: 'asc'|'desc'}[] {
         let nameMap: S
         let selectorMap = this.getSelectorMap()
         let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
@@ -299,27 +300,40 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
         return nameMap.map(item => {
             if(item instanceof Scalar){
-                return item
+                return {
+                    value: item,
+                    order: 'asc'
+                }
             } else if(typeof item === 'string') {
                 let p = this.propNameArray2ScalarMap([item])
-                return p[ Object.keys(p)[0]]
+                return {
+                    value: Object.values(p)[0],
+                    order: 'asc'
+                }
             } else {
                 let pair = item as {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}
                 
-                return new Scalar( (context) => {
+                // return new Scalar( async (context) => {
+                //     const sql = `${ (await value.toRaw(context)).toString()} ${pair.order.toLowerCase() === 'desc'?'desc':'asc'}`
+                //     return {sql}
+                // })
 
-                    let value: Scalar<any, any>
-                    if(typeof pair.value === 'string'){
-                        let p = this.propNameToScalar(selectorMap, pair.value)
-                        value = p[ Object.keys(p)[0]]
-                    } else if(pair.value instanceof Scalar){
-                        value = pair.value
-                    } else {
-                        throw new Error('Not allowed')
+                // let value: Scalar<any, any>
+                if(typeof pair.value === 'string'){
+                    let p = this.propNameToScalar(selectorMap, pair.value)
+                    let value = Object.values(p)[0]
+                    return {
+                        value: value,
+                        order: pair.order
                     }
-
-                    return {sql: `${value.toRaw(context)} ${pair.order.toLowerCase() === 'desc'?'DESC':'ASC'}`}
-                })
+                } else if(pair.value instanceof Scalar){
+                    return {
+                        value: pair.value,
+                        order: pair.order
+                    }
+                } else {
+                    throw new Error('Not allowed')
+                }
             }
         })
     }
@@ -333,7 +347,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             if(!this.fromItem){
                 throw new Error(`There must be a FROM`)
             }
-            let from = this.fromItem.selectorMap //as SelectorMap< {[key:string]: any}>
+            let from = this.fromItem.selector //as SelectorMap< {[key:string]: any}>
             item = from[field]
         }
         else {
@@ -404,6 +418,29 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }))
     }
 
+    protected async orderByScalarArray2RawArray(nameMap: {value: Scalar<any, any>, order: 'asc'|'desc'}[], context: DatabaseContext<any>): Promise<
+        Knex.Raw[]
+        > {
+        const client = context.client()
+        return await Promise.all(nameMap.map(async (k) => {
+
+            // let acc = await accP
+            let pair = k
+            if(!pair){
+                throw new Error(`cannot resolve field ${k}`)
+            }
+            const raw: Knex.Raw = await pair.value.toRaw(context)
+            let text = raw.toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            const newRaw = context.raw(`${text} ${pair.order.toLowerCase() === 'desc'?'desc':'asc'}`)
+
+            return newRaw
+        }))
+    }
+
     protected clearSchema() {
         this.datasetSchema = null
     }
@@ -469,14 +506,14 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         Dataset< Schema<{}>, 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, Datasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema<S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         
@@ -485,7 +522,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -493,7 +530,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -740,7 +777,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
 
         if(this.#orderByItems){
-            const orderByItems = await this.queryScalarArray2RawArray(this.#orderByItems, context)
+            const orderByItems = await this.orderByScalarArray2RawArray(this.#orderByItems, context)
             if(orderByItems.length === 0){
                 throw new Error('No groupByItems')
             }
@@ -1040,7 +1077,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1051,7 +1088,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -1060,7 +1097,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -1068,7 +1105,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1178,7 +1215,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
+                        dataset.select({...dataset.getFrom()!.selector.$allFields })
 
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
@@ -1222,7 +1259,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1233,7 +1270,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -1242,7 +1279,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -1250,7 +1287,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1318,7 +1355,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
+                        dataset.select({...dataset.getFrom()!.selector.$allFields })
                         
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
@@ -1363,8 +1400,14 @@ export type RawUnit<T extends PropertyType<any> = any> =
 
 export type RawExpression<T extends PropertyType<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
 
-function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{ 
-    return ( ('sql' in value) && ('args' in value))
+function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{
+    const keys = Object.keys(value)
+    if(keys.length === 1 && keys.includes('sql')){
+        return true
+    } else if(keys.length === 2 && keys.includes('sql') && keys.includes('args')) {
+        return true
+    }
+    return false
 }
 
 
@@ -1627,7 +1670,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
                 return context.raw(ex)
             } else if (isSQLStringWithArgs(ex)){
-
                 if(!ex.args){
                     return context.raw(ex.sql)
                 } else {

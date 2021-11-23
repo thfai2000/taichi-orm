@@ -19,9 +19,9 @@ export default class Product extends Model {
 
     isActive = Product.compute((parent, arg?: number): CFReturn<boolean> => {
         return new Scalar( (context) => context.op.And(
-            parent.selectorMap.availableStart.lessThan( new Date() ),
-            parent.selectorMap.availableEnd.greaterThan( new Date() ),
-            parent.selectorMap.remainingStock.greaterThan(0)
+            parent.selector.availableStart.lessThan( new Date() ),
+            parent.selector.availableEnd.greaterThan( new Date() ),
+            parent.selector.remainingStock.greaterThan(0)
         ))
     })
 
@@ -30,15 +30,15 @@ export default class Product extends Model {
     })
 
     abc2 = Product.compute((parent, arg?: number): CFReturn<number> => {
-        return Scalar.number(`5 + ? + ?`, [ parent.selectorMap.abc(), arg] )
+        return Scalar.number(`5 + ? + ?`, [ parent.selector.abc(), arg] )
     })
 
     // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
     //     (parent, args?): any => {
-    //         return parent.selectorMap.shop(args as Undetermined).transform( ds => {
+    //         return parent.selector.shop(args as Undetermined).transform( ds => {
     //             const prevWhere = ds.getWhere()
     //             return ds.andWhere( () => 
-    //                 parent.selectorMap.name.equals('hello')
+    //                 parent.selector.name.equals('hello')
     //             ).toScalar(false)
     //         })
     //     }
@@ -47,16 +47,16 @@ export default class Product extends Model {
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
 
-            return parent.selectorMap.shop(args).transform( ds => {
+            return parent.selector.shop(args).transform( ds => {
                 return ds.andWhere( () => 
-                    parent.selectorMap.name.equals('hello')
+                    parent.selector.name.equals('hello')
                 ).toScalar(false)
             })
         }
     )
 
     // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
-    //     return root.selectorMap().myShop().cast(StringType)
+    //     return root.selector().myShop().cast(StringType)
     // })
 
 }

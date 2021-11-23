@@ -40,10 +40,10 @@ export type SingleSourceArg<S extends Schema<any> > = {
 
 export type SingleSourceWhere<S extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S> }  >        
+        UnionToIntersection< { 'root': Selector< S> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S> }  >
+        UnionToIntersection< { 'root': Selector< S> }  >
         >
 
 export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
@@ -61,13 +61,13 @@ export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
 
 export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S>, 'through': SelectorMap<S2> }  >        
+        UnionToIntersection< { 'root': Selector< S>, 'through': Selector<S2> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': SelectorMap< S>, 'through': SelectorMap<S2> }  >         
+        UnionToIntersection< { 'root': Selector< S>, 'through': Selector<S2> }  >         
         >
 
-export type SelectorMap<E extends Schema<any>> = {
+export type Selector<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         ArgR:
@@ -143,10 +143,10 @@ type SelectiveArg = { select?: any, selectProps?: any }
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
         P extends ComputeProperty<ComputeFunction<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
-        P extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>, through: SelectorMap<any>) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((root: Selector<infer S>, through: Selector<any>) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
-        P extends ComputeProperty<ComputeFunction<any, ((root: SelectorMap<infer S>) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((root: Selector<infer S>) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
         ExtractValueTypeFromComputeProperty< P>
