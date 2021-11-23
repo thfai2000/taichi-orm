@@ -262,7 +262,7 @@ import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/sc
                 Product.datasource('product')
             ).where( ({product}) => root.id.equals(product.shopId) ).select('id')
         ),
-        orderBy: [{column: 'id', order: 'asc'}],
+        orderBy: ['name', {value: 'id', order: 'asc'}],
         offset: 0,
         limit: 5000
     })

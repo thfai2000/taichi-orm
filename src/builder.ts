@@ -284,32 +284,79 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return nameMap
     }
 
+    protected func2OrderItemArray<S extends ( (keyof SourceProps) | Scalar<any, any> | {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}   )[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S)) {
+        let nameMap: S
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+
+        if (named instanceof Function) {
+            Object.assign(selectorMap, constructSqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+            nameMap = named(map)
+        } else {
+            nameMap = named
+        }
+
+        return nameMap.map(item => {
+            if(item instanceof Scalar){
+                return item
+            } else if(typeof item === 'string') {
+                let p = this.propNameArray2ScalarMap([item])
+                return p[ Object.keys(p)[0]]
+            } else {
+                let pair = item as {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}
+                
+                return new Scalar( (context) => {
+
+                    let value: Scalar<any, any>
+                    if(typeof pair.value === 'string'){
+                        let p = this.propNameToScalar(selectorMap, pair.value)
+                        value = p[ Object.keys(p)[0]]
+                    } else if(pair.value instanceof Scalar){
+                        value = pair.value
+                    } else {
+                        throw new Error('Not allowed')
+                    }
+
+                    return {sql: `${value.toRaw(context)} ${pair.order.toLowerCase() === 'desc'?'DESC':'ASC'}`}
+                })
+            }
+        })
+    }
+
+    private propNameToScalar(sourcePropMap: SourcePropMap, key: string): { [key2: string]: Scalar<any, any>} {
+        let map = sourcePropMap as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
+        let [source, field] = key.split('.')
+        let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
+        if(!field){
+            field = source
+            if(!this.fromItem){
+                throw new Error(`There must be a FROM`)
+            }
+            let from = this.fromItem.selectorMap //as SelectorMap< {[key:string]: any}>
+            item = from[field]
+        }
+        else {
+            item = map[source][field]
+        }
+
+        if(!item){
+            throw new Error('Cannot resolve field')
+        }else if(item instanceof Scalar){
+            return {[field]: item}
+        }else {
+            return {[field]: item()}
+        }
+    }
+
     protected propNameArray2ScalarMap(properties: string[]){
-        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
+        let map = this.getSelectorMap() //as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
         let fields = properties
         let nameMap: { [key: string]: Scalar<any, any> } = fields.reduce( (acc, key:string) => {
-            let [source, field] = key.split('.')
-            let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
-            if(!field){
-                field = source
-                if(!this.fromItem){
-                    throw new Error(`There must be a FROM`)
-                }
-                let from = this.fromItem.selectorMap //as SelectorMap< {[key:string]: any}>
-                item = from[field]
-            }
-            else {
-                item = map[source][field]
-            }
 
-            if(!item){
-                throw new Error('Cannot resolve field')
-            }else if(item instanceof Scalar){
-                acc = Object.assign({}, acc, {[field]: item})
-            }else {
-                acc = Object.assign({}, acc, {[field]: item()})    
-            }
-            
+            let keypair = this.propNameToScalar(map, key)
+            acc = Object.assign({}, acc, keypair)    
+
             return acc
         }, {})
         return nameMap
@@ -567,7 +614,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
     }
 
-    orderBy<Q extends ( ((keyof SourceProps) | Scalar<any, any> ) | {column: ((keyof SourceProps)|Scalar<any, any>), order: 'asc' | 'desc'}   )[], 
+    orderBy<Q extends ( Scalar<any, any> | {value: Scalar<any, any>, order: 'asc' | 'desc'}   )[], 
         Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: Q | 
         ((map: Y ) => Q ) ):
         Dataset<
@@ -583,16 +630,10 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     orderBy(...args: any[]){
     
-        if(args.length === 0 ){
-            throw new Error('select must have at least one argument')
+        if(args.length !== 1 ){
+            throw new Error('must be one argument')
         }
-        let resolved = null
-        if(args.length === 1 && args[0] instanceof Function ){
-            let named = args[0]
-            //TODO
-            const resolved = this.func2ScalarArray(named)
-        }
-        //TODO
+        const resolved = this.func2OrderItemArray(args[0])
         this.#orderByItems = resolved
         return this as any
     }

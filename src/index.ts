@@ -27,7 +27,7 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
                 Arg: never
 }
 
-export type QueryOrderBy<S extends Schema<any>> = ( ((keyof ExtractPropDictFromSchema<S>) | Scalar<any, any> ) | {column: ((keyof ExtractPropDictFromSchema<S>)|Scalar<any, any>), order: 'asc' | 'desc'} )[]
+export type QueryOrderBy<S extends Schema<any>> = ( ((keyof ExtractPropDictFromSchema<S>) | Scalar<any, any> ) | {value: ((keyof ExtractPropDictFromSchema<S>)|Scalar<any, any>), order: 'asc' | 'desc'} )[]
 
 export type SingleSourceArg<S extends Schema<any> > = {
     select?: SingleSourceSelect<S>,
