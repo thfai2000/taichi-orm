@@ -46,11 +46,12 @@ export default class Product extends Model {
 
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
-
+            //@ts-ignore
             return parent.selector.shop(args).transform( ds => {
-                return ds.andWhere( () => 
+                let r = ds.andWhere( () => 
                     parent.selector.name.equals('hello')
-                ).toScalar(false)
+                )
+                return r.toScalar(false)
             })
         }
     )

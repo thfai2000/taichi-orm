@@ -143,10 +143,10 @@ type SelectiveArg = { select?: any, selectProps?: any }
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
         P extends ComputeProperty<ComputeFunction<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
-        P extends ComputeProperty<ComputeFunction<any, ((root: Selector<infer S>, through: Selector<any>) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((map: {root: Selector<infer S>, through: Selector<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
-        P extends ComputeProperty<ComputeFunction<any, ((root: Selector<infer S>) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((map: {root: Selector<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
         ExtractValueTypeFromComputeProperty< P>

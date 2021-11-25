@@ -102,7 +102,7 @@ export abstract class FieldPropertyTypeDefinition<I> extends PropertyType<I> {
 //     abstract parseProperty(propertyvalue: I, context: Entitycontext<any>, prop: string): any
 // }
 
-export abstract class ComputePropertyTypeDefinition<I> extends PropertyType<I> {
+export abstract class ParsablePropertyTypeDefinition<I> extends PropertyType<I> {
 
     constructor(options?: any){
         super(options)
@@ -642,7 +642,7 @@ export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
     }
 }
 
-export class ObjectType<T extends ParsableObjectTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I:never)>{
+export class ObjectType<T extends ParsableObjectTrait<any> > extends ParsablePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I:never)>{
     // protected options: ObjectOfTypeOptions
     private parsable: T
 
@@ -717,7 +717,7 @@ export class ObjectType<T extends ParsableObjectTrait<any> > extends ComputeProp
     }
 }
 
-export class ArrayType<T extends ParsableObjectTrait<any> > extends ComputePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I[]:never)>{
+export class ArrayType<T extends ParsableObjectTrait<any> > extends ParsablePropertyTypeDefinition< (T extends ParsableObjectTrait<infer I>? I[]:never)>{
     
     private parsable: ParsableObjectTrait<any>
 

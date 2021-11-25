@@ -1,12 +1,14 @@
 import { Dataset, Scalar } from "../../../dist/builder"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ORM, SelectorMap } from "../../../dist"
+import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ORM, Selector } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { NumberNotNullType, ObjectType } from "../../../dist/types"
 import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
 import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/schema"
+import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/model"
+import Shop from "./Shop"
 
 
 (async() => {
@@ -139,7 +141,7 @@ import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/sc
                         select: {
                             products: {}
                         }
-                    }).toScalar(false),
+                    }),
                     // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
@@ -246,7 +248,12 @@ import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/sc
     let allShopsX = await Shop.find({
         // selectProps: ['products'],
         select: {
-            products: (root: SelectorMap<typeof Shop["schema"]>) => ({
+            // products: {
+            //     select: {
+            //         shop: {}
+            //     }
+            // }
+            products: ({root, And}: ModelArrayRecordFunctionArg<typeof Shop.modelClass>) => ({
                 select: {
                     shop: {
                         select: {
@@ -254,7 +261,8 @@ import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/sc
                         },
                         where: root.name.equals('shop')
                     },
-                }
+                },
+                orderBy: ['id', {value: And(1, 1), order: 'asc'}]
             })
         },
         where: ({root, Exists}) => Exists(
