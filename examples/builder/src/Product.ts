@@ -3,7 +3,6 @@ import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
 import { CFReturn } from "../../../dist"
 import { Scalar } from "../../../dist/builder"
-import { Undetermined } from "../../../dist/util"
 
 
 export default class Product extends Model {
@@ -47,12 +46,11 @@ export default class Product extends Model {
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
             //@ts-ignore
-            return parent.selector.shop(args).transform( ds => {
-                let r = ds.andWhere( () => 
+            return parent.selector.shop(args).transformDS( ds => {
+                return ds.andWhere( () => 
                     parent.selector.name.equals('hello')
                 )
-                return r.toScalar(false)
-            })
+            }).toScalar(false)
         }
     )
 

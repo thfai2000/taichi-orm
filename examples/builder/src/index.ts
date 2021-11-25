@@ -8,7 +8,6 @@ import { NumberNotNullType, ObjectType } from "../../../dist/types"
 import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
 import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/schema"
 import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/model"
-import Shop from "./Shop"
 
 
 (async() => {
@@ -273,7 +272,7 @@ import Shop from "./Shop"
         orderBy: ['name', {value: 'id', order: 'asc'}],
         offset: 0,
         limit: 5000
-    })
+    }).onSqlRun(console.log)
 
     console.log('aaaa2', allShopsX[0])
 

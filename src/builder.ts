@@ -1566,21 +1566,14 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return this
     // }
 
-    transform<
-        S extends Scalar<any, any>
-        // ChangedValue extends Knex.Raw | Dataset<any, any, any, any>
-        // T extends PropertyDefinition<any> = ChangedValue extends Dataset<infer Schema>? ArrayType<Schema>: any
-        >(
-            fn: (value: Value, context: DatabaseContext<any>) => S | Promise<S>
-        ): S {
+    protected transform<T extends PropertyType<any>, NewValue extends Knex.Raw | Dataset<any, any, any, any>>(
+            fn: (value: Value, context: DatabaseContext<any>) => Scalar<T, NewValue> | Promise<Scalar<T, NewValue>>
+        ): Scalar<T, NewValue> {
         
-        let s = new Scalar( (context) => {
-
+        let s = new Scalar<T, NewValue>( (context) => {
             const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset) as Value | Promise<Value>
-            
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset, context) )
-            
-        }) as S
+        })
 
         return s
     }
@@ -1651,7 +1644,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
     }
 
-    private resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
+    protected resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
         ( Knex.Raw<any> | Promise<Knex.Raw<any>> | Dataset<any, any, any> | Promise< Dataset<any, any, any> >) {
 
         return thenResult(raw, ex => {
@@ -1747,22 +1740,28 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
     #isArray: boolean
 
     constructor(
-            dataset: Dataset<any, any, any, any> | 
-            ( (context: DatabaseContext<any>) => Dataset<any, any, any, any>) | 
-            ( (context: DatabaseContext<any>) => Promise<Dataset<any, any, any, any>>),
+            content: Dataset<any, any, any, any> |
+            DScalar<any, any> |
+            ( (context: DatabaseContext<any>) => Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>> | DScalar<any, any> | Promise<DScalar<any, any>>),
             isArray: boolean = true,
         context?: DatabaseContext<any> | null){
             super(
                     (async (context: DatabaseContext<any>) => {
-                        let resolved: Dataset<any, any, any, any>
-                        if(dataset instanceof Function){
-                            resolved = await dataset(context)
+                        let resolved: Dataset<any, any, any, any> | DScalar<any, any>
+                        if(content instanceof Function){
+                            resolved = await content(context)
                         } else {
-                            resolved = dataset
+                            resolved = content
                         }
                         if(this.isArray){
+                            if(resolved instanceof DScalar){
+                                return resolved.toScalar(true)
+                            }
                             return resolved.toScalarWithType( (ds) => new ArrayType(ds.schema()) )
                         } else {
+                            if(resolved instanceof DScalar){
+                                return resolved.toScalar(false)
+                            }
                             return resolved.toScalarWithType( (ds) => new ObjectType(ds.schema()) )
                         }
                     }) as RawExpression<any>
@@ -1790,6 +1789,18 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
             }
             throw new Error('count is only applicable to Dataset.')
         })
+    }
+
+    transformDS<NewIsArray extends boolean, NewDS extends Dataset<any, any, any, any>>(
+            fn: (value: DS, context: DatabaseContext<any>) => DScalar<NewIsArray, NewDS> | Promise<DScalar<NewIsArray, NewDS>>
+        ): DScalar<NewIsArray, NewDS> {
+        
+        let s = new DScalar<NewIsArray, NewDS>( (context) => {
+            const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset)
+            return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset as DS, context) )
+        })
+
+        return s
     }
 
     toScalar<isArrayValue extends boolean>(this: DScalar<isArrayValue, DS>, isArray: isArrayValue): DScalar<isArrayValue, DS>{
