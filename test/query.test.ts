@@ -119,7 +119,7 @@ class Product extends Model{
           where: ({through}) => {
             return through.type.equals('main')
           }
-        }).toScalar(false)
+        }).asObjectType()
     })
 }
 
