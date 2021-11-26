@@ -41,7 +41,7 @@ export type ModelArrayRecordByThroughFunctionArg<MT extends typeof Model, MT2 ex
         AddPrefix< ExtractPropDictFromModelType<MT2>,'through'>
     > , {root: Selector<ExtractSchemaFromModelType<MT>>, through: Selector<ExtractSchemaFromModelType<MT2>>}> 
 
-//TODO: it is wrong to Scalar can transform into dataset without SSA, but sadly circular dependencies encountered
+//Sadly circular dependencies encountered
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA 
     | ( (map: ModelArrayRecordFunctionArg<MT>) => SSA)
     

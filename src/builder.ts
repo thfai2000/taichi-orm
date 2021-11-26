@@ -1828,11 +1828,9 @@ export function resolveValueIntoScalar(value: any): any{
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
     } else if (typeof value === 'number'){
         const numberValue = value
-        //TODO
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
     } else if (value instanceof Date){
         const dateValue = value
-        //TODO
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
     }
     return value

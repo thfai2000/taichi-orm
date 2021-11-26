@@ -286,8 +286,10 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
     // Done: failIfNone on query
     // Done: EXISTS, NOT, BETWEEN, 
     // Done: manyToMany Relation helper function
+    // Done: fix all unit tests
+    // Done: remove addSelectProps
 
-    // TODO: fix all unit tests
+    // TODO: add hooks for computed values
     // TODO: give typescripts hint on dataset Preflight and Affected query
     // TODO: minus, plus, divide, times, if case
     // TODO: having
@@ -296,12 +298,10 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
     // TODO: add PropertType (ArrayType of primitive)
     // TODO: Scalar.boolean, Scalar.string
     // Discuss: Model.count
-    // Discuss: addSelectProps
     // Discuss: think about migrate issue
+    // TODO: Organize Error in a better way
     // TODO: avoid re-use same table alias
     // TODO: FullCount
-
-
     // - [ ] context allow global filter on specific tables (use case: soft delete)
     // - [ ] context allow read-only transaction... speed up query and safe to graphql query
     // - [ ] relations test cases
