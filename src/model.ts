@@ -18,6 +18,10 @@ import { SQLKeywords } from "./operators"
 //         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
 //     >
 
+export type ObjectTypeDataset<DS extends Dataset<any, any, any, any>>= ObjectType< ReturnType< DS["schema"]>>
+export type ArrayTypeDataset<DS extends Dataset<any, any, any, any>>= ArrayType< ReturnType< DS["schema"]>>
+
+
 export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
         Dataset<
         Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>,
@@ -41,20 +45,20 @@ export type ModelArrayRecordByThroughFunctionArg<MT extends typeof Model, MT2 ex
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA 
     | ( (map: ModelArrayRecordFunctionArg<MT>) => SSA)
     
-    ) => DScalar<true,
+    ) => DScalar< ArrayTypeDataset<ConstructDatasetBySelectiveArg<MT, SSA>>,
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
 
 export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA 
     | ( (map: ModelArrayRecordFunctionArg<MT>) => SSA) ) => 
         
-        DScalar<false, 
+        DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<MT, SSA>>, 
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
         
 export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeof Model> = <MSA extends TwoSourceArg< ExtractSchemaFromModelType<MT>, ExtractSchemaFromModelType<MT2>>>(arg?: MSA 
     | ( (map: ModelArrayRecordByThroughFunctionArg<MT, MT2>) => MSA) ) =>
-            DScalar<true, 
+            DScalar< ArrayTypeDataset<ConstructDatasetBySelectiveArg<MT, MSA>>, 
                 ConstructDatasetBySelectiveArg<MT, MSA>
             >
 
@@ -117,7 +121,7 @@ export abstract class Model {
             SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>
         >(
             this: M,
-            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA) ) => DScalar<false, ConstructDatasetBySelectiveArg<R, SSA>>
+            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA) ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >
@@ -186,7 +190,7 @@ export abstract class Model {
                 ))
 
                 return dataset //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
-            }, true)
+            })
 
         })
     }
@@ -211,7 +215,7 @@ export abstract class Model {
 
                 return dataset
                 //.toScalarWithType( (ds) => new ObjectType(ds.schema() )) as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
-            }, false)
+            }).asObjectType()
         
         })
     }

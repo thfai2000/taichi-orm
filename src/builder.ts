@@ -4,6 +4,7 @@ import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperat
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
+import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -468,23 +469,27 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
 
-    toScalar<T extends Dataset<any, any, any, any>, isArray extends boolean>(this: T, isArray: isArray): DScalar<isArray, T> {
-        return new DScalar(this, isArray, this.context)
+    toDScalarWithArrayType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
+        return new DScalar(this, new ArrayType(this.schema()), this.context)
     }
 
-    toScalarWithType<T extends PropertyType<any>>(
+    toDScalarWithObjectType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ObjectTypeDataset<T>, T> {
+        return new DScalar(this, new ObjectType(this.schema()), this.context)
+    }
+
+    toDScalarWithType<T extends PropertyType<any>>(
         this: Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>,
         type: 
         T | 
         (new () => T) | 
-        ((dataset: typeof this) => T)): Scalar<T, typeof this> {
+        ((dataset: typeof this) => T)): DScalar<T, typeof this> {
 
         if(type instanceof PropertyType){
-            return new Scalar(this, type, this.context) 
+            return new DScalar(this, type, this.context) 
         } else if(isFunction(type)){
-            return new Scalar(this, type(this), this.context)
+            return new DScalar(this, type(this), this.context)
         } else {
-            return new Scalar(this, new type(), this.context) 
+            return new DScalar(this, new type(), this.context) 
         }
     }
 
@@ -1467,9 +1472,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             return this.isNull()
         } else if(rightOperand instanceof DScalar){
             let d = rightOperand
-            if(d.isArray){
-                return this.in(rightOperand)
-            }
+            return this.in(rightOperand)
         }
         return this.equals(rightOperand)
     }
@@ -1479,9 +1482,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             return this.isNotNull()
         } else if(rightOperand instanceof DScalar){
             let d = rightOperand
-            if(d.isArray){
-                return this.notIn(rightOperand)
-            }
+            return this.notIn(rightOperand)
         }
         return this.notEquals(rightOperand)
     }
@@ -1566,7 +1567,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return this
     // }
 
-    protected transform<T extends PropertyType<any>, NewValue extends Knex.Raw | Dataset<any, any, any, any>>(
+    transform<T extends PropertyType<any>, NewValue extends Knex.Raw | Dataset<any, any, any, any>>(
             fn: (value: Value, context: DatabaseContext<any>) => Scalar<T, NewValue> | Promise<Scalar<T, NewValue>>
         ): Scalar<T, NewValue> {
         
@@ -1581,7 +1582,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     protected async resolveDefinition(ctx: DatabaseContext<any>, ex: RawExpression): Promise<PropertyType<any>> {
         return thenResult(ex, ex => {
             if(ex instanceof Dataset){
-                return this.resolveDefinition(ctx, ex.toScalar(true))
+                return this.resolveDefinition(ctx, ex.toDScalarWithArrayType() )
             } else if(ex instanceof Scalar ){
                 if(ex.declaredDefinition){
                     return ex.declaredDefinition
@@ -1735,15 +1736,15 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     } 
 }
 
-export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, any>> extends Scalar< isArray extends true? ArrayType< ReturnType<DS["schema"]>>: ObjectType< ReturnType<DS["schema"]> >, DS> {
+export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, any, any>> extends Scalar<T, DS> {
     
-    #isArray: boolean
+    // #isArray: boolean
 
     constructor(
             content: Dataset<any, any, any, any> |
             DScalar<any, any> |
             ( (context: DatabaseContext<any>) => Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>> | DScalar<any, any> | Promise<DScalar<any, any>>),
-            isArray: boolean = true,
+            definition?: T | (new (...args: any[]) => T) | null,
         context?: DatabaseContext<any> | null){
             super(
                     (async (context: DatabaseContext<any>) => {
@@ -1753,37 +1754,31 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
                         } else {
                             resolved = content
                         }
-                        if(this.isArray){
-                            if(resolved instanceof DScalar){
-                                return resolved.toScalar(true)
-                            }
-                            return resolved.toScalarWithType( (ds) => new ArrayType(ds.schema()) )
-                        } else {
-                            if(resolved instanceof DScalar){
-                                return resolved.toScalar(false)
-                            }
-                            return resolved.toScalarWithType( (ds) => new ObjectType(ds.schema()) )
+                        if(resolved instanceof Dataset && !definition) {
+                            return resolved.toDScalarWithType( (ds) => new ArrayType(ds.schema()) )
                         }
+                        return resolved
                     }) as RawExpression<any>
-                    , null, context)
-            this.#isArray = isArray
+                    , definition, context)
+            // this.#isArray = isArray
+
         }
     
-    get isArray(){
-        return this.#isArray
-    }
+    // get isArray(){
+    //     return this.#isArray
+    // }
 
-    count(this: DScalar<isArray, DS>): Scalar<NumberNotNullType, any> {
-        return this.transform( (value, ctx)=> {
+    count(this: DScalar<any, DS>): Scalar<NumberNotNullType, any> {
+        return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
-                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
+                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toDScalarWithType(NumberNotNullType)
             }
             throw new Error('count is only applicable to Dataset.')
         })
     }
 
-    exists(this: DScalar<isArray, DS>): Scalar<BooleanNotNullType, any> {
-        return this.transform( (value, ctx)=> {
+    exists(this: DScalar<any, DS>): Scalar<BooleanNotNullType, any> {
+        return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
                 return ctx.op.Exists(value)
             }
@@ -1791,21 +1786,28 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
         })
     }
 
-    transformDS<NewIsArray extends boolean, NewDS extends Dataset<any, any, any, any>>(
-            fn: (value: DS, context: DatabaseContext<any>) => DScalar<NewIsArray, NewDS> | Promise<DScalar<NewIsArray, NewDS>>
-        ): DScalar<NewIsArray, NewDS> {
+    transform<NewDScalar extends DScalar<any, any>  >(
+            fn: (value: DS, context: DatabaseContext<any>) => NewDScalar | Promise<NewDScalar>
+        ): NewDScalar {
         
-        let s = new DScalar<NewIsArray, NewDS>( (context) => {
+        let s = new DScalar( (context) => {
             const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset)
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset as DS, context) )
-        })
+        }) as NewDScalar
 
         return s
     }
 
-    toScalar<isArrayValue extends boolean>(this: DScalar<isArrayValue, DS>, isArray: isArrayValue): DScalar<isArrayValue, DS>{
-        this.#isArray = isArray
-        return this as DScalar<isArrayValue, DS>
+    asArrayType(this: DScalar<any, DS>): DScalar< ArrayTypeDataset<DS>, DS>{
+        return this.transform( (preValue, context)=> {
+            return preValue.toDScalarWithType( (ds) => new ArrayType(ds.schema()) )
+        }) as DScalar< ArrayTypeDataset<DS>, DS>
+    }
+
+    asObjectType(this: DScalar<any, DS>): DScalar< ObjectTypeDataset<DS>, DS>{
+        return this.transform( (preValue, context)=> {
+            return preValue.toDScalarWithType( (ds) => new ObjectType(ds.schema()) )
+        }) as DScalar< ObjectTypeDataset<DS>, DS>
     }
 }
 
@@ -1850,7 +1852,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            return value.toScalar(true)
+            return value.toDScalarWithArrayType()
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {

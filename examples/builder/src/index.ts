@@ -46,21 +46,6 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
 
     let p = Product.datasource('product')
 
-    // //@ts-expect-error
-    // let zzz = await p.selectorMap.shop({ 
-    //     select: {
-    //         products: {
-    //             select: {
-    //                 shop: {
-    //                     select: {
-
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }).execute()
-    
     let myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
@@ -136,12 +121,13 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
                     ...shop.$allFields,
                     hour: shop.hour,
                     b: product.abc2(2),
+                    //@ts-ignore
                     c: product.shopWithName({
                         select: {
                             products: {}
                         }
                     }),
-                    // test: Scalar.number({sql:` 5 + ?`, args: [3]}),
+                    test: Scalar.number({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
                             shop: {
@@ -191,7 +177,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
             h1: myShop.hour,
             cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
             test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).select('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).select('id').limit(1).toScalarWithType( 
+            a: new Dataset().from(Shop.datasource('a')).select('id').limit(1).toDScalarWithType( 
                 (ds) => new ObjectType(ds.schema()) 
             )
         }))
