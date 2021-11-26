@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
-import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
+import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, WaitingLeft } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
@@ -47,8 +47,14 @@ type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
 
 export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
 
+
+export type ValueTypeDictForExpression<E> = {
+    [key in keyof E]: 
+        E[key] | WaitingLeft | Scalar<any, any>
+}
+
 export type Expression<O, M> = 
-    Partial<ExtractValueTypeDictFromPropertyDict<O>>  
+    Partial<ValueTypeDictForExpression<ExtractValueTypeDictFromPropertyDict<O>> > 
     | ExpressionFunc<O, M>
     | AndOperator<O, M> 
     | OrOperator<O, M> 
@@ -1811,7 +1817,7 @@ export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, a
     }
 }
 
-export function resolveValueIntoScalar(value: any){
+export function resolveValueIntoScalar(value: any): any{
     if( value === null){
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
     } else if (typeof value === 'boolean') {
@@ -1879,26 +1885,26 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     throw new Error(`cannot found prop (${propName})`)
                 }
                 
-                const makeOperator = (leftOperatorEx: any, rightOperatorEx: any) => {
+                const operatorScalar = (leftOperatorEx: any, rightOperatorEx: any) => {
                     const leftOperator = resolver(leftOperatorEx)
 
-                    let operator: AssertionOperator
-                    if(rightOperatorEx instanceof AssertionOperator){
-                        operator = rightOperatorEx
+                    let finalScalar: Scalar<any, any>
+                    if(rightOperatorEx instanceof WaitingLeft) {
+                        finalScalar = rightOperatorEx.toScalar(leftOperatorEx)
                     } else if(rightOperatorEx === null){
-                        operator = new IsNullOperator(leftOperator)
+                        finalScalar = new IsNullOperator(leftOperator).toScalar()
                     } else {
-                        operator = new EqualOperator(leftOperator, resolver(rightOperatorEx))
+                        finalScalar = new EqualOperator(leftOperator, resolver(rightOperatorEx)).toScalar()
                     }
-                    return operator
+                    return finalScalar
                 }
                 
                 if(prop instanceof FieldProperty || prop instanceof ScalarProperty){
                     let converted = source.getFieldProperty(propName)
-                    scalars.push( makeOperator(converted, dict[key]).toScalar() )
+                    scalars.push( operatorScalar(converted, dict[key]) )
                 } else if(prop instanceof ComputeProperty){
                     let compiled = (source.getComputeProperty(propName))()
-                    scalars.push( makeOperator(compiled, dict[key]).toScalar() )
+                    scalars.push( operatorScalar(compiled, dict[key]) )
                 }
     
                 return scalars

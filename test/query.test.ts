@@ -15,7 +15,7 @@ import { PrimaryKeyType,
         NumberNotNullType
       } from '../dist/types'
 import { FieldProperty } from '../dist/schema'
-import { Scalar } from '../dist/builder'
+import { Dataset, Scalar } from '../dist/builder'
 import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/util'
 
 let shopData = [
@@ -24,7 +24,8 @@ let shopData = [
   { id: 3, name: 'Shop 3', location: 'Tsuen Wan', tel: null},
   { id: 4, name: 'Shop 4', location: 'Tsuen Wan', tel: '12345678'},
   { id: 5, name: 'Shop 5', location: 'Tsuen Wan', tel: '12345678'},
-  { id: 6, name: 'Shop 6', location: 'Tai Po', tel: null}
+  { id: 6, name: 'Shop 6', location: 'Tai Po', tel: null},
+  { id: 7, name: 'Shop 7', location: 'Tsuen Wan', tel: '98765432'},
 ]
 
 let productData = [
@@ -32,7 +33,8 @@ let productData = [
   { id: 2, name: 'Product 1b', shopId: 1, price: null, createdAt: null, isActive: null},
   { id: 3, name: 'Product 2a', shopId: 2, price: null, createdAt: null, isActive: null},
   { id: 4, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null},
-  { id: 5, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null}
+  { id: 5, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null},
+  { id: 6, name: 'Product 7a', shopId: 7, price: null, createdAt: null, isActive: null},
 ]
 
 let colorData = [
@@ -285,8 +287,6 @@ describe('Select - Simple Query', () => {
     }))
   })
 
-  
-
   test('Mixed Select + SelectProps (With Multi Level)', async () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
@@ -307,7 +307,6 @@ describe('Select - Simple Query', () => {
       }
     })
 
-    //TODO: fix the expected result
     expect(records).toEqual( expect.arrayContaining(
       shopData.map( shop => expect.objectContaining({
           ...shop,
@@ -393,6 +392,85 @@ describe('Select - Use Query Arguments', () => {
 
 describe('Where - Operators', () => {
 
+  test('Query by object filter - And, {}', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({root, And, Like}) => And({
+        location: 'Tsuen Wan'
+      },{
+        name: Like('%9%')
+      })
+    })
+
+    const expected = shopData.filter(s => (s.location === 'Tsuen Wan' && s.name.includes('9') ) )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Or', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({root, Or, Like}) => Or({
+        location: 'Tsuen Wan'
+      },{
+        name: Like('%8%')
+      })
+    })
+
+    const expected = shopData.filter(s => (s.location === 'Tsuen Wan' || s.name.includes('8') ) )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Not', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({Not}) => Not({
+        location: 'Tsuen Wan',
+        name: 'Shop 4'
+      })
+    })
+
+    const expected = shopData.filter(s => !(s.location === 'Tsuen Wan' && s.name === 'Shop 4') )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Exists', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({root, Exists}) => Exists( Product.dataset({
+        where: {
+          shopId: root.id
+        }
+      }))
+    })
+
+    const expected = shopData.filter(s => productData.some(p => p.shopId === s.id) )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
   test('Query by object filter - :value + equals() + notEquals()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
@@ -456,45 +534,58 @@ describe('Where - Operators', () => {
     ))
   })
 
-  test('Query by object filter - Not', async () => {
+  test('Query by object filter - in() + notIn()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.models
 
+    let ids = [2,4,100]
+    let expectedShops = shopData.filter(s => ids.includes(s.id) )
     let records = await Shop.find({
-      where: ({Not}) => Not({
-        location: 'Tsuen Wan',
-        name: 'Shop 4'
-      })
+      where: ({root}) => root.id.in(...ids)
     })
 
-    const expected = shopData.filter(s => !(s.location === 'Tsuen Wan' && s.name === 'Shop 4') )
-    expect(records).toHaveLength(expected.length)
+    expect(records).toHaveLength(expectedShops.length)
     expect(records).toEqual( expect.arrayContaining(
-      expected.map( s => expect.objectContaining(s))
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+    
+    let expectedShops2 = shopData.filter(s => !ids.includes(s.id) )
+    let records2 = await Shop.find({
+      where: ({root}) => root.id.notIn(...ids)
+    })
+    expect(records2).toHaveLength(expectedShops2.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShops2.map( s => expect.objectContaining(s))
     ))
   })
 
-  // test('Query by object filter - in() + notIn()', async () => {
-  //   let ctx = orm.getContext({tablePrefix: tablePrefix()})
-  //   await loadData(ctx)
-  //   let {Shop, Product, Color, ProductColor} = ctx.models
+  test('Query by object filter - like() + notLike()', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
 
-  //   let ids = [2,4,100]
-  //   let expectedShops = shopData.filter(s => ids.includes(s.id) )
-  //   let records = await Shop.find({where: {id: ids}})
+    const likeStr = '2'
+    let expectedShops = shopData.filter(s => s.name.includes(likeStr) )
+    let records = await Shop.find({
+      where: ({root}) => root.name.like(`%${likeStr}%`)
+    })
 
-  //   expect(records).toHaveLength(expectedShops.length)
-  //   expect(records).toEqual( expect.arrayContaining(
-  //     expectedShops.map( s => expect.objectContaining(s))
-  //   ))
+    expect(records).toHaveLength(expectedShops.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
     
-  //   let records2 = await models.Shop.find({id: Contain(...ids)})
-  //   expect(records2).toHaveLength(expectedShops.length)
-  //   expect(records2).toEqual( expect.arrayContaining(
-  //     expectedShops.map( s => expect.objectContaining(s))
-  //   ))
-  // })
+    let expectedShops2 = shopData.filter(s => !s.name.includes(likeStr) )
+    let records2 = await Shop.find({
+      where: ({root}) => root.name.notLike(`%${likeStr}%`)
+    })
+
+    expect(records2).toHaveLength(expectedShops2.length)
+    expect(records2).toEqual( expect.arrayContaining(
+      expectedShops2.map( s => expect.objectContaining(s))
+    ))
+  })
 
   // test('Query by object filter - Like', async () => {
   //   const likeStr = '2'
