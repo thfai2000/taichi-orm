@@ -2,7 +2,7 @@ import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, Mu
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
+import { ArrayType, FieldPropertyType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
 import { SQLKeywords } from "./operators"
 // import util from 'util'
@@ -80,9 +80,9 @@ export abstract class Model {
         return this.#entityName
     }
 
-    field<D extends FieldPropertyTypeDefinition<any> >(definition: (new (...args: any[]) => D) | D  ) {
+    field<D extends FieldPropertyType<any> >(definition: (new (...args: any[]) => D) | D  ) {
 
-        if(definition instanceof FieldPropertyTypeDefinition){
+        if(definition instanceof FieldPropertyType){
             return new FieldProperty<D>(definition)
         }
         return new FieldProperty<D>( new definition() )

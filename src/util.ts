@@ -1,7 +1,7 @@
 import { ComputeFunction } from ".";
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
-import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
+import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
 export type Undetermined = 'undetermined'
@@ -62,7 +62,7 @@ export type ConstructMutationFromValueTypeDict<D> = {
 
 
 export type ExtractValueTypeFromProperty<T> = 
-    T extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive:
+    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
         (
             T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer X>, any> >>? X: 
                         (

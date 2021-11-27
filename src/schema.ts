@@ -2,7 +2,7 @@ import util from 'util'
 import { Knex } from "knex"
 import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, Selector, ComputeFunctionDynamicReturn } from "."
 import { Dataset, RawExpression, Scalar } from "./builder"
-import { FieldPropertyTypeDefinition, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
+import { FieldPropertyType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
 
 
@@ -74,7 +74,7 @@ export class ComputeProperty<F extends (ComputeFunction<any, any, any> | Compute
     }
 }
 
-export class FieldProperty<D extends FieldPropertyTypeDefinition<any>> extends Property {
+export class FieldProperty<D extends FieldPropertyType<any>> extends Property {
 
     // type: 'FieldProperty' = 'FieldProperty'
     private _fieldName?: string
@@ -281,12 +281,12 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
         const client = context.client()
         const tableName = this.tableName(context, options)
 
-        let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyTypeDefinition<any>>[]
+        let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyType<any>>[]
         
         return `CREATE TABLE IF NOT EXISTS ${quote(client, tableName)} (\n${
             props.map( prop => {
                 let f = prop.definition
-                if(f instanceof FieldPropertyTypeDefinition){
+                if(f instanceof FieldPropertyType){
                     return `${f.create(prop.name, prop.fieldName(context.orm), context)}`  
                 }
                 return ``

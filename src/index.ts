@@ -1,6 +1,6 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { FieldPropertyTypeDefinition, PropertyType } from './types'
+import { FieldPropertyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg } from './util'
@@ -131,7 +131,7 @@ export type CompiledComputeFunction<Arg extends any, S extends Scalar<any,any>> 
 
 export type ExtractValueTypeDictFromFieldProperties<E> = {
     [key in keyof ExtractFieldPropDictFromDict<E>]:
-        ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyTypeDefinition<infer Primitive>>? Primitive : never
+        ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive : never
 }
 export type ExtractValueTypeFromComputeProperty<T extends Property> = 
     T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
