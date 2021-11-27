@@ -1,4 +1,4 @@
-const { ORM, Model, PrimaryKeyType, NumberType, StringType, StringNotNullType, DateNotNullType, NumberNotNullType } = require('taichi-orm')
+const { ORM, Model, PrimaryKeyType, NumberType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
 
 class ShopModel extends Model{
   id = this.field(PrimaryKeyType)
@@ -26,7 +26,7 @@ class ProductModel extends Model{
 
   id = this.field(PrimaryKeyType)
   name = this.field(new StringType({length: 100}))
-  createdAt = this.field(DateNotNullType)
+  createdAt = this.field(DateType)
   shopId = this.field(NumberNotNullType)
   shop = ProductModel.belongsTo(ShopModel, 'shopId')
   colors = ProductModel.hasManyThrough(ProductColorModel, ColorModel, 'id', 'colorId', 'productId')
@@ -59,7 +59,15 @@ class ProductModel extends Model{
     try{
 
       await orm.getContext().createModels()
-      const { Shop, Product } = orm.getContext().models
+      const { Shop, Product, Color, ProductColor } = orm.getContext().models
+
+      const createdShop = await Shop.createOne({name: 'Shop1'})
+      const createdProduct = await Product.createOne({name: 'Product1', shopId: createdShop.id})
+      const [createdColor1, createdColor2] = await Color.createEach([{code: 'red'}, {code: 'blue'}])
+      await ProductColor.createEach([
+        {productId: createdProduct.id, colorId: createdColor1, type: 'main'},
+        {productId: createdProduct.id, colorId: createdColor2, type: 'minor'}
+      ])
       
       // computed fields are the relations
       // you can do complicated query in one go
@@ -87,7 +95,6 @@ class ProductModel extends Model{
         where: ({root}) => root.productCount().greaterThan(2)
       })
   
-      // Great!
       console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
   
       // make query with Console.log the sql statements
