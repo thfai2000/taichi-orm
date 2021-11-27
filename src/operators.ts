@@ -1,19 +1,19 @@
-import {Scalar, ExpressionResolver, Expression, Dataset} from './builder'
+import {Scalar, ExpressionResolver, Expression, Dataset, resolveValueIntoScalar} from './builder'
 import {Knex} from 'knex'
 import { BooleanNotNullType } from './types'
 import { thenResult, thenResultArray } from './util'
 import { DatabaseContext } from '.'
 
-abstract class SQLFunction<Props, SourcePropMap> {
-    resolver: ExpressionResolver<Props, SourcePropMap>
-    constructor(resolver: ExpressionResolver<Props, SourcePropMap>){
-        this.resolver = resolver
-    }
-    // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
-    // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
-    // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
-    abstract toScalar(): Scalar<any, any>
-}
+// abstract class SQLFunction<Props, SourcePropMap> {
+//     resolver: ExpressionResolver<Props, SourcePropMap>
+//     constructor(resolver: ExpressionResolver<Props, SourcePropMap>){
+//         this.resolver = resolver
+//     }
+//     // abstract toRaw(resolver: ExpressionResolver<Props>): Knex.Raw
+//     // abstract toScalar(resolver: ExpressionResolver<Props>): Scalar
+//     // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
+//     abstract toScalar(): Scalar<any, any>
+// }
 
 export abstract class ConditionOperator<Props, SourcePropMap> {
     resolver: ExpressionResolver<Props, SourcePropMap>
@@ -251,11 +251,24 @@ export class NotBetweenOperator extends LeftAndRightAssertionOperator {
     }
 }
 
+export class WaitingLeft {
+    #func: (left: Scalar<any, any>) => AssertionOperator
+    constructor(func: (left: Scalar<any, any>) => AssertionOperator){
+        this.#func = func
+    }
+
+    toScalar(left: Scalar<any, any>){
+        return this.#func(left).toScalar()
+    }
+}
+
 export type SQLKeywords<Props, PropMap> = {
     And: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
     Or: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
     Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
-    Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>
+    Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>,
+    Like: (right: Scalar<any, any> | string) => WaitingLeft,
+    NotLike: (right: Scalar<any, any> | string) => WaitingLeft
 }
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
@@ -263,7 +276,9 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
         And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions).toScalar(),
         Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
         Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
-        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar()
+        Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar(),
+        Like: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
+        NotLike: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
     }
     return sqlkeywords
 }

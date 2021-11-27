@@ -4,6 +4,8 @@ import { Model } from "./model";
 import { FieldPropertyTypeDefinition, PrimaryKeyType, PropertyType } from "./types";
 import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
+export type Undetermined = 'undetermined'
+
 export type NoArg = { it_is_a_unique_field_indicates_no_arg: null}
 
 // expands object types one level deep
@@ -294,4 +296,20 @@ export const parseName = (item: any) => {
 export function isFunction(funcOrClass: any): funcOrClass is ((...args: any[]) => any) {
   const propertyNames = Object.getOwnPropertyNames(funcOrClass);
   return (!propertyNames.includes('prototype') || propertyNames.includes('arguments'));
+}
+
+export function isArrayOfStrings(arr: any[]): arr is string[] {
+    return arr.every(item => typeof item === 'string')
+}
+
+export function isScalarMap(obj: any): obj is { [key: string]: Scalar<any, any> } {
+    if(typeof obj === 'object'){
+        let keys = Object.keys(obj)
+        for (const key in keys) {
+            if( (obj[keys[key]] instanceof Scalar)){
+                return true
+            }
+        }
+    }
+    return false
 }

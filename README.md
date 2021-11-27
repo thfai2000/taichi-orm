@@ -3,13 +3,15 @@ A new way to deal with your Data Logic. You can define a virtual field called `C
 
 # Introduction
 
-- Introduce a concept `ComputeProperty`for Data Model
+- Introduce a concept `ComputeProperty` for Data Model
   - It is a Entity's property. It consist of data logics defined using Query Builder
   - Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters.   
 - Developed in **Typescript** but you can use it without typescript compiler.
 - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`. And the related Models are queried in one single Sql call. (Explain later)
 
+
+## Basic Usage of ComputeProperty
 
 Imagine an E-commerce system. A product (Model) has various fields like `availableStart`, `availableEnd` and `remainingStock`.
 A product is active when the current time are within these dates and the remainingStock are not zero.
@@ -23,13 +25,13 @@ export default class Product extends Model {
     availableEnd = this.field(DateNotNullType)
     remainingStock = this.field(NumberNotNullType)
 
-    //define computed properties here
-    isActive = Product.compute((context, parent): CFReturn<boolean> => {
-        return context.op.And(
-            parent.selectorMap.availableStart.lessThan( new Date() ),
-            parent.selectorMap.availableEnd.greaterThan( new Date() ),
-            parent.selectorMap.remainingStock.greaterThan(0)
-        ).toScalar()
+    //define ComputeProperty based on the value of FieldProperty
+    isActive = Product.compute((parent): CFReturn<boolean> => {
+        return new Scalar(context => context.op.And(
+            parent.selector.availableStart.lessThan( new Date() ),
+            parent.selector.availableEnd.greaterThan( new Date() ),
+            parent.selector.remainingStock.greaterThan(0)
+        ))
     })
 ```
 
@@ -43,10 +45,170 @@ Then you can use it simply just like a normal field
   })
 ```
 
+ComputeProperty can accept Argument. Below variable `spare` is the Argument. The Argument must be optional.
+
+```ts
+export default class Product extends Model {
+  ...
+  hasEnoughStock = Product.compute((parent, spare?: number): CFReturn<boolean> => {
+    return parent.remainingStock.greaterThan(spare ?? 2)
+  }
+}
+```
+
+Then you can use it as a normal field or a method
+```ts
+  await Product.find({
+    where: {
+      hasEnoughStock: true
+    }
+  })
+
+  await Product.find({
+    where: ({root}) => root.hasEnoughStock(5) //at least 5 remaining
+  })
+```
+
+ComputeProperties can be used in both `where` or `select` parts of the `FindOptions`, so that you can querying the properties or filtering by the properties' values.
+```ts
+  let products = await Product.find({
+    selectProps: ['isActive', 'hasEnoughStock'],
+    where: {
+      hasEnoughStock: true
+    }
+  })
+```
+
+## Using ComputedProperty as Related Entities 
+
+Typical use cases are querying Related Entities and filtering related Entities
+Let's say a Product belongs to a Shop. 
+We can define ComputeProperty called 'shop' or 'products' on these two Models using our built-in functions such as 'belongsTo' and 'hasMany'.
+
+```ts
+export default class Product extends Model {
+    id = this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    color = this.field(StringType)
+    //define a computeProperty as "belongsTo" relation
+    shop = Product.belongsTo(Shop, 'shopId', 'id')
+}
+
+export default class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    location = this.field(StringType)
+    //define a computeProperty as "hasMany" relation
+    products = Shop.hasMany(Product, 'shopId', 'id')
+}
+```
+
+Simply get array of `Shop` objects, each `products` key with value of array of `Product`
+```ts
+
+  // Simply select shop, each with array of products
+  let shops = await Shop.find({
+    selectProps: ['products']
+  })
+```
+
+These ComputeProperty are special because their Argument are `FindOption`. The related Entity can be queried and filtered according to the `FindOption`
+```ts
+
+  // find shops with related products which are only in color 'red'
+  let shops = await Shop.find({
+    select: {
+      // select the computed property 'products'
+      products: {
+        where: {
+          color: 'red'
+        }
+      }
+    },
+    where: {
+      //...
+    }
+  })
+```
+
+Example: use it in `where`
+```ts
+  // find all products which belongs to Shop with location 'Hong Kong'
+  let products = await Product.find({
+    where: ({root}) => root.shop({
+      where: {
+        location: 'Hong Kong'
+      }
+    }).exists()
+  })
+
+  // another approach (if the 'hasMany' relationship is not defined in Model Schema)
+  await Product.find({
+    where: ({root, Exists}) => Exists( Shop.dataset({
+      where: {
+        shopId: root.id,
+        location: 'Hong Kong'
+      }
+    }))
+  })
+```
+
+Besides, the funtion call of ComputeField returns a `Scalar` that can be transformed into subquery like 'SELECT count(*) FROM ...'
+```ts
+  // find all shops which has more than 5 products
+  let shops = await Shop.find({
+    where: ({root}) => root.products().count().greaterThan(5)
+  })
+
+  // another approach (if the 'hasMany' relationship is not defined in Model Schema)
+  let shops = await Shop.find({
+    where: ({root}) => Product.dataset({
+      where: {
+        shopId: root.id
+      }
+    }).toDScalar().count().greaterThan(5)
+  })
+
+```
+
+## Define ComputeProperty based on another ComputeProperty
+
+A more advanced usage.
+ComputeProperty is very flexible. You can define it based on another existing ComputeProperty or FieldProperty
+
+```ts
+export default class Product extends Model {
+    id = this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId', 'id')
+
+    // define a relation based on 'shop' with additional where clause
+    shopInHongKong = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
+        (context, parent, args?): any => {
+        return parent.selector.shop(args).transform( ds => {
+            return ds.andWhere({
+              location: 'Hong Kong'
+            }).toScalar()
+        })
+    })
+}
+
+export default class Shop extends Model {
+    id= this.field(PrimaryKeyType)
+    location = this.field(StringType)
+}
+```
+
+```ts
+  // find all products which belongs to Shop with location 'Hong Kong'
+  let products = await Product.find({
+    where: ({root}) => root.shopInHongKong().exists()
+  })
+```
 
 
-`ComputedProperty` can accept the parameters.
-Imagine your Product can be accessible by certain users.
+# Advanced Example 1 - Access Control
+
+Imagine your Entity Product can be accessible by certain users. You can define a property that indicate it is accessible or not.
 
 ```ts
 export default class Product extends Model {
@@ -77,11 +239,9 @@ Then you can use it like a function.
 
 ```
 
+If you find some logics are often repeated on many Models. It is suggested to create a util function. Let say you want all Entities has Role-Based Access Control. Here are the related tables Role, User, RoleEntity. 
 
-If you find some logics are often repeated on many Models. It is suggested to create a util function.
-Let say you have a table Role, User, RoleEntity
-
-User
+User  
 - id
 - roleId
 
@@ -90,9 +250,10 @@ Role
 
 RoleEntity
 - roleId
-- entityName    (Model Name)
+- entityName   (Model which that role can access)
 
 
+We define a Model class as a base class of the other models you want to be protected with Access Control
 ```ts
 //rbacModel.ts
 export default class RBACModel extends Model {
@@ -112,6 +273,7 @@ export default class RBACModel extends Model {
 }
 ```
 
+
 ```ts
 //product.ts
 export default class Product extends RBACModel {
@@ -126,112 +288,13 @@ export default class Product extends RBACModel {
   const currentUserId = 1
 
   let products = await Product.find({
-    where: ({root, And}) => And(
+    where: ({root}) => 
       root.isEditableByUserId(currentUserId)  // the function call return a boolean Scalar
-    )
   })
 ```
 
 
-
-
-
-
-
-Another Typical use cases.
-Let's say a Product belongs to a Shop. 
-We can define ComputeProperty called 'shop' or 'products' on these two Models using our standard helper functions 'belongsTo' and 'hasMany'.
-
-These properties can be used in both 'where' or 'select' clause.
-
-```ts
-export default class Product extends Model {
-    id = this.field(PrimaryKeyType)
-    shopId = this.field(NumberType)
-    color = this.field(StringType)
-    //define a computeProperty as "belongsTo" relation
-    shop = Product.belongsTo(Shop, 'shopId', 'id')
-}
-
-export default class Shop extends Model {
-    id= this.field(PrimaryKeyType)
-    location = this.field(StringType)
-    //define a computeProperty as "hasMany" relation
-    products = Shop.hasMany(Product, 'shopId', 'id')
-}
-```
-
-```ts
-  // find all products which belongs to Shop with location 'Hong Kong'
-  let products = await Product.find({
-    where: ({root}) => root.shop({
-      where: {
-        location: 'Hong Kong'
-      }
-    }).exists()
-  })
-```
-
-
-```ts
-  // find shops with products which are only in color 'red'
-  let shops = await Shop.find({
-    select: {
-      // select the computed property 'products'
-      products: {
-        where: {
-          color: 'red'
-        }
-      }
-    },
-    where: {
-      //...
-    }
-  })
-```
-
-
-A more advanced usage.
-ComputeProperty is very flexible. You can define it based on another existing ComputeProperty.
-
-```ts
-export default class Product extends Model {
-    id = this.field(PrimaryKeyType)
-    shopId = this.field(NumberType)
-    shop = Product.belongsTo(Shop, 'shopId', 'id')
-
-    // define a relation based on 'shop' with additional where clause
-    shopInHongKong = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
-        (context, parent, args?): any => {
-        return parent.selectorMap.shop(args).transform( ds => {
-            const prevWhere = ds.getWhere()
-
-            return ds.where( ({And}) => 
-                    And(
-                        prevWhere? prevWhere: {},
-                        parent.selectorMap.location.equals('Hong Kong')
-                    )
-                ).toScalar()
-        })
-    })
-}
-
-export default class Shop extends Model {
-    id= this.field(PrimaryKeyType)
-    location = this.field(StringType)
-}
-```
-
-```ts
-  // find all products which belongs to Shop with location 'Hong Kong'
-  let products = await Product.find({
-    where: ({root}) => root.shopInHongKong().exists()
-  })
-```
-
-
-
-# Why we need it?
+# Difference between traditional ORM
 
 For some traditional ORM, querying the relation data of Model is not efficient. If the data query consist of multiple Entity, it executes SQL SELECT statement one by one. Usually, it produce several SQL query. But Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
 
@@ -239,7 +302,7 @@ For some traditional ORM, querying the relation data of Model is not efficient. 
 
 Let's say we have data models `Shop`, `Product`, `Color`.
 A shop has many products and each product has many colors.
-For traditional ORM, we have to select Entity and its relation like this.
+For traditional ORM, when we select Entity and its relation like this.
 ```javascript
 Shop.find().with('products.colors')
 ```
@@ -277,13 +340,6 @@ But using ComputeProperty, you can define a SubQuery (We called it Dataset) whic
 
 
 
-//TODO: show example here
-
-
-
-
-
-
 # Getting Start
 
 WARNING: Don't use it for production
@@ -313,7 +369,6 @@ npm install --save sqlite3
     // configure the orm
     const orm = new ORM({
         models: {Shop: ShopClass, Product: ProductClass},
-        enableUuid: true,
         knexConfig: {
             client: 'sqlite3',
             connection: {
@@ -331,6 +386,9 @@ npm install --save sqlite3
         update,
         models: {Shop, Product} 
     } = orm.getContext()
+
+    let allShops = await Shop.find()
+    let allProducts = await Product.find()
 
 })()
 ```

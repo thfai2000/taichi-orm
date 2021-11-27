@@ -1,9 +1,10 @@
 import { Knex}  from "knex"
-import { SelectorMap, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
-import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator } from "./operators"
+import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
+import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, WaitingLeft } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly } from "./util"
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
+import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
@@ -46,8 +47,14 @@ type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
 
 export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O, M> > ) => Expression<O, M>
 
+
+export type ValueTypeDictForExpression<E> = {
+    [key in keyof E]: 
+        E[key] | WaitingLeft | Scalar<any, any>
+}
+
 export type Expression<O, M> = 
-    Partial<ExtractValueTypeDictFromPropertyDict<O>>  
+    Partial<ValueTypeDictForExpression<ExtractValueTypeDictFromPropertyDict<O>> > 
     | ExpressionFunc<O, M>
     | AndOperator<O, M> 
     | OrOperator<O, M> 
@@ -123,9 +130,9 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
         const sourcePropMap = sources.reduce( (acc, source) => {
             const t = source.sourceAlias
-            acc[t] = source.selectorMap
+            acc[t] = source.selector
             return acc
-        }, {} as {[key:string]: SelectorMap<any> } )
+        }, {} as {[key:string]: Selector<any> } )
 
         return sourcePropMap as any
     }
@@ -145,7 +152,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
     protected baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         WhereClauseBase<
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, Datasource<S, SName>
         > {
             this.fromItem = source
             return this as any
@@ -153,7 +160,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
     protected baseInnerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -166,7 +173,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
      
     protected baseLeftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -179,7 +186,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
     protected baseRightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -236,7 +243,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     #selectItems: { [key: string]: Scalar<any, any> } | null = null
 
-    #orderByItems:  Scalar<any, any>[] | null = null
+    #orderByItems:  {value: Scalar<any, any>, order: 'asc'|'desc'}[] | null = null
     #groupByItems: Scalar<any, any>[] | null = null
     #limit: null | number = null
     #offset: null | number = null
@@ -284,32 +291,93 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return nameMap
     }
 
+    protected func2OrderItemArray<S extends ( (keyof SourceProps) | Scalar<any, any> | {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}   )[] , Y extends UnionToIntersection<SourcePropMap | SQLKeywords< SourceProps, SourcePropMap>>>(named: S | ((map: Y) => S))
+    : {value: Scalar<any, any>, order: 'asc'|'desc'}[] {
+        let nameMap: S
+        let selectorMap = this.getSelectorMap()
+        let resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+
+        if (named instanceof Function) {
+            Object.assign(selectorMap, constructSqlKeywords(resolver))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+            nameMap = named(map)
+        } else {
+            nameMap = named
+        }
+
+        return nameMap.map(item => {
+            if(item instanceof Scalar){
+                return {
+                    value: item,
+                    order: 'asc'
+                }
+            } else if(typeof item === 'string') {
+                let p = this.propNameArray2ScalarMap([item])
+                return {
+                    value: Object.values(p)[0],
+                    order: 'asc'
+                }
+            } else {
+                let pair = item as {value: (keyof SourceProps) | Scalar<any, any>, order: 'asc' | 'desc'}
+                
+                // return new Scalar( async (context) => {
+                //     const sql = `${ (await value.toRaw(context)).toString()} ${pair.order.toLowerCase() === 'desc'?'desc':'asc'}`
+                //     return {sql}
+                // })
+
+                // let value: Scalar<any, any>
+                if(typeof pair.value === 'string'){
+                    let p = this.propNameToScalar(selectorMap, pair.value)
+                    let value = Object.values(p)[0]
+                    return {
+                        value: value,
+                        order: pair.order
+                    }
+                } else if(pair.value instanceof Scalar){
+                    return {
+                        value: pair.value,
+                        order: pair.order
+                    }
+                } else {
+                    throw new Error('Not allowed')
+                }
+            }
+        })
+    }
+
+    private propNameToScalar(sourcePropMap: SourcePropMap, key: string): { [key2: string]: Scalar<any, any>} {
+        let map = sourcePropMap as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
+        let [source, field] = key.split('.')
+        let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
+        if(!field){
+            field = source
+            if(!this.fromItem){
+                throw new Error(`There must be a FROM`)
+            }
+            let from = this.fromItem.selector //as SelectorMap< {[key:string]: any}>
+            item = from[field]
+        }
+        else {
+            item = map[source][field]
+        }
+
+        if(!item){
+            throw new Error('Cannot resolve field')
+        }else if(item instanceof Scalar){
+            return {[field]: item}
+        }else {
+            return {[field]: item()}
+        }
+    }
+
     protected propNameArray2ScalarMap(properties: string[]){
-        let map = this.getSelectorMap() as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
+        let map = this.getSelectorMap() //as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
         let fields = properties
         let nameMap: { [key: string]: Scalar<any, any> } = fields.reduce( (acc, key:string) => {
-            let [source, field] = key.split('.')
-            let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
-            if(!field){
-                field = source
-                if(!this.fromItem){
-                    throw new Error(`There must be a FROM`)
-                }
-                let from = this.fromItem.selectorMap //as SelectorMap< {[key:string]: any}>
-                item = from[field]
-            }
-            else {
-                item = map[source][field]
-            }
 
-            if(!item){
-                throw new Error('Cannot resolve field')
-            }else if(item instanceof Scalar){
-                acc = Object.assign({}, acc, {[field]: item})
-            }else {
-                acc = Object.assign({}, acc, {[field]: item()})    
-            }
-            
+            let keypair = this.propNameToScalar(map, key)
+            acc = Object.assign({}, acc, keypair)    
+
             return acc
         }, {})
         return nameMap
@@ -357,6 +425,29 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }))
     }
 
+    protected async orderByScalarArray2RawArray(nameMap: {value: Scalar<any, any>, order: 'asc'|'desc'}[], context: DatabaseContext<any>): Promise<
+        Knex.Raw[]
+        > {
+        const client = context.client()
+        return await Promise.all(nameMap.map(async (k) => {
+
+            // let acc = await accP
+            let pair = k
+            if(!pair){
+                throw new Error(`cannot resolve field ${k}`)
+            }
+            const raw: Knex.Raw = await pair.value.toRaw(context)
+            let text = raw.toString().trim()
+
+            if (text.includes(' ') && !(text.startsWith('(') && text.endsWith(')'))) {
+                text = `(${text})`
+            }
+            const newRaw = context.raw(`${text} ${pair.order.toLowerCase() === 'desc'?'desc':'asc'}`)
+
+            return newRaw
+        }))
+    }
+
     protected clearSchema() {
         this.datasetSchema = null
     }
@@ -384,23 +475,31 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
 
-    toScalar<T extends Dataset<any, any, any, any>, isArray extends boolean>(this: T, isArray: isArray): DScalar<isArray, T> {
-        return new DScalar(this, isArray, this.context)
+    toDScalar<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
+        return this.toDScalarWithArrayType()
     }
 
-    toScalarWithType<T extends PropertyType<any>>(
+    toDScalarWithArrayType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
+        return new DScalar(this, new ArrayType(this.schema()), this.context)
+    }
+
+    toDScalarWithObjectType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ObjectTypeDataset<T>, T> {
+        return new DScalar(this, new ObjectType(this.schema()), this.context)
+    }
+
+    toDScalarWithType<T extends PropertyType<any>>(
         this: Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource>,
         type: 
         T | 
         (new () => T) | 
-        ((dataset: typeof this) => T)): Scalar<T, typeof this> {
+        ((dataset: typeof this) => T)): DScalar<T, typeof this> {
 
         if(type instanceof PropertyType){
-            return new Scalar(this, type, this.context) 
+            return new DScalar(this, type, this.context) 
         } else if(isFunction(type)){
-            return new Scalar(this, type(this), this.context)
+            return new DScalar(this, type(this), this.context)
         } else {
-            return new Scalar(this, new type(), this.context) 
+            return new DScalar(this, new type(), this.context) 
         }
     }
 
@@ -422,14 +521,14 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
     from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         Dataset< Schema<{}>, 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, Datasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema<S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         
@@ -438,7 +537,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -446,71 +545,53 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
     }
     
-    selectProps<P extends keyof SourceProps>(...properties: P[]): 
-        Dataset<
-            Schema<
-                (ExistingSchema extends Schema<infer Props>? Props: never) &
-                SelectedPropsToScalarPropertyDict<SourceProps, P>
-            >
-        , 
-        SourceProps, SourcePropMap, FromSource>{
-       
-        this.clearSchema()
-        this.#selectItems = this.propNameArray2ScalarMap(properties as string[])
-        return this as any
-    }
-
-    andSelectProps<P extends keyof SourceProps>(...properties: P[]): 
-        Dataset<
-            Schema<
-                (ExistingSchema extends Schema<infer Props>? Props: never) &
-                SelectedPropsToScalarPropertyDict<SourceProps, P>
-            >
-        , 
-        SourceProps, SourcePropMap, FromSource>{
-       
-        this.clearSchema()
-        this.#selectItems = Object.assign({}, this.#selectItems, this.propNameArray2ScalarMap(properties as string[]) )
-        return this as any
-    }
-
-    groupByProps<P extends keyof SourceProps>(...properties: P[]): 
-        Dataset<
-        ExistingSchema
-            // Schema<
-            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
-            //     SelectedPropsToScalarDict<SourceProps, P>
-            // >
-        , 
-        SourceProps, SourcePropMap, FromSource>{
-       
-        const dict = this.propNameArray2ScalarMap(properties as string[])
-        this.#groupByItems = Object.keys(dict).map(k => dict[k])
-        return this as any
-    }
-
     select<S extends { [key: string]: Scalar<any, any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
             Schema<
-                (ExistingSchema extends Schema<infer Props>? Props: never) &
+                // (ExistingSchema extends Schema<infer Props>? Props: never) &
                 ScalarDictToScalarPropertyDict<S>
             >
         , 
-        SourceProps, SourcePropMap, FromSource> {
-        
-        this.clearSchema()
-        const result = this.func2ScalarMap<S, Y>(named)
+        SourceProps, SourcePropMap, FromSource>;
 
-        this.#selectItems = result
-        return this as any
+    select<P extends keyof SourceProps>(...properties: P[]): 
+        Dataset<
+            Schema<
+                // (ExistingSchema extends Schema<infer Props>? Props: never) &
+                SelectedPropsToScalarPropertyDict<SourceProps, P>
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource>;
+        
+    select(...args: any[]){
+
+        if(args.length === 0 ){
+            throw new Error('select must have at least one argument')
+        }
+        if(args.length === 1 && (isScalarMap(args[0]) || args[0] instanceof Function) ){
+            let named = args[0]
+            this.clearSchema()
+            const result = this.func2ScalarMap(named)
+    
+            this.#selectItems = result
+            return this as any
+        } else if(isArrayOfStrings(args)){
+            let properties = args
+            this.clearSchema()
+            this.#selectItems = this.propNameArray2ScalarMap(properties)
+            return this as any
+        }
+
+        throw new Error('cannot handle unexpected arguments')
     }
+
 
     andSelect<S extends { [key: string]: Scalar<any, any> }, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
@@ -520,49 +601,97 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
                 ScalarDictToScalarPropertyDict<S>
             >
         , 
-        SourceProps, SourcePropMap, FromSource> {
+        SourceProps, SourcePropMap, FromSource>;
         
-        this.clearSchema()
-        const result = this.func2ScalarMap<S, Y>(named)
+    andSelect<P extends keyof SourceProps>(...properties: P[]): 
+        Dataset<
+            Schema<
+                (ExistingSchema extends Schema<infer Props>? Props: never) &
+                SelectedPropsToScalarPropertyDict<SourceProps, P>
+            >
+        , 
+        SourceProps, SourcePropMap, FromSource>;
 
-        this.#selectItems = Object.assign({}, this.#selectItems, result)
-        return this as any
+    andSelect(...args: any[]){
+        if(args.length === 0 ){
+            throw new Error('select must have at least one argument')
+        }
+        if(args.length === 1 && (isScalarMap(args[0]) || args[0] instanceof Function) ){
+            let named = args[0]
+            this.clearSchema()
+            const result = this.func2ScalarMap(named)
+
+            this.#selectItems = Object.assign({}, this.#selectItems, result)
+            return this as any
+        } else if(isArrayOfStrings(args)){
+            let properties = args
+            this.clearSchema()
+            this.#selectItems = Object.assign({}, this.#selectItems, this.propNameArray2ScalarMap(properties) )
+            return this as any
+        }
+
+        throw new Error('cannot handle unexpected arguments')
     }
-
+    
     groupBy<S extends Array<Scalar<any, any>>, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
         ((map: Y ) => S ) ):
         Dataset<
         ExistingSchema
-            // Schema<
-            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
-            //     ScalarDictToScalarPropertyDict<S>
-            // >
         , 
-        SourceProps, SourcePropMap, FromSource> {
+        SourceProps, SourcePropMap, FromSource>;
 
-        const result = this.func2ScalarArray(named)
-
-        this.#groupByItems = result
-        return this as any
-    }
-
-    orderBy<S extends Array<Scalar<any, any>>, Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: S | 
-        ((map: Y ) => S ) ):
+    groupBy<P extends keyof SourceProps>(...properties: P[]): 
         Dataset<
         ExistingSchema
-            // Schema<
-            //     (ExistingSchema extends Schema<infer Props>? Props: never) &
-            //     ScalarDictToScalarPropertyDict<S>
-            // >
         , 
-        SourceProps, SourcePropMap, FromSource> {
+        SourceProps, SourcePropMap, FromSource>;
+    
+    groupBy(...args: any[]){
+    
+        if(args.length === 0 ){
+            throw new Error('select must have at least one argument')
+        }
+        if(args.length === 1 && (isScalarMap(args[0]) || args[0] instanceof Function) ){
+            let named = args[0]
+            const result = this.func2ScalarArray(named)
+    
+            this.#groupByItems = result
+            return this as any
 
-        const result = this.func2ScalarArray(named)
+        } else if(isArrayOfStrings(args)){
+            let properties = args
+            const dict = this.propNameArray2ScalarMap(properties as string[])
+            this.#groupByItems = Object.keys(dict).map(k => dict[k])
+            return this as any
+        }
+    }
 
-        this.#orderByItems = result
+    orderBy<Q extends ( Scalar<any, any> | {value: Scalar<any, any>, order: 'asc' | 'desc'}   )[], 
+        Y extends UnionToIntersection< SourcePropMap | SQLKeywords< SourceProps, SourcePropMap> >>(named: Q | 
+        ((map: Y ) => Q ) ):
+        Dataset<
+        ExistingSchema
+        , 
+        SourceProps, SourcePropMap, FromSource>;
+
+    // orderBy<P extends keyof SourceProps>(...properties: P[]): 
+    //     Dataset<
+    //     ExistingSchema
+    //     , 
+    //     SourceProps, SourcePropMap, FromSource>;
+
+    orderBy(...args: any[]){
+    
+        if(args.length !== 1 ){
+            throw new Error('must be one argument')
+        }
+        const resolved = this.func2OrderItemArray(args[0])
+        this.#orderByItems = resolved
         return this as any
     }
-    
+
+
+
     //<ExistingSchema, SourceProps, SourcePropMap, FromSource>
     // clone<T extends typeof Dataset>(d: T): InstanceType<T> {
     //     const newDataset = new d()
@@ -627,7 +756,6 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
-
         if(!this.#selectItems || Object.keys(this.#selectItems).length === 0){
             throw new Error('Not selectItems')
         }
@@ -664,7 +792,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
 
         if(this.#orderByItems){
-            const orderByItems = await this.queryScalarArray2RawArray(this.#orderByItems, context)
+            const orderByItems = await this.orderByScalarArray2RawArray(this.#orderByItems, context)
             if(orderByItems.length === 0){
                 throw new Error('No groupByItems')
             }
@@ -964,7 +1092,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -975,7 +1103,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -984,7 +1112,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -992,7 +1120,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1102,7 +1230,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
+                        dataset.select({...dataset.getFrom()!.selector.$allFields })
 
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
@@ -1146,7 +1274,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: SelectorMap< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: Selector< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1157,7 +1285,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -1166,7 +1294,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -1174,7 +1302,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: SelectorMap< S> }>
+        Y extends UnionToIntersection< SourcePropMap | { [key in SName ]: Selector< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1242,7 +1370,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selectorMap.$allFields })
+                        dataset.select({...dataset.getFrom()!.selector.$allFields })
                         
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
@@ -1287,8 +1415,14 @@ export type RawUnit<T extends PropertyType<any> = any> =
 
 export type RawExpression<T extends PropertyType<any> = any> = ( (context: DatabaseContext<any>) => RawUnit<T>) | RawUnit<T>
 
-function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{ 
-    return ( ('sql' in value) && ('args' in value))
+function isSQLStringWithArgs(value: any): value is SQLStringWithArgs{
+    const keys = Object.keys(value)
+    if(keys.length === 1 && keys.includes('sql')){
+        return true
+    } else if(keys.length === 2 && keys.includes('sql') && keys.includes('args')) {
+        return true
+    }
+    return false
 }
 
 
@@ -1348,9 +1482,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             return this.isNull()
         } else if(rightOperand instanceof DScalar){
             let d = rightOperand
-            if(d.isArray){
-                return this.in(rightOperand)
-            }
+            return this.in(rightOperand)
         }
         return this.equals(rightOperand)
     }
@@ -1360,9 +1492,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             return this.isNotNull()
         } else if(rightOperand instanceof DScalar){
             let d = rightOperand
-            if(d.isArray){
-                return this.notIn(rightOperand)
-            }
+            return this.notIn(rightOperand)
         }
         return this.notEquals(rightOperand)
     }
@@ -1447,21 +1577,14 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return this
     // }
 
-    transform<
-        S extends Scalar<any, any>
-        // ChangedValue extends Knex.Raw | Dataset<any, any, any, any>
-        // T extends PropertyDefinition<any> = ChangedValue extends Dataset<infer Schema>? ArrayType<Schema>: any
-        >(
-            fn: (value: Value, context: DatabaseContext<any>) => S | Promise<S>
-        ): S {
+    transform<T extends PropertyType<any>, NewValue extends Knex.Raw | Dataset<any, any, any, any>>(
+            fn: (value: Value, context: DatabaseContext<any>) => Scalar<T, NewValue> | Promise<Scalar<T, NewValue>>
+        ): Scalar<T, NewValue> {
         
-        let s = new Scalar( (context) => {
-
+        let s = new Scalar<T, NewValue>( (context) => {
             const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset) as Value | Promise<Value>
-            
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset, context) )
-            
-        }) as S
+        })
 
         return s
     }
@@ -1469,7 +1592,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     protected async resolveDefinition(ctx: DatabaseContext<any>, ex: RawExpression): Promise<PropertyType<any>> {
         return thenResult(ex, ex => {
             if(ex instanceof Dataset){
-                return this.resolveDefinition(ctx, ex.toScalar(true))
+                return this.resolveDefinition(ctx, ex.toDScalarWithArrayType() )
             } else if(ex instanceof Scalar ){
                 if(ex.declaredDefinition){
                     return ex.declaredDefinition
@@ -1532,7 +1655,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
     }
 
-    private resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
+    protected resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
         ( Knex.Raw<any> | Promise<Knex.Raw<any>> | Dataset<any, any, any> | Promise< Dataset<any, any, any> >) {
 
         return thenResult(raw, ex => {
@@ -1551,7 +1674,6 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
                 return context.raw(ex)
             } else if (isSQLStringWithArgs(ex)){
-
                 if(!ex.args){
                     return context.raw(ex.sql)
                 } else {
@@ -1624,49 +1746,49 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     } 
 }
 
-export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, any>> extends Scalar< isArray extends true? ArrayType< ReturnType<DS["schema"]>>: ObjectType< ReturnType<DS["schema"]> >, DS> {
+export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, any, any>> extends Scalar<T, DS> {
     
-    #isArray: boolean
+    // #isArray: boolean
 
     constructor(
-            dataset: Dataset<any, any, any, any> | 
-            ( (context: DatabaseContext<any>) => Dataset<any, any, any, any>) | 
-            ( (context: DatabaseContext<any>) => Promise<Dataset<any, any, any, any>>),
-            isArray: boolean = true,
+            content: Dataset<any, any, any, any> |
+            DScalar<any, any> |
+            ( (context: DatabaseContext<any>) => Dataset<any, any, any, any> | Promise<Dataset<any, any, any, any>> | DScalar<any, any> | Promise<DScalar<any, any>>),
+            definition?: T | (new (...args: any[]) => T) | null,
         context?: DatabaseContext<any> | null){
             super(
                     (async (context: DatabaseContext<any>) => {
-                        let resolved: Dataset<any, any, any, any>
-                        if(dataset instanceof Function){
-                            resolved = await dataset(context)
+                        let resolved: Dataset<any, any, any, any> | DScalar<any, any>
+                        if(content instanceof Function){
+                            resolved = await content(context)
                         } else {
-                            resolved = dataset
+                            resolved = content
                         }
-                        if(this.isArray){
-                            return resolved.toScalarWithType( (ds) => new ArrayType(ds.schema()) )
-                        } else {
-                            return resolved.toScalarWithType( (ds) => new ObjectType(ds.schema()) )
+                        if(resolved instanceof Dataset && !definition) {
+                            return resolved.toDScalarWithType( (ds) => new ArrayType(ds.schema()) )
                         }
+                        return resolved
                     }) as RawExpression<any>
-                    , null, context)
-            this.#isArray = isArray
+                    , definition, context)
+            // this.#isArray = isArray
+
         }
     
-    get isArray(){
-        return this.#isArray
-    }
+    // get isArray(){
+    //     return this.#isArray
+    // }
 
-    count(this: DScalar<isArray, DS>): Scalar<NumberNotNullType, any> {
-        return this.transform( (value, ctx)=> {
+    count(this: DScalar<any, DS>): Scalar<NumberNotNullType, any> {
+        return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
-                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toScalarWithType(NumberNotNullType)
+                return value.select( () => ({ count: new Scalar('Count(1)') }) ).toDScalarWithType(NumberNotNullType)
             }
             throw new Error('count is only applicable to Dataset.')
         })
     }
 
-    exists(this: DScalar<isArray, DS>): Scalar<BooleanNotNullType, any> {
-        return this.transform( (value, ctx)=> {
+    exists(this: DScalar<any, DS>): Scalar<BooleanNotNullType, any> {
+        return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
                 return ctx.op.Exists(value)
             }
@@ -1674,13 +1796,32 @@ export class DScalar<isArray extends boolean, DS extends Dataset<any, any, any, 
         })
     }
 
-    toScalar<isArrayValue extends boolean>(this: DScalar<isArrayValue, DS>, isArray: isArrayValue): DScalar<isArrayValue, DS>{
-        this.#isArray = isArray
-        return this as DScalar<isArrayValue, DS>
+    transform<NewDScalar extends DScalar<any, any>  >(
+            fn: (value: DS, context: DatabaseContext<any>) => NewDScalar | Promise<NewDScalar>
+        ): NewDScalar {
+        
+        let s = new DScalar( (context) => {
+            const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset)
+            return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset as DS, context) )
+        }) as NewDScalar
+
+        return s
+    }
+
+    asArrayType(this: DScalar<any, DS>): DScalar< ArrayTypeDataset<DS>, DS>{
+        return this.transform( (preValue, context)=> {
+            return preValue.toDScalarWithType( (ds) => new ArrayType(ds.schema()) )
+        }) as DScalar< ArrayTypeDataset<DS>, DS>
+    }
+
+    asObjectType(this: DScalar<any, DS>): DScalar< ObjectTypeDataset<DS>, DS>{
+        return this.transform( (preValue, context)=> {
+            return preValue.toDScalarWithType( (ds) => new ObjectType(ds.schema()) )
+        }) as DScalar< ObjectTypeDataset<DS>, DS>
     }
 }
 
-export function resolveValueIntoScalar(value: any){
+export function resolveValueIntoScalar(value: any): any{
     if( value === null){
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
     } else if (typeof value === 'boolean') {
@@ -1691,11 +1832,9 @@ export function resolveValueIntoScalar(value: any){
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
     } else if (typeof value === 'number'){
         const numberValue = value
-        //TODO
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
     } else if (value instanceof Date){
         const dateValue = value
-        //TODO
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
     }
     return value
@@ -1721,7 +1860,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
         } else if(value instanceof Scalar){
             return value
         } else if (value instanceof Dataset) {
-            return value.toScalar(true)
+            return value.toDScalarWithArrayType()
         } else if(value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
@@ -1748,26 +1887,26 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     throw new Error(`cannot found prop (${propName})`)
                 }
                 
-                const makeOperator = (leftOperatorEx: any, rightOperatorEx: any) => {
+                const operatorScalar = (leftOperatorEx: any, rightOperatorEx: any) => {
                     const leftOperator = resolver(leftOperatorEx)
 
-                    let operator: AssertionOperator
-                    if(rightOperatorEx instanceof AssertionOperator){
-                        operator = rightOperatorEx
+                    let finalScalar: Scalar<any, any>
+                    if(rightOperatorEx instanceof WaitingLeft) {
+                        finalScalar = rightOperatorEx.toScalar(leftOperatorEx)
                     } else if(rightOperatorEx === null){
-                        operator = new IsNullOperator(leftOperator)
+                        finalScalar = new IsNullOperator(leftOperator).toScalar()
                     } else {
-                        operator = new EqualOperator(leftOperator, resolver(rightOperatorEx))
+                        finalScalar = new EqualOperator(leftOperator, resolver(rightOperatorEx)).toScalar()
                     }
-                    return operator
+                    return finalScalar
                 }
                 
                 if(prop instanceof FieldProperty || prop instanceof ScalarProperty){
                     let converted = source.getFieldProperty(propName)
-                    scalars.push( makeOperator(converted, dict[key]).toScalar() )
+                    scalars.push( operatorScalar(converted, dict[key]) )
                 } else if(prop instanceof ComputeProperty){
                     let compiled = (source.getComputeProperty(propName))()
-                    scalars.push( makeOperator(compiled, dict[key]).toScalar() )
+                    scalars.push( operatorScalar(compiled, dict[key]) )
                 }
     
                 return scalars
