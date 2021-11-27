@@ -475,6 +475,10 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         return this
     }
 
+    toDScalar<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
+        return this.toDScalarWithArrayType()
+    }
+
     toDScalarWithArrayType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
         return new DScalar(this, new ArrayType(this.schema()), this.context)
     }
