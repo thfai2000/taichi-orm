@@ -114,8 +114,6 @@ export abstract class Model {
         return new ComputeProperty(new ComputeFunction(args[0]))
     }
 
-
-
     static computeModelObject<M extends typeof Model,
             R extends typeof Model,
             SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>

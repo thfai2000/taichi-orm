@@ -332,6 +332,10 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         return this.#globalKnexInstance
     }
 
+    async shutdown(): Promise<void> {
+        return this.getKnexInstance().destroy()
+    }
+
     // async executeStatement(stmt: SQLString, executionOptions: ExecutionOptions): Promise<any> {
     //     return this.getRepository().executeStatement(stmt, {}, executionOptions)
     // }
@@ -411,7 +415,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         // important: sqllite3 doesn't accept multiple statements
         await Promise.all( this.schemaSqls().map( async(sql) => {
             await this.orm.getKnexInstance().raw(sql)
-        }) )
+        }))
     }
 
     executeStatement = async (stmt: SQLString, variables: {[key:string]: any}, executionOptions: ExecutionOptions): Promise<any> => {

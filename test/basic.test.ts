@@ -52,6 +52,9 @@ let orm = new ORM({
 })
 let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
+afterAll( async () => {
+  await orm.shutdown()
+})
 
 describe('Basic Read and Write', () => {
 

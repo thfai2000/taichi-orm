@@ -41,7 +41,6 @@ class ProductModel extends Model{
 
 
 ;(async() =>{
-
     // configure database
     const orm = new ORM({
         models: {
@@ -57,45 +56,51 @@ class ProductModel extends Model{
             }
         }
     })
+    try{
 
-    await orm.getContext().createModels()
-    const { Shop, Product } = orm.getContext().models
-    
-    // computed fields are the relations
-    // you can do complicated query in one go
-    // Graph-like selecting Models "Shop > Product > Color"
-    let records = await Shop.find({
-      selectProps: ['productCount'],
-      select: {
-        products: {
-          select: {
-            colors: {
-              limit: 2
-            },
-            colorsWithType: 'main'
+      await orm.getContext().createModels()
+      const { Shop, Product } = orm.getContext().models
+      
+      // computed fields are the relations
+      // you can do complicated query in one go
+      // Graph-like selecting Models "Shop > Product > Color"
+      let records = await Shop.find({
+        selectProps: ['productCount'],
+        select: {
+          products: {
+            select: {
+              colors: {
+                limit: 2
+              },
+              colorsWithType: 'main'
+            }
           }
         }
-      }
-    })
+      })
+  
+      // Here you are
+      console.log('results', records)
+  
+      // use computed fields for filtering
+      // for example: find all shops with Product Count over 2
+      let shopsWithAtLeast2Products = await Shop.find({
+        where: ({root}) => root.productCount().greaterThan(2)
+      })
+  
+      // Great!
+      console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
+  
+      // make query with Console.log the sql statements
+      let shops = await Shop.find({
+        selectProps: ['products']
+      }).onSqlRun(console.log)
+  
+      console.log('shops', shops)
+      
+    }finally{
+      await orm.shutdown()
+    }
 
-    // Here you are
-    console.log('results', records)
-
-    // use computed fields for filtering
-    // for example: find all shops with Product Count over 2
-    let shopsWithAtLeast2Products = await Shop.find({
-      where: ({root}) => root.productCount().greaterThan(2)
-    })
-
-    // Great!
-    console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
-
-    // make query with Console.log the sql statements
-    let shops = await Shop.find({
-      selectProps: ['products']
-    }).onSqlRun(console.log)
-
-    console.log('shops', shops)
 
 })()
 
