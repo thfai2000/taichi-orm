@@ -361,14 +361,27 @@ npm install --save sqlite3
 3. define your Data Models (or in separates files)
 . call `configure` to use the setup the resposity and database connection
 
-```javascript
-// #index.js
+```ts
+// #index.ts
+import { ORM } from 'taichi-orm'
+import { PrimaryKeyType, NumberType } from 'taichi-orm/types'
+
+class ShopModel extends Model {
+    id= this.field(PrimaryKeyType)
+    products = ShopModel.hasMany(ProductModel, 'shopId')
+}
+
+class ProductModel extends Model {
+    id= this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    shop = ProductModel.belongsTo(ShopModel, 'shopId')
+}
 
 (async() =>{
 
     // configure the orm
     const orm = new ORM({
-        models: {Shop: ShopClass, Product: ProductClass},
+        models: {Shop: ShopModel, Product: ProductModel},
         knexConfig: {
             client: 'sqlite3',
             connection: {
@@ -379,13 +392,16 @@ npm install --save sqlite3
 
     let {
         createModels,
-        dataset, 
-        scalar,
-        insert,
-        del,
-        update,
         models: {Shop, Product} 
     } = orm.getContext()
+
+    await createModels()
+
+    let createdShop = await Shop.createOne({ id: 1 })
+    let createdProducts = await Product.create([
+      {shopId: createdShop.id, name: 'Product1'},
+      {shopId: createdShop.id, name: 'Product2'}
+    ])
 
     let allShops = await Shop.find()
     let allProducts = await Product.find()
@@ -403,10 +419,7 @@ Thanks Knex. The project is heavily using Knex.
 
 # Development?
 
-We needs some passionate developers. If you are interested and agreed with the ideas, you may join our project. You can talk in the discussion board.
-
-Currently, I work one the ORM together with the example because the example can proof the concept of the ORM.
-Tests will be added in the future once the specification is confirmed.
+If you are interested and agreed with the ideas, you may join our project. You can talk in the discussion board.
 
 ```bash
 git clone ...
