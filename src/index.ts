@@ -1,8 +1,6 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-// import { v4 as uuidv4 } from 'uuid'
-export { PropertyType as PropertyDefinition, FieldPropertyTypeDefinition as FieldPropertyDefinition }
-import { ArrayType, FieldPropertyTypeDefinition, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType } from './types'
+import { FieldPropertyTypeDefinition, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg } from './util'
@@ -13,8 +11,14 @@ import {ExtractComputePropDictFromSchema} from './util'
 import { AndOperator, constructSqlKeywords, ExistsOperator, NotOperator, OrOperator, SQLKeywords } from './operators'
 
 
-export type CFReturn<D> = Scalar<PropertyType<D>, any>
+export * from './model'
+export * from './builder'
+export * from './operators'
+export * from './schema'
+export * from './types'
+export * from './util'
 
+export type CFReturn<D> = Scalar<PropertyType<D>, any>
 
 export type SelectableProps<E> = {
     [key in keyof E]: Scalar<any, any>
@@ -381,6 +385,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         //@ts-ignore
         let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
         if(!foundKey){
+            console.log('cannot find model', modelClass)
             throw new Error('Cannot find model')
         }
         return this.models[foundKey] as unknown as ModelRepository<T>
@@ -436,10 +441,10 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return new Dataset(this)
     }
     scalar<D extends PropertyType<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
-    //@ts-ignore
-    scalar<D extends PropertyType<any>, Value extends RawUnit>(value: Value, definition?: D | (new (...args: any[]) => D)): Scalar<D, Value>;
-    //@ts-ignore
-    scalar = (...args: any[]): Scalar<any> => {
+
+    scalar<D extends PropertyType<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D, any>;
+    
+    scalar(...args: any[]): Scalar<any, any>{
         
         if(typeof args[0] ==='string' && Array.isArray(args[1])){
             return new Scalar({sql: args[0], args: args[1]}, args[2], this)

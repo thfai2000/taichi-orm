@@ -1,5 +1,5 @@
-import {Model, ModelObjectRecord} from '../dist/model'
-import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from '../dist'
+import {Model, ModelObjectRecord} from 'taichi-orm'
+import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from 'taichi-orm'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 

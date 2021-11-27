@@ -290,7 +290,7 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
                     return `${f.create(prop.name, prop.fieldName(context.orm), context)}`  
                 }
                 return ``
-            }).flat().join(',\n')}\n)`;
+            }).join(',\n')}\n)`;
     }
 
     datasource<T extends TableSchema<any>, Name extends string>(this: T, name: Name, options?: TableOptions) : TableDatasource<T, Name>{

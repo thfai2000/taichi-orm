@@ -367,12 +367,12 @@ import { ORM } from 'taichi-orm'
 import { PrimaryKeyType, NumberType } from 'taichi-orm/types'
 
 class ShopModel extends Model {
-    id= this.field(PrimaryKeyType)
+    id = this.field(PrimaryKeyType)
     products = ShopModel.hasMany(ProductModel, 'shopId')
 }
 
 class ProductModel extends Model {
-    id= this.field(PrimaryKeyType)
+    id = this.field(PrimaryKeyType)
     shopId = this.field(NumberType)
     shop = ProductModel.belongsTo(ShopModel, 'shopId')
 }
