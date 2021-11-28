@@ -1,21 +1,18 @@
 
-A new way to deal with your Data Logic. You can define a virtual field called `ComputedProperty` which is subquery or sql operators in your Data Model.
+A new way to deal with your Data Logic (SQL Databse). You can define a virtual field called `ComputeProperty` (that actually is subquery) which can be used like a normal field.
 
 # Introduction
 
-- Introduce a concept `ComputeProperty` for Data Model
-  - It is a Entity's property. It consist of data logics defined using Query Builder
-  - Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible
-  - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters.   
+- Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible as it not only allows pre-defined logics but also accepts parameters.
 - Developed in **Typescript** but you can use it without typescript compiler.
-- Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`. And the related Models are queried in one single Sql call. (Explain later)
+- Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call.
 
 
 ## Basic Usage of ComputeProperty
 
 Imagine an E-commerce system. A product (Model) has various fields like `availableStart`, `availableEnd` and `remainingStock`.
 A product is active when the current time are within these dates and the remainingStock are not zero.
-We can define the schema like this:
+We can define the schema like below (with a `isActive` ComputeProperty).
 ```ts
 export default class Product extends Model {
 
@@ -35,8 +32,9 @@ export default class Product extends Model {
     })
 ```
 
-
-Then you can use it simply just like a normal field
+Below the `ModelRepository.find()` function accepts one argument `FindOptions` (Just like the other ORM). 
+The `where` part specifies the data filtering condition.
+You can use the `isActive` ComputeProperty simply just like a normal field (FieldProperty) in the `where` object.
 ```ts
   let activeProducts = await Product.find({
     where: {
@@ -56,7 +54,9 @@ export default class Product extends Model {
 }
 ```
 
-Then you can use it as a normal field or a method
+Then you can use it like a normal field or a method.
+If you use it as object Key, the Argument of that ComputeProperty is undefined.
+You can only pass Argument in using method.
 ```ts
   await Product.find({
     where: {
@@ -64,12 +64,16 @@ Then you can use it as a normal field or a method
     }
   })
 
+  //another approach: use 
   await Product.find({
-    where: ({root}) => root.hasEnoughStock(5) //at least 5 remaining
+    where: ({root}) => root.hasEnoughStock(5) //at least 5 remainings
   })
 ```
 
-ComputeProperties can be used in both `where` or `select` parts of the `FindOptions`, so that you can querying the properties or filtering by the properties' values.
+The `FindOptions` consists of `where`, `orderBy`, `select`, `selectProps` etc.
+You can querying the properties by specifying the ComputeProperty in `select` and `selectProps`.
+`selectProps` is array of ComputeProperties whereas `select` is object with keys of ComputeProperties.
+In the `select` object, the value of the key is the Argument of that corresponding ComputeProperty.
 ```ts
   let products = await Product.find({
     selectProps: ['isActive', 'hasEnoughStock'],
@@ -77,9 +81,19 @@ ComputeProperties can be used in both `where` or `select` parts of the `FindOpti
       hasEnoughStock: true
     }
   })
+
+  let products = await Product.find({
+    select: {
+      //pass 5 as the argument of the ComputeProperty
+      hasEnoughStock: 5   
+    },
+    where: {
+      hasEnoughStock: true
+    }
+  })
 ```
 
-## Using ComputedProperty as Related Entities 
+## Using ComputeProperty as Related Entities 
 
 Typical use cases are querying Related Entities and filtering related Entities
 Let's say a Product belongs to a Shop. 
@@ -152,7 +166,7 @@ Example: use it in `where`
   })
 ```
 
-Besides, the funtion call of ComputeField returns a `Scalar` that can be transformed into subquery like 'SELECT count(*) FROM ...'
+Besides, the funtion call of `ComputeProperty` returns a `Scalar` that can be transformed into subquery like 'SELECT count(*) FROM ...'
 ```ts
   // find all shops which has more than 5 products
   let shops = await Shop.find({
@@ -183,7 +197,9 @@ export default class Product extends Model {
 
     // define a relation based on 'shop' with additional where clause
     shopInHongKong = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
-        (context, parent, args?): any => {
+        (parent, args?): any => {
+        // the shop Scalar is transformed into another Scalar. 
+        // The original dataset ('ds') is modified by adding where clause
         return parent.selector.shop(args).transform( ds => {
             return ds.andWhere({
               location: 'Hong Kong'
@@ -206,7 +222,67 @@ export default class Shop extends Model {
 ```
 
 
-# Advanced Example 1 - Access Control
+# Concepts
+
+## Model
+It represents a database table
+
+## ModelRepository
+It is used for carry out `create`, `update`, `delete` operations on a Model
+
+## DatabaseContext
+It consists of a set of ModelRepository
+
+## ORM
+It is a object with Database connection settings.
+It manages DatabaseContext
+
+## Dataset
+It is a query builder and represents the SELECT statement
+
+## Scalar
+It represent a SQL single value with a specifc type like number, string or date.
+Dataset can be transformed into a Scalar. For example, 'SELECT count(*) FROM table1' can act as a Scalar in number type
+
+## FieldProperty
+It represents a field of a Model
+
+## ComputeProperty
+It represents a virtual field of a Model
+It defines how to create a Scalar
+
+## Datasource
+It represent the properties' value of a Model or a Dataset
+`Datasource.selector` is an object having keys of properties name with values of corresponding Scalar
+
+
+# Advanced Example 1 - Scalar Transformation
+
+A Scalar can transformed into another Scalar in different type/value.
+
+```ts
+    let ctx = orm.getContext()
+    let {Shop} = ctx.models
+
+    // find shops with its products that average price are between 20 and 30
+    let shops = await Shop.find({
+      where: ({root}) => root.products().transform(ds => 
+        ds.select(({root}) => ({average: ctx.scalar('AVG(??)', [root.price]) }) )
+        .toDScalarWithType(NumberNotNullType)
+      ).between(20, 30)
+    })
+```
+The above codes is using `Scalar.transform()` to find all shops with its products that average price are between 20 and 30. 
+
+Explain:
+The method call of `products` ComputeProperty returns a Scalar.
+That Scalar is in ArrayType but is transformed into a NumberType.
+The `Scalar.transform()` expose the original source 'Dataset' that allows modification.
+Dataset is a query builder that allow you to select any value.
+In this case, we use raw SQL `DatabaseContext.scalar()` (Just like Knex.raw) in the SELECT statement.
+
+
+# Advanced Example 2 - Access Control
 
 Imagine your Entity Product can be accessible by certain users. You can define a property that indicate it is accessible or not.
 
@@ -215,14 +291,15 @@ export default class Product extends Model {
 
     id = this.field(PrimaryKeyType)
 
-    isAccessibleByUserId = Product.compute((context, parent, arg?: number): CFReturn<boolean> => {
+    isAccessibleByUserId = Product.compute((parent, arg?: number): CFReturn<boolean> => {
         // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
-        return context.dataset()
+        return new DScalar(context => context.dataset()
           .from( UserProduct.datasource('up') )
           .where({
             'up.userId': arg,
             'up.productId': parent.id
           }).exists()
+        )
     })
 ```
 
@@ -260,14 +337,15 @@ export default class RBACModel extends Model {
 
     static propertyOfEditableByUserId(entityName: string){
 
-      return Product.compute((context, parent, userId?: number): CFReturn<boolean> => {
+      return Product.compute((parent, userId?: number): CFReturn<boolean> => {
           // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
-          return context.dataset()
+          return new DScalar(context => context.dataset()
             .from( Role.datasource('role') )
             .innerJoin( User.datasource('user'), ({role, user}) => user.roleId.equals(role.id))
             .innerJoin( RoleEntity.datasource('re'), ({role, re}) => role.id.equals(re.roleId) )
             .where( ({re}) => re.entityName.equals( entityName ))
             .exists()
+          )
       })
     }
 }
@@ -296,9 +374,9 @@ export default class Product extends RBACModel {
 
 # Difference between traditional ORM
 
-For some traditional ORM, querying the relation data of Model is not efficient. If the data query consist of multiple Entity, it executes SQL SELECT statement one by one. Usually, it produce several SQL query. But Why can't we query all these data from database in just one single call. It is just like the different approach between *GraphQL* and *Restful*.
+## Retrieve Entity and its related Entity in single SELECT statement
 
-##More explaination:
+For some traditional ORM, querying the relation data of Model is not efficient. If the data query consist of multiple Entity, it executes SQL SELECT statement one by one. Usually, it produce several SQL query. But Why can't we query all these data from database in just one single call.
 
 Let's say we have data models `Shop`, `Product`, `Color`.
 A shop has many products and each product has many colors.
@@ -334,9 +412,10 @@ But actually we can query the data in only one SQL statement instead:
 The trick is using the SQL server build-in function to construct JSON objects.
 It may be more efficient than the traditional way. taichi-orm is currently using this approach.
 
+## Filtering Relation Records
 
 For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is stricted.
-But using ComputeProperty, you can define a SubQuery (We called it Dataset) which can allow us applying additional where clause condition on demand.
+But the Relation ComputeProperty allows us applying additional where clause condition during query.
 
 
 
@@ -351,16 +430,16 @@ The npm package doesn't work now. It is out-dated. **The release target is Q4 of
 npm install --save taichi-orm
 ```
 
-2. Install dependencies
+2. Install dependencies (if necessary)
 ```bash
 npm install --save mysql
 npm install --save pg
 npm install --save sqlite3
 ```
 
-3. define your Data Models (or in separates files)
-. call `configure` to use the setup the resposity and database connection
+3. define your Data Models (or in separates files) and setup database connection
 
+Example:
 ```ts
 // #index.ts
 import { ORM } from 'taichi-orm'
@@ -379,7 +458,7 @@ class ProductModel extends Model {
 
 (async() =>{
 
-    // configure the orm
+    // configure your orm
     const orm = new ORM({
         models: {Shop: ShopModel, Product: ProductModel},
         knexConfig: {
