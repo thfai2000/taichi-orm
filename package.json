@@ -1,6 +1,6 @@
 {
   "name": "taichi-orm",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Object Relation Mapper for SQL Database. Flexible and Strong",
   "keywords": [
     "data modeling",
