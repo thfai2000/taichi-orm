@@ -1,13 +1,9 @@
-const { ORM, Model, PrimaryKeyType, NumberType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
+const { ORM, Model, PrimaryKeyType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
 
 class ShopModel extends Model{
   id = this.field(PrimaryKeyType)
   name = this.field(new StringType({length: 100}))
-  location = this.field(new StringType({length: 255}))
   products = ShopModel.hasMany(ProductModel, 'shopId')
-  productCount = ShopModel.compute( (parent) => {
-    return parent.selector.products().count()
-  })
 }
 
 class ColorModel extends Model{
@@ -23,22 +19,19 @@ class ProductColorModel extends Model{
 }
 
 class ProductModel extends Model{
-
   id = this.field(PrimaryKeyType)
   name = this.field(new StringType({length: 100}))
   createdAt = this.field(DateType)
   shopId = this.field(NumberNotNullType)
   shop = ProductModel.belongsTo(ShopModel, 'shopId')
   colors = ProductModel.hasManyThrough(ProductColorModel, ColorModel, 'id', 'colorId', 'productId')
-
+  //computed property created based on colors
   colorsWithType = ProductModel.compute( (parent, type = 'main') => {
     return parent.selector.colors({
       where: ({through}) => through.type.equals(type)
     })
   })
 }
-
-
 
 ;(async() =>{
     // configure database
@@ -58,22 +51,27 @@ class ProductModel extends Model{
     })
     try{
 
+      // create tables
       await orm.getContext().createModels()
       const { Shop, Product, Color, ProductColor } = orm.getContext().models
 
-      const createdShop = await Shop.createOne({name: 'Shop1'})
-      const createdProduct = await Product.createOne({name: 'Product1', shopId: createdShop.id})
+      // prepare the database
+      const [createdShop1, createdShop2] = await Shop.createEach([{name: 'Shop1'}, {name: 'Shop2'}])
+      const [createdProduct1] = await Product.createEach([
+        {name: 'Product1', shopId: createdShop1.id},
+        {name: 'Product2', shopId: createdShop2.id},
+        {name: 'Product3', shopId: createdShop2.id}
+      ])
       const [createdColor1, createdColor2] = await Color.createEach([{code: 'red'}, {code: 'blue'}])
       await ProductColor.createEach([
-        {productId: createdProduct.id, colorId: createdColor1, type: 'main'},
-        {productId: createdProduct.id, colorId: createdColor2, type: 'minor'}
+        {productId: createdProduct1.id, colorId: createdColor1.id, type: 'main'},
+        {productId: createdProduct1.id, colorId: createdColor2.id, type: 'minor'}
       ])
       
       // computed fields are the relations
       // you can do complicated query in one go
       // Graph-like selecting Models "Shop > Product > Color"
       let records = await Shop.find({
-        selectProps: ['productCount'],
         select: {
           products: {
             select: {
@@ -86,24 +84,22 @@ class ProductModel extends Model{
         }
       })
   
-      // Here you are
-      console.log('results', records)
+      console.log('Shop with related entities', records)
   
       // use computed fields for filtering
-      // for example: find all shops with Product Count over 2
+      // for example: find all shops with Product Count is at least 2
       let shopsWithAtLeast2Products = await Shop.find({
-        where: ({root}) => root.productCount().greaterThan(2)
+        where: ({root}) => root.products().count().greaterThanOrEquals(2)
       })
   
-      console.log('shopsWithAtLeast2Products', shopsWithAtLeast2Products)
+      console.log('Shops with at least 2 products', shopsWithAtLeast2Products)
   
-      // make query with Console.log the sql statements
-      let shops = await Shop.find({
+      // Console.log the sql statements
+      await Shop.find({
         selectProps: ['products']
       }).onSqlRun(console.log)
-  
-      console.log('shops', shops)
       
+
     }finally{
       await orm.shutdown()
     }

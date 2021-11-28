@@ -362,7 +362,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
 
         if(!item){
-            throw new Error('Cannot resolve field')
+            throw new Error(`Cannot resolve field ${key}`)
         }else if(item instanceof Scalar){
             return {[field]: item}
         }else {
@@ -1836,6 +1836,10 @@ export function resolveValueIntoScalar(value: any): any{
     } else if (value instanceof Date){
         const dateValue = value
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
+    } else if(value instanceof ConditionOperator){
+        return value.toScalar()
+    } else if (value instanceof Dataset) {
+        return value.toDScalarWithArrayType()
     }
     return value
 }
@@ -1852,26 +1856,21 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
             value = expression
         }
         value = resolveValueIntoScalar(value)
-        if(value instanceof ConditionOperator){
-            return value.toScalar()
+        if(value instanceof Scalar){
+            return value
         } else if(Array.isArray(value)){
             const expr = new OrOperator<Props, M>(resolver, ...value)
             return resolver( expr )
-        } else if(value instanceof Scalar){
-            return value
-        } else if (value instanceof Dataset) {
-            return value.toDScalarWithArrayType()
-        } else if(value instanceof SimpleObjectClass){
+        } else if( (fromSource) && value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
                 let source: Datasource<any, any> | null | undefined = null
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
-                    if(!fromSource){
-                        throw new Error(`There must be a FROM before using in 'filter'.`)
-                    }
-
+                    // if(!fromSource){
+                    //     throw new Error(`There must be a FROM before using in 'where'.`)
+                    // }
                     propName = sourceName
                     source = fromSource
                 } else{
@@ -1916,7 +1915,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
             let arr = new AndOperator<Props, M>(resolver, ...scalars)
             return resolver(arr)
         } else {
-            throw new Error('Unsupport Where clause')
+            throw new Error('Unsupport value')
         }
     }
 
