@@ -89,7 +89,7 @@ export class PropertyType<I> implements ParsableTrait<I> {
     }
 }
 
-export abstract class FieldPropertyTypeDefinition<I> extends PropertyType<I> {
+export abstract class FieldPropertyType<I> extends PropertyType<I> {
 
     constructor(options?: any){
         super(options)
@@ -117,7 +117,7 @@ export abstract class ParsablePropertyTypeDefinition<I> extends PropertyType<I> 
 //     }
 // }
 
-export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
+export class PrimaryKeyType extends FieldPropertyType<number> {
 
     constructor(options?: any){
         super(options)
@@ -167,7 +167,7 @@ export class PrimaryKeyType extends FieldPropertyTypeDefinition<number> {
 }
 
 type NumberTypeOptions = {default?: number }
-export class NumberType extends FieldPropertyTypeDefinition<number | null> {
+export class NumberType extends FieldPropertyType<number | null> {
 
     protected options: NumberTypeOptions
     
@@ -207,7 +207,7 @@ export class NumberType extends FieldPropertyTypeDefinition<number | null> {
     }
 }
 
-export class NumberNotNullType extends FieldPropertyTypeDefinition<number> {
+export class NumberNotNullType extends FieldPropertyType<number> {
 
     protected options: NumberTypeOptions
     
@@ -248,7 +248,7 @@ export class NumberNotNullType extends FieldPropertyTypeDefinition<number> {
 }
 
 type DecimalTypeOptions = { default?: number, precision?: number, scale?: number }
-export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
+export class DecimalType extends FieldPropertyType<number | null>  {
 
     protected options: DecimalTypeOptions
     
@@ -287,7 +287,7 @@ export class DecimalType extends FieldPropertyTypeDefinition<number | null>  {
     }
 }
 
-export class DecimalNotNullType extends FieldPropertyTypeDefinition<number>  {
+export class DecimalNotNullType extends FieldPropertyType<number>  {
 
     protected options: DecimalTypeOptions
     
@@ -316,7 +316,7 @@ export class DecimalNotNullType extends FieldPropertyTypeDefinition<number>  {
 }
 
 type BooleanTypeOptions = {default?: boolean }
-export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
+export class BooleanType extends FieldPropertyType<boolean | null>  {
     protected options: BooleanTypeOptions
 
     constructor(options: Partial<BooleanTypeOptions> = {}){
@@ -361,7 +361,7 @@ export class BooleanType extends FieldPropertyTypeDefinition<boolean | null>  {
     }
 }
 
-export class BooleanNotNullType extends FieldPropertyTypeDefinition<boolean>  {
+export class BooleanNotNullType extends FieldPropertyType<boolean>  {
 
     protected options: BooleanTypeOptions
 
@@ -407,7 +407,7 @@ export class BooleanNotNullType extends FieldPropertyTypeDefinition<boolean>  {
 }
 
 type StringTypeOptions = {default?: string, length?: number }
-export class StringType extends FieldPropertyTypeDefinition<string | null> {
+export class StringType extends FieldPropertyType<string | null> {
 
     protected options: StringTypeOptions
 
@@ -447,7 +447,7 @@ export class StringType extends FieldPropertyTypeDefinition<string | null> {
 
 }
 
-export class StringNotNullType extends FieldPropertyTypeDefinition<string> {
+export class StringNotNullType extends FieldPropertyType<string> {
 
     protected options: StringTypeOptions
 
@@ -489,7 +489,7 @@ export class StringNotNullType extends FieldPropertyTypeDefinition<string> {
 }
 
 type DateTypeOptions = { default?: Date }
-export class DateType extends FieldPropertyTypeDefinition<Date | null> {
+export class DateType extends FieldPropertyType<Date | null> {
     protected options: DateTypeOptions
 
     constructor(options: Partial<DateTypeOptions> = {}){
@@ -526,7 +526,7 @@ export class DateType extends FieldPropertyTypeDefinition<Date | null> {
     }
 }
 
-export class DateNotNullType extends FieldPropertyTypeDefinition<Date> {
+export class DateNotNullType extends FieldPropertyType<Date> {
     protected options: DateTypeOptions
 
     constructor(options: Partial<DateTypeOptions> = {}){
@@ -566,7 +566,7 @@ export class DateNotNullType extends FieldPropertyTypeDefinition<Date> {
 }
 
 type DateTimeTypeOptions = {default?: Date, precision?: number }
-export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
+export class DateTimeType extends FieldPropertyType<Date | null> {
     protected options: DateTimeTypeOptions
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){
@@ -604,7 +604,7 @@ export class DateTimeType extends FieldPropertyTypeDefinition<Date | null> {
     }
 }
 
-export class DateTimeNotNullType extends FieldPropertyTypeDefinition<Date> {
+export class DateTimeNotNullType extends FieldPropertyType<Date> {
     protected options: DateTimeTypeOptions
 
     constructor(options: Partial<DateTimeTypeOptions> = {}){

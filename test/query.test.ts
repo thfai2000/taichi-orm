@@ -1,5 +1,5 @@
-import {Model, ModelObjectRecord} from '../dist/model'
-import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from '../dist'
+import {Model, ModelObjectRecord} from '../dist/'
+import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from '../dist/'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
@@ -134,6 +134,8 @@ let orm = new ORM({
     propNameTofieldName: (propName: string) => snakeCase(propName),
     knexConfig: config
 })
+
+
 let tablePrefix = () => `${process.env.JEST_WORKER_ID}_${uuidv4().replace(/[-]/g, '_')}_`
 
 
@@ -161,6 +163,10 @@ const loadData = async (ctx: DatabaseContext<{
     return await ProductColor.createOne(d)
   }))
 }
+
+afterAll( async () => {
+  await orm.shutdown()
+})
 
 describe('SelectProps - Custom Computed Fields with Where clause', () => {
 

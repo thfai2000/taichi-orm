@@ -1,7 +1,7 @@
 import { Knex}  from "knex"
-import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, PropertyDefinition, MutationExecutionOptions } from "."
+import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, WaitingLeft } from "./operators"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyTypeDefinition, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyType, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
@@ -362,7 +362,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
         }
 
         if(!item){
-            throw new Error('Cannot resolve field')
+            throw new Error(`Cannot resolve field ${key}`)
         }else if(item instanceof Scalar){
             return {[field]: item}
         }else {
@@ -1603,7 +1603,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
             } else if(ex instanceof Function) {
                 return this.resolveDefinition(ctx, ex(ctx))
             } else {
-                return new PropertyDefinition()
+                return new PropertyType()
             }
         })
     }
@@ -1836,6 +1836,10 @@ export function resolveValueIntoScalar(value: any): any{
     } else if (value instanceof Date){
         const dateValue = value
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
+    } else if(value instanceof ConditionOperator){
+        return value.toScalar()
+    } else if (value instanceof Dataset) {
+        return value.toDScalarWithArrayType()
     }
     return value
 }
@@ -1852,26 +1856,21 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
             value = expression
         }
         value = resolveValueIntoScalar(value)
-        if(value instanceof ConditionOperator){
-            return value.toScalar()
+        if(value instanceof Scalar){
+            return value
         } else if(Array.isArray(value)){
             const expr = new OrOperator<Props, M>(resolver, ...value)
             return resolver( expr )
-        } else if(value instanceof Scalar){
-            return value
-        } else if (value instanceof Dataset) {
-            return value.toDScalarWithArrayType()
-        } else if(value instanceof SimpleObjectClass){
+        } else if( (fromSource) && value instanceof SimpleObjectClass){
             let dict = value as SimpleObject
             let scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
                 let source: Datasource<any, any> | null | undefined = null
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
-                    if(!fromSource){
-                        throw new Error(`There must be a FROM before using in 'filter'.`)
-                    }
-
+                    // if(!fromSource){
+                    //     throw new Error(`There must be a FROM before using in 'where'.`)
+                    // }
                     propName = sourceName
                     source = fromSource
                 } else{
@@ -1916,7 +1915,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
             let arr = new AndOperator<Props, M>(resolver, ...scalars)
             return resolver(arr)
         } else {
-            throw new Error('Unsupport Where clause')
+            throw new Error('Unsupport value')
         }
     }
 

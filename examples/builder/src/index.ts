@@ -40,8 +40,6 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
 
     await createModels()
 
-    let eee = await scalar('5', [], NumberNotNullType).execute()
-
     let s = Shop.datasource('shop')
 
     let p = Product.datasource('product')
