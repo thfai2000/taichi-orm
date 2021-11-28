@@ -1,5 +1,5 @@
 
-A new way to deal with your Data Logic. You can define a virtual field called `ComputedProperty` which is subquery or sql operators in your Data Model.
+A new way to deal with your Data Logic. You can define a virtual field called `ComputeProperty` which is subquery or sql operators in your Data Model.
 
 # Introduction
 
@@ -8,7 +8,7 @@ A new way to deal with your Data Logic. You can define a virtual field called `C
   - Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible
   - It is like "Prepared SQL Statement" which contains custom pre-defined logics but also accepts parameters.   
 - Developed in **Typescript** but you can use it without typescript compiler.
-- Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputedProperty`. And the related Models are queried in one single Sql call. (Explain later)
+- Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call. (Explain later)
 
 
 ## Basic Usage of ComputeProperty
@@ -79,7 +79,7 @@ ComputeProperties can be used in both `where` or `select` parts of the `FindOpti
   })
 ```
 
-## Using ComputedProperty as Related Entities 
+## Using ComputeProperty as Related Entities 
 
 Typical use cases are querying Related Entities and filtering related Entities
 Let's say a Product belongs to a Shop. 
