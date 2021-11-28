@@ -1,14 +1,16 @@
 
- <div style="text-align:center;">
-  <img src="miscs/images/logo.jpg" alt="icon" style="width:100px;"/>
-</div>
+<p align="center">
+  <img src="miscs/images/logo100x100.jpg" alt="taichi"/>
+</p>
 <br/>
 
 A new way to deal with your Data Logic of SQL Databse. You can define a virtual field called `ComputeProperty` (that actually is SQL statement) for a data model.
 
 # Introduction
 
-- Data logics in form of `ComputeProperty` are highly resuable and extensible.
+- The common data logics in form of `ComputeProperty` of Data Model become resuable
+- The codes of data query become more human readable because complex data logics can be abstracted in `ComputeProperty`
+- Flexible data query. The logics of `ComputeProperty` are allowed to extend or modified during query.
 - Developed in **Typescript** but you can use it without typescript compiler.
 - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call.
 
@@ -16,7 +18,7 @@ A new way to deal with your Data Logic of SQL Databse. You can define a virtual 
 In below sections, We will explain our stuff using E-commerce-like database as example.
 
 
-## Basic Usage of ComputeProperty
+## Basic usage of ComputeProperty
 
 Imagine an E-commerce system. A product (Model) has various fields like `availableStart`, `availableEnd` and `remainingStock`.
 A product is active when the current time are within these dates and the remainingStock are not zero.
@@ -238,36 +240,42 @@ export default class Shop extends Model {
 # Concepts
 
 ## Model
-It represents a database table
+It represents a database table.
 
 ## ModelRepository
-It is used for carry out `create`, `update`, `delete` operations on a Model
+It is used for carry out `create`, `update`, `delete` operations on a Model.
 
 ## DatabaseContext
 It consists of a set of ModelRepository
 
 ## ORM
 It is a object with Database connection settings.
-It manages DatabaseContext
+It manages DatabaseContext.
 
 ## Dataset
-It is a query builder and represents the SELECT statement
+It is a query builder and represents the SELECT statement.
 
 ## Scalar
 It represent a SQL single value with a specifc type like number, string or date.
-Dataset can be transformed into a Scalar. For example, 'SELECT count(*) FROM table1' can act as a Scalar in number type
+Dataset can be transformed into a Scalar. For example, 'SELECT count(*) FROM table1' can act as a Scalar in number type.
 
 ## FieldProperty
-It represents a field of a Model
+It represents a field of a Model.
 
 ## ComputeProperty
-It represents a virtual field of a Model
-It defines how to create a Scalar
+It represents a virtual field of a Model.
+It consists of a `ComputeFunction` that defines how to create a Scalar.
+
+## ComputeFunction
+It defines how to create a Scalar.
+
+## Schema
+It represents the properties of a Model or a Dataset.
 
 ## Datasource
-It represent the properties' value of a Model or a Dataset
-`Datasource.selector` is an object having keys of properties name with values of corresponding Scalar
-
+It is used in data query. 
+It has name (like table alias) that represents of a database table or a temporary table.
+`Datasource.selector` is an object having keys of properties names and with values of corresponding Scalar or ComputeFunction.
 
 # Advanced Example 1 - Scalar Transformation
 
@@ -425,18 +433,18 @@ But actually we can query the data in only one SQL statement instead:
 The trick is using the SQL server build-in function to construct JSON objects.
 It may be more efficient than the traditional way. taichi-orm is currently using this approach.
 
-## Filtering Relation Records
+## Filtering relation records
 
 For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is stricted.
 But the Relation ComputeProperty allows us applying additional where clause condition during query.
 
 
 
-# Getting Start
+# Getting start
 
 WARNING: Don't use it for production
 It is still under heavy development. The API specification can be changed in the future.
-The npm package doesn't work now. It is out-dated. **The release target is Q4 of year 2021.**
+**The release target is Q1 of year 2022.**
 
 1. Install the package
 ```bash
