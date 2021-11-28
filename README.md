@@ -1,11 +1,19 @@
 
-A new way to deal with your Data Logic (SQL Databse). You can define a virtual field called `ComputeProperty` (that actually is subquery) which can be used like a normal field.
+ <div style="text-align:center;">
+  <img src="miscs/images/logo.jpg" alt="icon" style="width:100px;"/>
+</div>
+<br/>
+
+A new way to deal with your Data Logic of SQL Databse. You can define a virtual field called `ComputeProperty` (that actually is SQL statement) for a data model.
 
 # Introduction
 
-- Once you orgazine your data logics in form of `ComputeProperty` that is highly resuable and extensible as it not only allows pre-defined logics but also accepts parameters.
+- Data logics in form of `ComputeProperty` are highly resuable and extensible.
 - Developed in **Typescript** but you can use it without typescript compiler.
 - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call.
+
+
+In below sections, We will explain our stuff using E-commerce-like database as example.
 
 
 ## Basic Usage of ComputeProperty
@@ -13,6 +21,10 @@ A new way to deal with your Data Logic (SQL Databse). You can define a virtual f
 Imagine an E-commerce system. A product (Model) has various fields like `availableStart`, `availableEnd` and `remainingStock`.
 A product is active when the current time are within these dates and the remainingStock are not zero.
 We can define the schema like below (with a `isActive` ComputeProperty).
+`ComputeProperty` consist of `ComputeFunction` that defines how to make a SQL value (we called `Scalar`).
+The variable `parent` represents the Datasource of `Product` Model. 
+The property `isActive` combines the values of other `FieldProperty`.
+
 ```ts
 export default class Product extends Model {
 
@@ -43,7 +55,8 @@ You can use the `isActive` ComputeProperty simply just like a normal field (Fiel
   })
 ```
 
-ComputeProperty can accept Argument. Below variable `spare` is the Argument. The Argument must be optional.
+Besides, `ComputeFunction` can accept argument. 
+Below variable `spare` is the argument. The argument of `ComputeFunction` must be optional.
 
 ```ts
 export default class Product extends Model {
@@ -55,8 +68,8 @@ export default class Product extends Model {
 ```
 
 Then you can use it like a normal field or a method.
-If you use it as object Key, the Argument of that ComputeProperty is undefined.
-You can only pass Argument in using method.
+If you use it as object Key, the argument of that `ComputeFunction` is undefined.
+You can only pass argument in using method.
 ```ts
   await Product.find({
     where: {
@@ -73,7 +86,7 @@ You can only pass Argument in using method.
 The `FindOptions` consists of `where`, `orderBy`, `select`, `selectProps` etc.
 You can querying the properties by specifying the ComputeProperty in `select` and `selectProps`.
 `selectProps` is array of ComputeProperties whereas `select` is object with keys of ComputeProperties.
-In the `select` object, the value of the key is the Argument of that corresponding ComputeProperty.
+In the `select` object, the value of the key is the argument of that corresponding `ComputeFunction`.
 ```ts
   let products = await Product.find({
     selectProps: ['isActive', 'hasEnoughStock'],
@@ -84,7 +97,7 @@ In the `select` object, the value of the key is the Argument of that correspondi
 
   let products = await Product.find({
     select: {
-      //pass 5 as the argument of the ComputeProperty
+      //pass 5 as the argument of the ComputeFunction
       hasEnoughStock: 5   
     },
     where: {
@@ -125,7 +138,7 @@ Simply get array of `Shop` objects, each `products` key with value of array of `
   })
 ```
 
-These ComputeProperty are special because their Argument are `FindOption`. The related Entity can be queried and filtered according to the `FindOption`
+These ComputeFunctions are special because their arguments are `FindOption`. The related Entity can be queried and filtered according to the `FindOption`
 ```ts
 
   // find shops with related products which are only in color 'red'
