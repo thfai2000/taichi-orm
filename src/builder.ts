@@ -1541,11 +1541,11 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return new LessThanOrEqualsOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
-    between(rightOperand1: any, rightOperand2: any[]): Scalar<BooleanNotNullType, any> {
+    between(rightOperand1: any, rightOperand2: any): Scalar<BooleanNotNullType, any> {
         return new BetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 
-    notBetween(rightOperand1: any, rightOperand2: any[]): Scalar<BooleanNotNullType, any> {
+    notBetween(rightOperand1: any, rightOperand2: any): Scalar<BooleanNotNullType, any> {
         return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 

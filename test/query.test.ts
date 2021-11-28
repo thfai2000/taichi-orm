@@ -29,12 +29,12 @@ let shopData = [
 ]
 
 let productData = [
-  { id: 1, name: 'Product 1a', shopId: 1, price: null, createdAt: null, isActive: null},
-  { id: 2, name: 'Product 1b', shopId: 1, price: null, createdAt: null, isActive: null},
-  { id: 3, name: 'Product 2a', shopId: 2, price: null, createdAt: null, isActive: null},
-  { id: 4, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null},
-  { id: 5, name: 'Product 2b', shopId: 2, price: null, createdAt: null, isActive: null},
-  { id: 6, name: 'Product 7a', shopId: 7, price: null, createdAt: null, isActive: null},
+  { id: 1, name: 'Product 1a', shopId: 1, price: 100, createdAt: null, isActive: null},
+  { id: 2, name: 'Product 1b', shopId: 1, price: 10.5, createdAt: null, isActive: null},
+  { id: 3, name: 'Product 2a', shopId: 2, price: 3.5, createdAt: null, isActive: null},
+  { id: 4, name: 'Product 2b', shopId: 2, price: 20, createdAt: null, isActive: null},
+  { id: 5, name: 'Product 2b', shopId: 2, price: 50, createdAt: null, isActive: null},
+  { id: 6, name: 'Product 7a', shopId: 7, price: 44.3, createdAt: null, isActive: null},
 ]
 
 let colorData = [
@@ -393,6 +393,51 @@ describe('Select - Use Query Arguments', () => {
     ))
 
   })
+
+})
+describe('Where - Using Raw', () => {
+
+  test('Simple raw', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({root}) => ctx.scalar('?? > 5', [root.id])
+    })
+
+    const expected = shopData.filter(s => s.id > 5 )
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('transform with raw', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.models
+
+    let records = await Shop.find({
+      where: ({root}) => root.products().transform(ds => 
+        ds.select(({root}) => ({average: ctx.scalar('AVG(??)', [root.price]) }) ).toDScalarWithType(NumberNotNullType)
+      ).between(20, 30)
+    })
+
+    const expected = shopData.filter(s => {
+      const products = productData.filter(p => p.shopId === s.id)
+      if(products.length === 0){
+        return false
+      }
+      let averagePrice = products.reduce((acc, p) => (acc + p.price), 0) / products.length
+      return averagePrice >= 20 && averagePrice <= 30
+    })
+    expect(records).toHaveLength(expected.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expected.map( s => expect.objectContaining(s))
+    ))
+  })
+
 
 })
 
