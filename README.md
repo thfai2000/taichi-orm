@@ -2,21 +2,21 @@
 <p align="center">
   <img src="miscs/images/logo100x100.jpg" alt="taichi"/>
 </p>
+<p align="center">Tai Chi (太極)</p>
+<p align="center">Emphasis on both hard and soft</p>
 <br/>
 
 A new way to deal with your Data Logic of SQL Databse. You can define a virtual field called `ComputeProperty` (that actually is SQL statement) for a data model.
 
 # Introduction
 
-- The common data logics in form of `ComputeProperty` of Data Model become resuable
-- The codes of data query become more human readable because complex data logics can be abstracted in `ComputeProperty`
-- Flexible data query. The logics of `ComputeProperty` are allowed to extend or modified during query.
+- The common data logics in form of `ComputeProperty` of Data Model become more reusable.
+- The codes of data query become more human readable because complex data logics can be abstracted in `ComputeProperty`.
+- Flexible Model API. Without using `QueryBuilder`, `Model.find()` is power enough to build complex logics by extending or modifying the `ComputeProperty`.
 - Developed in **Typescript** but you can use it without typescript compiler.
 - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call.
 
-
-In below sections, We will explain our stuff using E-commerce-like database as example.
-
+In below sections, We will explain the ORM stuff using E-commerce-like database as an example.
 
 ## Basic usage of ComputeProperty
 
@@ -44,17 +44,18 @@ export default class Product extends Model {
             parent.selector.remainingStock.greaterThan(0)
         ))
     })
+}
 ```
 
 Below the `ModelRepository.find()` function accepts one argument `FindOptions` (Just like the other ORM). 
 The `where` part specifies the data filtering condition.
 You can use the `isActive` ComputeProperty simply just like a normal field (FieldProperty) in the `where` object.
 ```ts
-  let activeProducts = await Product.find({
-    where: {
-      isActive: true
-    }
-  })
+let activeProducts = await Product.find({
+  where: {
+    isActive: true
+  }
+})
 ```
 
 Besides, `ComputeFunction` can accept argument. 
@@ -62,7 +63,8 @@ Below variable `spare` is the argument. The argument of `ComputeFunction` must b
 
 ```ts
 export default class Product extends Model {
-  ...
+  
+  // 'Enough' means at least certain amount of stock
   hasEnoughStock = Product.compute((parent, spare?: number): CFReturn<boolean> => {
     return parent.remainingStock.greaterThan(spare ?? 2)
   }
@@ -73,16 +75,16 @@ Then you can use it like a normal field or a method.
 If you use it as object Key, the argument of that `ComputeFunction` is undefined.
 You can only pass argument in using method.
 ```ts
-  await Product.find({
-    where: {
-      hasEnoughStock: true
-    }
-  })
+await Product.find({
+  where: {
+    hasEnoughStock: true
+  }
+})
 
-  //another approach: use 
-  await Product.find({
-    where: ({root}) => root.hasEnoughStock(5) //at least 5 remainings
-  })
+//another approach: use ComputeFunction argument
+await Product.find({
+  where: ({root}) => root.hasEnoughStock(5) //at least 5 remainings
+})
 ```
 
 The `FindOptions` consists of `where`, `orderBy`, `select`, `selectProps` etc.
@@ -90,22 +92,22 @@ You can querying the properties by specifying the ComputeProperty in `select` an
 `selectProps` is array of ComputeProperties whereas `select` is object with keys of ComputeProperties.
 In the `select` object, the value of the key is the argument of that corresponding `ComputeFunction`.
 ```ts
-  let products = await Product.find({
-    selectProps: ['isActive', 'hasEnoughStock'],
-    where: {
-      hasEnoughStock: true
-    }
-  })
+let products = await Product.find({
+  selectProps: ['isActive', 'hasEnoughStock'],
+  where: {
+    hasEnoughStock: true
+  }
+})
 
-  let products = await Product.find({
-    select: {
-      //pass 5 as the argument of the ComputeFunction
-      hasEnoughStock: 5   
-    },
-    where: {
-      hasEnoughStock: true
-    }
-  })
+let products = await Product.find({
+  select: {
+    //pass 5 as the argument of the ComputeFunction
+    hasEnoughStock: 5   
+  },
+  where: {
+    hasEnoughStock: true
+  }
+})
 ```
 
 ## Using ComputeProperty as Related Entities 
@@ -133,70 +135,67 @@ export default class Shop extends Model {
 
 Simply get array of `Shop` objects, each `products` key with value of array of `Product`
 ```ts
-
-  // Simply select shop, each with array of products
-  let shops = await Shop.find({
-    selectProps: ['products']
-  })
+// Simply select shop, each with array of products
+let shops = await Shop.find({
+  selectProps: ['products']
+})
 ```
 
 These ComputeFunctions are special because their arguments are `FindOption`. The related Entity can be queried and filtered according to the `FindOption`
 ```ts
-
-  // find shops with related products which are only in color 'red'
-  let shops = await Shop.find({
-    select: {
-      // select the computed property 'products'
-      products: {
-        where: {
-          color: 'red'
-        }
+// find shops with related products which are only in color 'red'
+let shops = await Shop.find({
+  select: {
+    // select the computed property 'products'
+    products: {
+      where: {
+        color: 'red'
       }
-    },
-    where: {
-      //...
     }
-  })
+  },
+  where: {
+    //...
+  }
+})
 ```
 
 Example: use it in `where`
 ```ts
-  // find all products which belongs to Shop with location 'Hong Kong'
-  let products = await Product.find({
-    where: ({root}) => root.shop({
-      where: {
-        location: 'Hong Kong'
-      }
-    }).exists()
-  })
+// find all products which belongs to Shop with location 'Hong Kong'
+let products = await Product.find({
+  where: ({root}) => root.shop({
+    where: {
+      location: 'Hong Kong'
+    }
+  }).exists()
+})
 
-  // another approach (if the 'hasMany' relationship is not defined in Model Schema)
-  await Product.find({
-    where: ({root, Exists}) => Exists( Shop.dataset({
-      where: {
-        shopId: root.id,
-        location: 'Hong Kong'
-      }
-    }))
-  })
+// another approach (if the 'hasMany' relationship is not defined in Model Schema)
+await Product.find({
+  where: ({root, Exists}) => Exists( Shop.dataset({
+    where: {
+      shopId: root.id,
+      location: 'Hong Kong'
+    }
+  }))
+})
 ```
 
-Besides, the funtion call of `ComputeProperty` returns a `Scalar` that can be transformed into subquery like 'SELECT count(*) FROM ...'
+Besides, the funtion call of `ComputeProperty` returns a `Scalar` that can be transformed into subquery like "SELECT count(*) FROM ..."
 ```ts
-  // find all shops which has more than 5 products
-  let shops = await Shop.find({
-    where: ({root}) => root.products().count().greaterThan(5)
-  })
+// find all shops which has more than 5 products
+let shops = await Shop.find({
+  where: ({root}) => root.products().count().greaterThan(5)
+})
 
-  // another approach (if the 'hasMany' relationship is not defined in Model Schema)
-  let shops = await Shop.find({
-    where: ({root}) => Product.dataset({
-      where: {
-        shopId: root.id
-      }
-    }).toDScalar().count().greaterThan(5)
-  })
-
+// another approach (if the 'hasMany' relationship is not defined in Model Schema)
+let shops = await Shop.find({
+  where: ({root}) => Product.dataset({
+    where: {
+      shopId: root.id
+    }
+  }).toDScalar().count().greaterThan(5)
+})
 ```
 
 ## Define ComputeProperty based on another ComputeProperty
@@ -205,6 +204,11 @@ A more advanced usage.
 ComputeProperty is very flexible. You can define it based on another existing ComputeProperty or FieldProperty
 
 ```ts
+export default class Shop extends Model {
+    id = this.field(PrimaryKeyType)
+    location = this.field(StringType)
+}
+
 export default class Product extends Model {
     id = this.field(PrimaryKeyType)
     shopId = this.field(NumberType)
@@ -222,18 +226,13 @@ export default class Product extends Model {
         })
     })
 }
-
-export default class Shop extends Model {
-    id= this.field(PrimaryKeyType)
-    location = this.field(StringType)
-}
 ```
 
 ```ts
-  // find all products which belongs to Shop with location 'Hong Kong'
-  let products = await Product.find({
-    where: ({root}) => root.shopInHongKong().exists()
-  })
+// find all products which belong to Shop with location 'Hong Kong'
+let products = await Product.find({
+  where: ({root}) => root.shopInHongKong().exists()
+})
 ```
 
 
@@ -435,10 +434,60 @@ It may be more efficient than the traditional way. taichi-orm is currently using
 
 ## Filtering relation records
 
-For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is stricted.
-But the Relation ComputeProperty allows us applying additional where clause condition during query.
+For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is abstracted.
+But our Model API allows us applying additional where clause during query. See below code examples.
 
+```ts
+class Color extends Model {
+  id = this.field(PrimaryKeyType)
+  //possible values: 'red', 'blue'...
+  code = this.field(new StringNotNullType({length: 50}))
+}
 
+class Product extends Model{
+  id= this.field(PrimaryKeyType)
+  //One Product has many Colors
+  colors = Product.hasManyThrough(ProductColor, Color, 'id', 'colorId', 'productId')
+}
+
+// it represents the pivot table
+// there is a column 'type' which means the color type of the product
+class ProductColor extends Model{
+  id= this.field(PrimaryKeyType)
+  colorId = this.field(NumberNotNullType)
+  productId = this.field(NumberNotNullType)
+  //possible values: 'main', 'minor'
+  type = this.field(new StringNotNullType({length: 50}))
+}
+
+// select all Products with the filtered Colors that are in red and is the main color of that product.
+await Product.find({
+  select: {
+    colors: {
+      // root is Color table, through is pivot table
+      where: ({root, through, And}) => And(
+        root.code: 'red',     // Color.code = 'red'
+        through.type: 'main'  // ProductColor.type = 'main'
+      )
+    }
+  }
+})
+
+// select any Products which have Colors that are in red and is the main color of that product.
+await Product.find({
+  select: {
+    colors: {}
+  },
+  // root is Product table
+  where: ({root}) => root.colors({
+    // root is Color table, through is pivot table
+    where: ({root, through, And}) => And(
+      root.code: 'red',     // Color.code = 'red'
+      through.type: 'main'  // ProductColor.type = 'main'
+    )
+  })
+})
+```
 
 # Getting start
 
@@ -463,8 +512,7 @@ npm install --save sqlite3
 Example:
 ```ts
 // #index.ts
-import { ORM } from 'taichi-orm'
-import { PrimaryKeyType, NumberType } from 'taichi-orm/types'
+import { ORM, PrimaryKeyType, NumberType } from 'taichi-orm'
 
 class ShopModel extends Model {
     id = this.field(PrimaryKeyType)
