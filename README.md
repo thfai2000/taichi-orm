@@ -12,7 +12,7 @@ A new way to deal with your Data Logic of SQL Databse. You can define a virtual 
 
 - The common data logics in form of `ComputeProperty` of Data Model become more reusable.
 - The codes of data query become more human readable because complex data logics can be abstracted in `ComputeProperty`.
-- Flexible Model API. Without using `QueryBuilder`, `Model.find()` is power enough to build complex logics by extending or modifying the `ComputeProperty`.
+- Flexible and strong Model API. Without using `QueryBuilder`, `Model.find()` is powerful enough to build complex logics by extending or modifying the `ComputeProperty`.
 - Developed in **Typescript** but you can use it without typescript compiler.
 - Common relation logics such as `HasMany` and `belongsTo` are can be defined in form of `ComputeProperty`. And the related Models are queried in one single Sql call.
 
