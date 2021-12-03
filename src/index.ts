@@ -219,8 +219,6 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     // enableUuid: boolean
     // uuidPropName: string
 }
-
-
 export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
     #globalKnexInstance: Knex | null = null

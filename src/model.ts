@@ -354,6 +354,13 @@ export class ModelRepository<MT extends typeof Model>{
      * @returns dataset with selected all field Property
      */
     dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | ((map: ModelArrayRecordFunctionArg<MT>) => F) | undefined) {
+
+        // const errs: any[] = []
+        // if( !createDetailedValidator<F | ((map: ModelArrayRecordFunctionArg<MT>) => F) | undefined>()(args, errs) ){
+        //     console.log(errs)
+        //     throw new Error('Wrong format of ORMConfig.')
+        // }
+
         let source = this.model.datasource('root')
         let dataset = this.context.dataset().from(source)
 
@@ -413,8 +420,6 @@ export class ModelRepository<MT extends typeof Model>{
         return this.context.del().from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getPreflightOne()
     }
 }
-
-
 
 // private async _create(executionOptions: ExecutionOptions, values: PartialMutationEntityPropertyKeyValues<InstanceType<MT>>[]) {
 //         const schema = this.#modelClass.schema()

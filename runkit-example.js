@@ -1,3 +1,4 @@
+require('sqlite3')
 const { ORM, Model, PrimaryKeyType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
 
 /*

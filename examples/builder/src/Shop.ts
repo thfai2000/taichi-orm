@@ -1,5 +1,5 @@
-import { Model } from "../../../dist/model"
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/types"
+import { Model } from "../../../dist/"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType } from "../../../dist/"
 import Product from "./Product"
 export default class Shop extends Model {
     id= this.field(PrimaryKeyType)

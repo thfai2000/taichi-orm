@@ -13,10 +13,10 @@ import { PrimaryKeyType,
         DateTimeNotNullType,
         NumberType,
         NumberNotNullType
-      } from '../dist/types'
-import { FieldProperty } from '../dist/schema'
-import { Dataset, Scalar } from '../dist/builder'
-import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/util'
+      } from '../dist/'
+import { FieldProperty } from '../dist/'
+import { Dataset, Scalar } from '../dist/'
+import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin', tel: null},

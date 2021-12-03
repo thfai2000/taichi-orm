@@ -489,7 +489,7 @@ await Product.find({
 })
 ```
 
-# Getting start
+# Getting started
 
 WARNING: Don't use it for production
 It is still under heavy development. The API specification can be changed in the future.

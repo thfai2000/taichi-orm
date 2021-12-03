@@ -1,4 +1,4 @@
-import {Model} from '../dist/model'
+import {Model} from '../dist/'
 import {ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
@@ -13,7 +13,7 @@ import { PrimaryKeyType,
         DateTimeNotNullType,
         NumberType,
         NumberNotNullType
-      } from '../dist/types'
+      } from '../dist/'
 
 
 class Shop extends Model {
