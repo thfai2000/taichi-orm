@@ -1,71 +1,147 @@
 # Getting Started
 
 
+## Installation
 
-## Simple Example
+Step 1: Create and change into a new directory
 
-First, you have to declare your Models. 
-Here we declare a simple `FieldProperty` 'id' and a `ComputeProperty` 'products'.
+```bash
+mdir my-project
+cd my-project
+```
+
+Step 2: Initialize your project
+```
+npm init
+```
+
+Step 3: Install TaiChi ORM and its dependencies
+```bash
+npm install --save taichi-orm knex
+```
+
+Step 4: Install the SQL client (mysql, postgresql or sqlite)
 <CodeGroup>
-  <CodeGroupItem title="JS" active>
+  <CodeGroupItem title="Mysql" active>
 
-@[code{1-12} js{4-5}](./getting-started-example1.js)
-
-  </CodeGroupItem>
-  <CodeGroupItem title="TS">
-
-@[code{1-12} ts{4-5}](./getting-started-example1.ts)
+```bash
+npm install --save mysql2
+```
 
   </CodeGroupItem>
+  <CodeGroupItem title="Postgresql">
+
+```bash
+npm install --save pg
+```
+
+  </CodeGroupItem>
+
+  <CodeGroupItem title="sqlite">
+
+```bash
+npm install --save sqlite3
+```
+
+  </CodeGroupItem>
+
 </CodeGroup>
 
-::: tip
-You can declare one Model in one single file and import them when you use them.
-:::
+Step 5: Create files and folders for your program. 
 
 
-Second, we configure our ORM by registering Models and setup sql connection.
-<CodeGroup>
-  <CodeGroupItem title="JS" active>
-
-@[code{17-27} js](./getting-started-example1.js)
-
-  </CodeGroupItem>
-  <CodeGroupItem title="TS">
-
-@[code{17-27} ts](./getting-started-example1.ts)
-
-  </CodeGroupItem>
-</CodeGroup>
+The project directory will look like this:
+```:no-line-numbers
+├─ models         # model files
+│  ├─ shop.js
+|  ├─ product.js
+├─ orm.js         # your orm configuration
+├─ index.js       # your program
+└─ package.json
+```
 
 
-Then, you can use the Model API for data insertion and query.
-<CodeGroup>
-  <CodeGroupItem title="JS" active>
+Create `models` folder for your Model files.
 
-@[code{29-44} js{9,15}](./getting-started-example1.js)
-
-  </CodeGroupItem>
-  <CodeGroupItem title="TS">
-
-@[code{29-44} ts{9,15}](./getting-started-example1.ts)
-
-  </CodeGroupItem>
-</CodeGroup>
+```bash
+mkdir models
+```
 
 
+Step 6: Create Model files inside `models` folders
 
-Full Code Here
-<CodeGroup>
-  <CodeGroupItem title="JS" active>
+```js
+//File: models/shop.js
+const { Model, PrimaryKeyType} = require('taichi-orm')
+const Product = require('./product')
 
-@[code js](./getting-started-example1.js)
+module.exports = class Shop extends Model {
+    id = this.field(PrimaryKeyType)
+    products = Shop.hasMany(Product, 'shopId')
+}
+```
 
-  </CodeGroupItem>
 
-  <CodeGroupItem title="TS">
+```js
+//File: models/product.js
+const { Model, PrimaryKeyType, NumberType } = require('taichi-orm')
+const Shop = require('./shop')
 
-@[code ts](./getting-started-example1.ts)
+module.exports = class Product extends Model {
+    id = this.field(PrimaryKeyType)
+    shopId = this.field(NumberType)
+    shop = Product.belongsTo(Shop, 'shopId')
+}
+```
 
-  </CodeGroupItem>
-</CodeGroup>
+Step 7: Create a file named 'orm.js'. It contains settings of your ORM. Here we use 'sqlite3' as example.
+
+```js
+//File: orm.js
+const { ORM } = require('taichi-orm')
+const Shop = require('./models/shop')
+const Product = require('./models/product')
+
+// configure your orm
+module.exports = new ORM({
+    // register the models here
+    models: {Shop, Product},
+    // knex config with client sqlite3 / mysql / postgresql
+    knexConfig: {
+        client: 'sqlite3',
+        connection: {
+            filename: ':memory:'
+        }
+    }
+})
+```
+
+Step 8: Create a file named 'index.js'.
+```js
+const orm = require('./orm')
+
+(async() =>{
+  let {
+      createModels,
+      models: {Shop, Product} 
+    } = orm.getContext()
+
+    // create the tables (if necessary)
+    await createModels()
+
+    let createdShop = await Shop.create([{ id: 1 }, {id: 2}])
+    let createdProducts = await Product.create([
+      {shopId: createdShop.id, name: 'Product1'},
+      {shopId: createdShop.id, name: 'Product2'}
+    ])
+
+    //Find Shop with Id 2 and with related products
+    let foundShop2 = await Shop.find({
+      selectProps: ['products']
+      where: {id: 2}
+    })
+
+})()
+```
+
+

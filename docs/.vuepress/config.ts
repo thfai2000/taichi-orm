@@ -24,10 +24,10 @@ export default defineUserConfig<DefaultThemeOptions>({
         {
           text: 'Guide',
           children: [
-            '/guide/README.md', 
+            '/guide/README.md',
             '/guide/getting-started.md',
-            '/guide/concepts',
-            '/guide/model-api'
+            '/guide/concepts.md',
+            '/guide/query-builder.md'
           ]
         },
       ],

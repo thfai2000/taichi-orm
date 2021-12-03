@@ -949,7 +949,6 @@ export type HookInfo = {
 export type HookAction = <T>(context: DatabaseContext<any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
 
 
-
 // export type ExecutionContextConfig = {
 //     // isSoftDeleteMode: boolean
 //     sqlRunCallback: ((sql: string) => void) | null
