@@ -94,7 +94,7 @@ If you use it as object Key, the argument of that `ComputeFunction` will be give
 
 
 
-## Why?
+## Why TaiChi?
 
 
 ### Retrieve relations by single SQL statement
@@ -105,7 +105,7 @@ Let's say we have data models `Shop`, `Product`, `Color`.
 A shop has many products and each product has many colors.
 For traditional ORM, when we select Entity and its relation like this.
 ```js
-Shop.find().with('products.colors')
+const shops = await Shop.find().with('products.colors')
 ```
 
 It generates several SQL statements
@@ -136,7 +136,7 @@ But actually we can query the data in only one SQL statement instead:
 The trick is using the SQL server build-in function to construct JSON objects.
 It may be more efficient than the traditional way. taichi-orm is currently using this approach.
 
-### Filtering relation records
+### Better control on relation records
 
 For some traditional ORM, it is not easy to apply filters on the pivot table of `manyToMany` relationship" because the Model definition is abstracted.
 But our Model API allows us applying additional where clause during query. See below code examples.
@@ -198,6 +198,46 @@ await Product.find({
     )
   })
 })
+```
+
+### More Adaptive on changes of the business Requirements
+
+traditionally, when building a system , it starts from simple requirement, usually the simple Object API of ORM can cater most of the use case. But when the requirements changes, you may find that only sql query builder or native sql can fulfill your businesss needs, so you have to rewrite the data logics from code from Model API to query builder.
+
+One of the typical cases is a e-shop app. In early stage, your product page simply lists out the products by product creation date in ascending order (with pagination). As a developer, we usually use the Object API to cater that. But later the product owner ask you to list products by more complex logics like “Order By price of the products but Order By promotion date of the products if today is that promotion date”.
+
+The traditional Model API cannot cater this because the FindOption accepts array of field names only, we need raw SQL to achieve this requirement.
+
+But Taichi Model API is more adaptive, in this case, you just need to modify the OrderBy of the FindOption.
+
+Before:
+```js
+const products = await Product.find(
+  {
+    orderBy: ['price']
+    limit: 50
+  }
+)
+
+```
+
+After:
+```js{4-12}
+const products = await Product.find(
+  ({root, If, Now}) => ({
+    orderBy: [
+      { 
+        value: If( 
+          root.promotionDate.equals(Now),
+          -1,
+          root.price     
+          ),
+        order: 'asc'
+      }
+    ],
+    limit: 50
+  })
+)
 ```
 
 <!-- 

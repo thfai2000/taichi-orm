@@ -1,7 +1,5 @@
-# Concepts
-sss
 
-## Schema and Property
+# Schema and Property
 
 ### FieldProperty
 
@@ -9,10 +7,4 @@ sss
 
 ### ComputeFunction
 
-## Model 
-
 ## DatabaseContext and ModelRepository
-
-## Scalar 
-
-## Dataset

@@ -1,7 +1,0 @@
-# Query Builder
-
-
-## Scalar
-
-
-## Dataset

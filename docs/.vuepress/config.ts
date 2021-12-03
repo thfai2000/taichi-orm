@@ -26,8 +26,21 @@ export default defineUserConfig<DefaultThemeOptions>({
           children: [
             '/guide/README.md',
             '/guide/getting-started.md',
-            '/guide/concepts.md',
-            '/guide/query-builder.md'
+            {
+              text: 'Concepts',
+              children: [
+                '/guide/concepts/schema-property',
+                '/guide/concepts/database-context',
+                '/guide/concepts/model-api',
+                '/guide/concepts/query-builder'
+              ]
+            },
+            {
+              text: 'Examples',
+              children: [
+                '/guide/examples/access-control'
+              ]
+            }
           ]
         },
       ],
