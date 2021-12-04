@@ -22,6 +22,12 @@ Although The Model API allows to use raw SQL, QueryBuilder is still necessary in
 3. Model.update() and Model.delete() will query the involved records before update or delete, and query the affected data again. But querybuilder allows to skip querying the affected records.
 
 ## Scalar
+It represent a SQL single value with a specifc type like number, string or date.
+Dataset can be transformed into a Scalar. For example, 'SELECT count(*) FROM table1' can act as a Scalar in number type.
+
+
+
 
 
 ## Dataset
+It is a query builder and represents the SELECT statement.

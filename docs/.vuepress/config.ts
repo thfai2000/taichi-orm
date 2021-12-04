@@ -4,6 +4,7 @@ import type { DefaultThemeOptions } from 'vuepress'
 export default defineUserConfig<DefaultThemeOptions>({
   lang: 'en-US',
   title: 'Taichi ORM',
+  base: '/taichi-orm',
   description: 'A developer-friendly SQL ORM',
   themeConfig: {
     repo: 'thfai2000/taichi-orm',
@@ -14,10 +15,10 @@ export default defineUserConfig<DefaultThemeOptions>({
         link: '/guide/',
       },
       // NavbarGroup
-      {
-        text: 'Group',
-        children: ['/group/foo.md', '/group/bar.md'],
-      }
+      // {
+      //   text: 'Group',
+      //   children: ['/group/foo.md', '/group/bar.md'],
+      // }
     ],
     sidebar: {
       '/guide/': [
@@ -38,9 +39,10 @@ export default defineUserConfig<DefaultThemeOptions>({
             },
             '/guide/typescript-support.md',
             {
-              text: 'Examples',
+              text: 'Use Cases',
               children: [
-                '/guide/examples/access-control'
+                '/guide/use-cases/scalar-transform',
+                '/guide/use-cases/access-control'
               ]
             }
           ]
