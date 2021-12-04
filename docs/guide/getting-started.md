@@ -128,7 +128,7 @@ const orm = require('./orm')
 (async() =>{
   let {
       createModels,
-      models: {Shop, Product} 
+      repos: {Shop, Product} 
     } = orm.getContext()
 
     // create the tables (if necessary)

@@ -28,7 +28,7 @@ class ProductModel extends Model {
 
     let {
         createModels,
-        models: {Shop, Product} 
+        repos: {Shop, Product} 
     } = orm.getContext()
 
     // create the tables (if necessary)

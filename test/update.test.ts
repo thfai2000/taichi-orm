@@ -53,7 +53,7 @@ describe('Test Update - No transaction', () => {
   test('Update One', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -94,7 +94,7 @@ describe('Test Update - No transaction', () => {
   test('Update One - Not found', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -117,7 +117,7 @@ describe('Test Update - No transaction', () => {
   test('Update Many', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},

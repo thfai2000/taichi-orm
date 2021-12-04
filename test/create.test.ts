@@ -53,7 +53,7 @@ describe('Test Create - No transaction', () => {
   test('Create One', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
 
     let shopData = 
@@ -75,7 +75,7 @@ describe('Test Create - No transaction', () => {
   test('Create Many', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -107,7 +107,7 @@ describe('Test Create - with transaction', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
 
     let shopData = 
@@ -134,7 +134,7 @@ describe('Test Create - with transaction', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = 
       { id: 5, name: 'Shop 5', location: 'Shatin'}
@@ -166,7 +166,7 @@ describe('Test Create - with transaction', () => {
   test('Create Many - Success', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -194,7 +194,7 @@ describe('Test Create - with transaction', () => {
   test('Create Many - Fail', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},

@@ -32,7 +32,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         insert,
         del,
         update,
-        models: {Shop, Product} 
+        repos: {Shop, Product} 
     } = orm.getContext()
 
     let context = orm.getContext()

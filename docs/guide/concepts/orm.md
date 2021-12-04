@@ -49,7 +49,7 @@ const orm = new ORM({
 })
 
 // get ModelRepository
-let { Model1RepoName, Model2RepoName } = orm.getContext().models
+let { Model1RepoName, Model2RepoName } = orm.getContext().repos
 
 // make query
 let modelRecords = await Model1RepoName.find({ where: {id: 1} })
@@ -80,9 +80,6 @@ If your app is using javascript, it is suggested to use `models` options to spec
 
 If your app is using typescript, you can provide type hints manually. Please see [Typescript Support](../typescript-support#model-repository)
 :::
-
-
-## Table Name
 
 ## More options
 

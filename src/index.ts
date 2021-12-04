@@ -348,7 +348,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     #config: Partial<DatabaseContextConfig> | null = null
     readonly orm
     // private registeredEntities: EntityMap
-    public models: {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}
+    public repos: {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}
     // #modelClassMap: ModelMap
     
     constructor(orm: ORM<ModelMap>, config?: Partial<DatabaseContextConfig> ){
@@ -356,7 +356,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         this.#config = config ?? {}
         // this.#modelClassMap = modelClassMap
 
-        this.models = Object.keys(orm.modelMap).reduce( (acc, key) => {
+        this.repos = Object.keys(orm.modelMap).reduce( (acc, key) => {
             let modelClass = orm.modelMap[key]
             //@ts-ignore
             acc[key] = new ModelRepository<any>(this, modelClass, key)
@@ -382,16 +382,16 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     getRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
         //@ts-ignore
-        let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
+        let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === modelClass)
         if(!foundKey){
             console.log('cannot find model', modelClass)
             throw new Error('Cannot find model')
         }
-        return this.models[foundKey] as unknown as ModelRepository<T>
+        return this.repos[foundKey] as unknown as ModelRepository<T>
     }
 
     schemaSqls = () => {
-        let m = this.models
+        let m = this.repos
         let sqls: string[] = Object.keys(m)
             .map(k => m[k].model)
             .map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix}))

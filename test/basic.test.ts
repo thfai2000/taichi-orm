@@ -62,7 +62,7 @@ describe('Basic Read and Write', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let expectedShop1 = {
       id: 1,
@@ -173,7 +173,7 @@ describe('Type Parsing', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Product} = ctx.models
+    let {Product} = ctx.repos
 
     let expectedProduct1 = {
       id: 1,
@@ -195,7 +195,7 @@ describe('Type Parsing', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Product} = ctx.models
+    let {Product} = ctx.repos
 
     let expectedProduct2 = {
       id: 2,

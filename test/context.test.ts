@@ -56,7 +56,7 @@ describe('Test Context Usage', () => {
     
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let record = await  ctx.startTransaction( async(ctx) => {
       let record = await Shop.createOne(shopData).usingConnectionIfAny(ctx)
@@ -82,7 +82,7 @@ describe('Test Context Usage', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
 
     const t = async() => await ctx.startTransaction( async(ctx) => {
@@ -112,7 +112,7 @@ describe('Test Context Usage', () => {
         
         let ctx = orm.getContext({tablePrefix: tablePrefix()})
         await ctx.createModels()
-        let {Shop, Product} = ctx.models
+        let {Shop, Product} = ctx.repos
         
         let record = await ctx.startTransaction( async(trx) => {
             let record = await Shop.createOne(shopData).usingConnectionIfAny(trx)
