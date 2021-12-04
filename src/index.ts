@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -198,26 +198,21 @@ export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA > =
 
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
+    // sql client connection
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
         connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
     },
-    // types: { [key: string]: typeof PropertyDefinition },
+    // object of Models
     models: ModelMap
-    // createModels: boolean,
+    // the directory of the Model files
     modelsPath?: string,
+    // output a SQL file of all schema
     outputSchemaPath?: string,
-    // waitUtilDatabaseReady?: boolean,
-    entityNameToTableName?: (params:string) => string,
-    // tableNameToEntityName?: (params:string) => string,
-    propNameTofieldName?: (params:string) => string,
-    // fieldNameToPropName?: (params:string) => string,
-    // suppressErrorOnPropertyNotFound?: string,
-    useNullAsDefault?: boolean
-    // useSoftDeleteAsDefault: boolean
-    // primaryKeyName: string
-    // enableUuid: boolean
-    // uuidPropName: string
+    // function to convert model name to table name
+    entityNameToTableName?: (name:string) => string,
+    // function of convert property Name to field name
+    propNameTofieldName?: (name:string) => string
 }
 export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
@@ -281,8 +276,10 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
                     let entityClass = require(path)
                     // registerEntity(entityName, entityClass.default);
 
+                    const camelCase = camelize(entityName)
+                    const finalName = camelCase.charAt(0).toUpperCase() + camelCase.slice(1)
                     // @ts-ignore
-                    this.#modelMap[entityName] = entityClass.default
+                    this.#modelMap[finalName] = entityClass.default
                 }
             })
         }
@@ -310,7 +307,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         }
 
         let newKnexConfig = Object.assign({
-            useNullAsDefault: true
+            // useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
         if(typeof newKnexConfig.connection !== 'object'){

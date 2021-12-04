@@ -198,7 +198,11 @@ export const quote = (client: string, name: string) => {
     throw new Error('Unsupport client')
 }
 
-
+export function camelize(str: string) {
+  return str.replace(/(?:^\w|[A-Z]|\b\w)/g, function(word, index) {
+    return index === 0 ? word.toLowerCase() : word.toUpperCase();
+  }).replace(/\s+/g, '');
+}
 
 // export const META_FIELD_DELIMITER = '___'
 // const map1 = new Map<PropertyType, string>()

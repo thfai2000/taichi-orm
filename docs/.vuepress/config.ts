@@ -29,12 +29,14 @@ export default defineUserConfig<DefaultThemeOptions>({
             {
               text: 'Concepts',
               children: [
-                '/guide/concepts/schema-property',
+                '/guide/concepts/orm',
                 '/guide/concepts/database-context',
+                '/guide/concepts/model-property',
                 '/guide/concepts/model-api',
                 '/guide/concepts/query-builder'
               ]
             },
+            '/guide/typescript-support.md',
             {
               text: 'Examples',
               children: [

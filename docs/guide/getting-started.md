@@ -1,7 +1,22 @@
 # Getting Started
 
 
+## Prerequisites
+
+You have installed Nodejs with Version >= 12
+
 ## Installation
+
+Following steps will guide you to create the necessary files in your project directory.
+
+```:no-line-numbers
+├─ models         # model files
+│  ├─ shop.js
+|  ├─ product.js
+├─ orm.js         # your orm configuration
+├─ index.js       # your program
+└─ package.json
+```
 
 Step 1: Create and change into a new directory
 
@@ -47,21 +62,7 @@ npm install --save sqlite3
 
 </CodeGroup>
 
-Step 5: Create files and folders for your program. 
-
-
-The project directory will look like this:
-```:no-line-numbers
-├─ models         # model files
-│  ├─ shop.js
-|  ├─ product.js
-├─ orm.js         # your orm configuration
-├─ index.js       # your program
-└─ package.json
-```
-
-
-Create `models` folder for your Model files.
+Step 5: Create `models` folder for your Model files.
 
 ```bash
 mkdir models
@@ -115,6 +116,10 @@ module.exports = new ORM({
     }
 })
 ```
+::: tip
+You can also register your Models with directory paths. Please see [Register Model](./concepts/orm.md#register-models)
+:::
+
 
 Step 8: Create a file named 'index.js'.
 ```js
@@ -141,7 +146,18 @@ const orm = require('./orm')
       where: {id: 2}
     })
 
+    console.log('Found', foundShop2)
+
 })()
 ```
 
+Step 9: Run your program
 
+```bash
+node index.js
+```
+
+Output:
+```
+
+```
