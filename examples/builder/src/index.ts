@@ -1,13 +1,13 @@
-import { Dataset, Scalar } from "../../../dist/builder"
+import { Dataset, Scalar } from "../../../dist/"
 import util from 'util'
 import {snakeCase} from 'lodash'
 import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ORM, Selector } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
-import { NumberNotNullType, ObjectType } from "../../../dist/types"
-import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/util"
-import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/schema"
-import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/model"
+import { NumberNotNullType, ObjectType } from "../../../dist/"
+import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/"
+import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/"
+import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
 
 
 (async() => {
@@ -32,7 +32,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/mod
         insert,
         del,
         update,
-        models: {Shop, Product} 
+        repos: {Shop, Product} 
     } = orm.getContext()
 
     let context = orm.getContext()

@@ -1,8 +1,8 @@
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/types"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/"
 import Shop from "./Shop"
-import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/model"
+import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/"
 import { CFReturn } from "../../../dist"
-import { Scalar } from "../../../dist/builder"
+import { Scalar } from "../../../dist/"
 
 
 export default class Product extends Model {

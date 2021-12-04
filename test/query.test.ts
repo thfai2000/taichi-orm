@@ -13,10 +13,10 @@ import { PrimaryKeyType,
         DateTimeNotNullType,
         NumberType,
         NumberNotNullType
-      } from '../dist/types'
-import { FieldProperty } from '../dist/schema'
-import { Dataset, Scalar } from '../dist/builder'
-import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/util'
+      } from '../dist/'
+import { FieldProperty } from '../dist/'
+import { Dataset, Scalar } from '../dist/'
+import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/'
 
 let shopData = [
   { id: 1, name: 'Shop 1', location: 'Shatin', tel: null},
@@ -146,7 +146,7 @@ const loadData = async (ctx: DatabaseContext<{
     ProductColor: typeof ProductColor;
 }>) => {
   await ctx.createModels()
-  let {Shop, Product, Color, ProductColor} = ctx.models
+  let {Shop, Product, Color, ProductColor} = ctx.repos
   await Promise.all(shopData.map( async(d) => {
     return await Shop.createOne(d)
   }))
@@ -173,7 +173,7 @@ describe('SelectProps - Custom Computed Fields with Where clause', () => {
   test('Query computed field', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let id = 2
     let record = await Shop.findOne({
       selectProps: ['productCount', 'products'],
@@ -189,7 +189,7 @@ describe('SelectProps - Computed Fields using Standard Relations', () => {
   test('Query computed fields - hasMany + other custom props', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let records = await Shop.find({
       selectProps: ['products', 'productCount', 'hasProducts', 'hasNoProducts', 'hasOver2Products']
     })
@@ -212,7 +212,7 @@ describe('SelectProps - Computed Fields using Standard Relations', () => {
   test('Query computed fields - belongsTo', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let records = await Product.find({
       selectProps: ['shop']
     })
@@ -232,7 +232,7 @@ describe('SelectProps - Computed Fields using Standard Relations', () => {
   test('Query computed fields - hasThrough + multiple level', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let records = await Shop.find({
       select: {
         products: {
@@ -272,7 +272,7 @@ describe('Select - Simple Query', () => {
   test('Mixed Select + SelectProps + Query by object filter', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let id = 2
     let record = await Shop.findOne({
@@ -297,7 +297,7 @@ describe('Select - Simple Query', () => {
 
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       selectProps: ['productCount'],
@@ -333,7 +333,7 @@ describe('Select - Simple Query', () => {
   test('Select - Query with limit', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let limit = 2
     let records = await Shop.find({
       where: ({root}) => root.id.greaterThan(2),
@@ -349,7 +349,7 @@ describe('Select - Query order by', () => {
   test('Orderby', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
     let records = await Shop.find({
       orderBy: ['productCount', {value: 'id', order: 'desc'}]
     })
@@ -375,7 +375,7 @@ describe('Select - Use Query Arguments', () => {
   test('Use Query Arguments', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let expectedCount = 3
     let records = await Shop.find({
@@ -400,7 +400,7 @@ describe('Where - Using Raw', () => {
   test('Simple raw', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({root}) => ctx.scalar('?? > 5', [root.id])
@@ -416,7 +416,7 @@ describe('Where - Using Raw', () => {
   test('transform with raw', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({root}) => root.products().transform(ds => 
@@ -446,7 +446,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - And, {}', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({root, And, Like}) => And({
@@ -466,7 +466,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - Or', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({root, Or, Like}) => Or({
@@ -486,7 +486,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - Not', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({Not}) => Not({
@@ -505,7 +505,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - Exists', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({
       where: ({root, Exists}) => Exists( Product.dataset({
@@ -525,7 +525,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - :value + equals() + notEquals()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let id = 2
     let records = await Shop.find({
@@ -559,7 +559,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - :null + isNull() + isNotNull()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let records = await Shop.find({where: ({root}) => root.tel.isNull() })
     let records2 = await Shop.find({ where: {tel: null}})
@@ -588,7 +588,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - in() + notIn()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     let ids = [2,4,100]
     let expectedShops = shopData.filter(s => ids.includes(s.id) )
@@ -614,7 +614,7 @@ describe('Where - Operators', () => {
   test('Query by object filter - like() + notLike()', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await loadData(ctx)
-    let {Shop, Product, Color, ProductColor} = ctx.models
+    let {Shop, Product, Color, ProductColor} = ctx.repos
 
     const likeStr = '2'
     let expectedShops = shopData.filter(s => s.name.includes(likeStr) )

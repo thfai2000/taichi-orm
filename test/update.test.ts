@@ -1,4 +1,4 @@
-import {Model} from '../dist/model'
+import {Model} from '../dist/'
 import {ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
@@ -13,7 +13,7 @@ import { PrimaryKeyType,
         DateTimeNotNullType,
         NumberType,
         NumberNotNullType
-      } from '../dist/types'
+      } from '../dist/'
 
 
 class Shop extends Model {
@@ -53,7 +53,7 @@ describe('Test Update - No transaction', () => {
   test('Update One', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -94,7 +94,7 @@ describe('Test Update - No transaction', () => {
   test('Update One - Not found', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -117,7 +117,7 @@ describe('Test Update - No transaction', () => {
   test('Update Many', async () => {
     let ctx = orm.getContext({tablePrefix: tablePrefix()})
     await ctx.createModels()
-    let {Shop, Product} = ctx.models
+    let {Shop, Product} = ctx.repos
 
     let shopData = [
       { id: 1, name: 'Shop 1', location: 'Shatin'},
@@ -156,7 +156,6 @@ describe('Test Update - No transaction', () => {
     }))))
 
   })
-
 
   //TODO: update One but found more than one record, throw error
 

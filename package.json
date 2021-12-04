@@ -1,6 +1,6 @@
 {
   "name": "taichi-orm",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "Object Relation Mapper for SQL Database. Flexible and Strong",
   "keywords": [
     "data modeling",
@@ -17,20 +17,27 @@
     "high performance",
     "developer friendly"
   ],
-  "main": "./dist/index.js",
-  "exports": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "prepare": "npm run build",
-    "dev": "npm install && rm -rf dist && rm -rf dist-test && tsc --project tsconfig.json --watch",
-    "dev-test": "npm install && rm -rf dist && rm -rf dist-test && concurrently -r \"tsc --project tsconfig.json --watch\" -r \"tsc --project tsconfig.test.json --watch\" ",
-    "build": "rm -rf dist && tsc --project tsconfig.json",
+    "build": "tsup src/index.ts --dts --format esm,cjs",
+    "dev": "npm install && tsup src/index.ts --dts --watch src",
+    "dev-test": "npm install && tsup test --dts --watch test --outDir dist-test",
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
     "test:sqlite": "jest --watch --setupFiles=./dist-test/setup-sqlite.js",
     "test:pg": "jest --watch --setupFiles=./dist-test/setup-pg.js",
     "mysql": "docker-compose down && docker-compose up",
-    "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" "
+    "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" ",
+    "docs:dev": "vuepress dev docs",
+    "docs:build": "vuepress build docs"
   },
   "repository": {
     "type": "git",
@@ -44,7 +51,7 @@
   "homepage": "https://github.com/thfai2000/taichi-orm#readme",
   "runkitExampleFilename": "runkit-example.js",
   "engines": {
-    "node": ">=14"
+    "node": ">=12"
   },
   "devDependencies": {
     "@types/jest": "^26.0.23",
@@ -59,8 +66,10 @@
     "nodemon": "^2.0.7",
     "pg": "^8.6.0",
     "sqlite3": "^4.2.0",
+    "tsup": "^5.10.0",
     "typescript": "^4.4.4",
-    "uuid": "^8.3.2"
+    "uuid": "^8.3.2",
+    "vuepress": "^2.0.0-beta.27"
   },
   "dependencies": {
     "knex": "^0.95.5"

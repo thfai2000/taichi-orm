@@ -1,3 +1,4 @@
+require('sqlite3')
 const { ORM, Model, PrimaryKeyType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
 
 /*
@@ -69,7 +70,7 @@ class ProductModel extends Model{
 
       // create tables
       await orm.getContext().createModels()
-      const { Shop, Product, Color, ProductColor } = orm.getContext().models
+      const { Shop, Product, Color, ProductColor } = orm.getContext().repos
 
       // prepare the database
       const [createdShop1, createdShop2] = await Shop.createEach([{name: 'Shop1'}, {name: 'Shop2'}])

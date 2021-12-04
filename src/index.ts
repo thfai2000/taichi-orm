@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg } from './util'
+import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -198,29 +198,22 @@ export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA > =
 
     
 export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
+    // sql client connection
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
         client: string
         connection?: Knex.StaticConnectionConfig | Knex.ConnectionConfigProvider
     },
-    // types: { [key: string]: typeof PropertyDefinition },
+    // object of Models
     models: ModelMap
-    // createModels: boolean,
+    // the directory of the Model files
     modelsPath?: string,
+    // output a SQL file of all schema
     outputSchemaPath?: string,
-    // waitUtilDatabaseReady?: boolean,
-    entityNameToTableName?: (params:string) => string,
-    // tableNameToEntityName?: (params:string) => string,
-    propNameTofieldName?: (params:string) => string,
-    // fieldNameToPropName?: (params:string) => string,
-    // suppressErrorOnPropertyNotFound?: string,
-    useNullAsDefault?: boolean
-    // useSoftDeleteAsDefault: boolean
-    // primaryKeyName: string
-    // enableUuid: boolean
-    // uuidPropName: string
+    // function to convert model name to table name
+    entityNameToTableName?: (name:string) => string,
+    // function of convert property Name to field name
+    propNameTofieldName?: (name:string) => string
 }
-
-
 export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
     #globalKnexInstance: Knex | null = null
@@ -283,8 +276,10 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
                     let entityClass = require(path)
                     // registerEntity(entityName, entityClass.default);
 
+                    const camelCase = camelize(entityName)
+                    const finalName = camelCase.charAt(0).toUpperCase() + camelCase.slice(1)
                     // @ts-ignore
-                    this.#modelMap[entityName] = entityClass.default
+                    this.#modelMap[finalName] = entityClass.default
                 }
             })
         }
@@ -312,7 +307,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         }
 
         let newKnexConfig = Object.assign({
-            useNullAsDefault: true
+            // useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
         if(typeof newKnexConfig.connection !== 'object'){
@@ -353,7 +348,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     #config: Partial<DatabaseContextConfig> | null = null
     readonly orm
     // private registeredEntities: EntityMap
-    public models: {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}
+    public repos: {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>}
     // #modelClassMap: ModelMap
     
     constructor(orm: ORM<ModelMap>, config?: Partial<DatabaseContextConfig> ){
@@ -361,7 +356,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         this.#config = config ?? {}
         // this.#modelClassMap = modelClassMap
 
-        this.models = Object.keys(orm.modelMap).reduce( (acc, key) => {
+        this.repos = Object.keys(orm.modelMap).reduce( (acc, key) => {
             let modelClass = orm.modelMap[key]
             //@ts-ignore
             acc[key] = new ModelRepository<any>(this, modelClass, key)
@@ -387,16 +382,16 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     getRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
         //@ts-ignore
-        let foundKey = Object.keys(this.models).find(key => this.models[key].modelClass === modelClass)
+        let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === modelClass)
         if(!foundKey){
             console.log('cannot find model', modelClass)
             throw new Error('Cannot find model')
         }
-        return this.models[foundKey] as unknown as ModelRepository<T>
+        return this.repos[foundKey] as unknown as ModelRepository<T>
     }
 
     schemaSqls = () => {
-        let m = this.models
+        let m = this.repos
         let sqls: string[] = Object.keys(m)
             .map(k => m[k].model)
             .map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix}))
@@ -949,7 +944,6 @@ export type HookInfo = {
 }
 
 export type HookAction = <T>(context: DatabaseContext<any>, rootValue: T, info: HookInfo, executionOptions: ExecutionOptions) => T | Promise<T>
-
 
 
 // export type ExecutionContextConfig = {

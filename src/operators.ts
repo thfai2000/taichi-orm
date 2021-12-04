@@ -24,11 +24,19 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
     }
     // abstract toRaw(context: Entitycontext<any>): Knex.Raw | Promise<Knex.Raw>
     abstract toScalar(): Scalar<BooleanNotNullType, any>
+
+    toString(){
+        return this.toScalar().toRaw().toString()
+    }
 }
 
 export abstract class AssertionOperator{
 
     abstract toScalar(): Scalar<BooleanNotNullType, any>
+
+    toString(){
+        return this.toScalar().toRaw().toString()
+    }
 }
 
 export abstract class LeftAndRightAssertionOperator extends AssertionOperator{

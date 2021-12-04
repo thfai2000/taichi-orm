@@ -282,7 +282,7 @@ A Scalar can transformed into another Scalar in different type/value.
 
 ```ts
     let ctx = orm.getContext()
-    let {Shop} = ctx.models
+    let {Shop} = ctx.repos
 
     // find shops with its products that average price are between 20 and 30
     let shops = await Shop.find({
@@ -489,7 +489,7 @@ await Product.find({
 })
 ```
 
-# Getting start
+# Getting started
 
 WARNING: Don't use it for production
 It is still under heavy development. The API specification can be changed in the future.
@@ -540,7 +540,7 @@ class ProductModel extends Model {
 
     let {
         createModels,
-        models: {Shop, Product} 
+        repos: {Shop, Product} 
     } = orm.getContext()
 
     await createModels()

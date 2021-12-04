@@ -8,13 +8,8 @@ import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quo
 
 export abstract class Property {
     #name?: string
-    // #definitionConstructor: D | (new () => D ) | (() => D)
-    // #definition: D | null = null
 
-    constructor(
-        // definition: D | (new () => D ) | (() => D)
-    ){
-        // this.#definitionConstructor = definition
+    constructor(){
     }
 
     register(
