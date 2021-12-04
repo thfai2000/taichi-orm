@@ -4,7 +4,7 @@ import type { DefaultThemeOptions } from 'vuepress'
 export default defineUserConfig<DefaultThemeOptions>({
   lang: 'en-US',
   title: 'Taichi ORM',
-  base: '/taichi-orm',
+  base: '/taichi-orm/',
   description: 'A developer-friendly SQL ORM',
   themeConfig: {
     repo: 'thfai2000/taichi-orm',
