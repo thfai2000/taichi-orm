@@ -1,7 +1,6 @@
 ---
 home: true
 title: Home
-heroImage: /images/hero.png
 actions:
   - text: Get Started
     link: /guide/getting-started
@@ -11,9 +10,9 @@ actions:
     type: secondary
 features:
   - title: Simplicity
-    details: xxxx.
+    details: 
   - title: Flexibility
-    details: xxx
+    details: 
 
 footer: MIT Licensed | Copyright © 2021-present Eddie Tang
 ---
