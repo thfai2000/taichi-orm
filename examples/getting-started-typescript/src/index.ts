@@ -2,7 +2,7 @@
 import orm from './orm'
 
 (async() =>{
-  let {
+  const {
     createModels,
     repos: {Shop, Product} 
   } = orm.getContext()
@@ -10,14 +10,14 @@ import orm from './orm'
   // create the tables (if necessary)
   await createModels()
 
-  let [createdShop1, createdShop2]  = await Shop.createEach([{ id: 1 }, {id: 2}])
-  let createdProducts = await Product.createEach([
+  const [createdShop1, createdShop2]  = await Shop.createEach([{ id: 1 }, {id: 2}])
+  const createdProducts = await Product.createEach([
     {shopId: createdShop1.id },
     {shopId: createdShop2.id }
   ])
 
   //Find Shop with Id 2 and with related products
-  let foundShop2 = await Shop.find({
+  const foundShop2 = await Shop.find({
     selectProps: ['products'],
     where: {id: 2}
   })

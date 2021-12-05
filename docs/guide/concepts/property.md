@@ -1,5 +1,30 @@
 
-# Relations
+# Property
+
+
+## FieldProperty
+It represents a field of a Model.
+
+### specify the field name
+
+
+## ComputeProperty
+It represents a virtual field of a Model.
+It consists of a `ComputeFunction` that defines how to create a Scalar.
+
+## ComputeFunction
+It defines how to create a Scalar.
+
+
+## Relation Property
+
+### belongsTo
+
+### hasMany
+
+### hasManyThrough
+
+
 
 Typical use cases are querying Related Entities and filtering related Entities
 Let's say a Product belongs to a Shop. 
@@ -86,5 +111,4 @@ let shops = await Shop.find({
   }).toDScalar().count().greaterThan(5)
 })
 ```
-
 

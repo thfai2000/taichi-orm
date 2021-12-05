@@ -64,10 +64,10 @@ It runs the callback function after the transaction started and return a `Promis
 await context.startTransaction( (trx) => {
     let { Model1Repo } = context.repos
     return await Model1Repo.update({
-        field1: newValue
-    }, {
-        id: 1
-    }).usingConnection(trx)
+                field1: newValue
+            }, {
+                id: 1
+            }).usingConnection(trx)
 })
 ```
 
@@ -90,33 +90,39 @@ context.del().from(Model1.datasource('alias'))
 // build select statement
 context.dataset().from(Model1.datasource('alias'))
 
+// build raw sql
+context.scalar('SELECT 1 FROM Model1 WHERE id = ?', [1])
+
 ```
 
+```js
+let records = await querybuilder.execute()
+```
 
-### SQL Operators
+### SQL Operators and Functions
 
-The operators can be used in building SQL query.
+Context provides SQL Operators and Functions that can be accessed from `$`.
+
 
 ```js
-// some common SQL operators
-const { And, Or, Exists, Between} = context.op
-
-console.log(And(1, 2).toString())
+console.log(context.$.And(1, 2).toString())
 // Output: 1 And 2
 
-console.log(Or(1, 2).toString())
+console.log(context.$.Or(1, 2).toString())
 // Output: 1 Or 2
 
-console.log(Exists(Model1.dataset()).toString())
+console.log(context.$.Exists(Model1.dataset()).toString())
 // Output: EXISTS (SELECT * FROM Model1)
 
-console.log(Between(10, 20).toString())
+console.log(context.$.Between(10, 20).toString())
+// Output: BETWEEN 10 AND 20
+
+console.log(context.$.Now())
 // Output: BETWEEN 10 AND 20
 
 ```
 
 ::: tip
-Please see reference for more operators.
+Please see reference for more operators and functions
 :::
-
 

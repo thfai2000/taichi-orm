@@ -32,7 +32,10 @@ export default defineUserConfig<DefaultThemeOptions>({
               children: [
                 '/guide/concepts/orm',
                 '/guide/concepts/database-context',
-                '/guide/concepts/model-property',
+                '/guide/concepts/model',
+                '/guide/concepts/property',
+                '/guide/concepts/property-type',
+                '/guide/concepts/datasource',
                 '/guide/concepts/model-api',
                 '/guide/concepts/query-builder'
               ]

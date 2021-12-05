@@ -82,7 +82,7 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
             if(this.args.length === 0){
                 return context.raw('1')
             }
-            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            const items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => context.raw(items.join(' AND ') ) )
         }, new BooleanNotNullType())
     }
@@ -101,7 +101,7 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
             if(this.args.length === 0){
                 return context.raw('1')
             }
-            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            const items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => context.raw(items.join(' OR ') ) )
         }, new BooleanNotNullType())
     }
@@ -259,7 +259,7 @@ export class NotBetweenOperator extends LeftAndRightAssertionOperator {
     }
 }
 
-export class WaitingLeft {
+export class AssertionOperatorWrapper {
     #func: (left: Scalar<any, any>) => AssertionOperator
     constructor(func: (left: Scalar<any, any>) => AssertionOperator){
         this.#func = func
@@ -275,33 +275,18 @@ export type SQLKeywords<Props, PropMap> = {
     Or: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
     Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
     Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>,
-    Like: (right: Scalar<any, any> | string) => WaitingLeft,
-    NotLike: (right: Scalar<any, any> | string) => WaitingLeft
+    Like: (right: Scalar<any, any> | string) => AssertionOperatorWrapper,
+    NotLike: (right: Scalar<any, any> | string) => AssertionOperatorWrapper
 }
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
-    let sqlkeywords: SQLKeywords<X, Y> = {
+    const sqlkeywords: SQLKeywords<X, Y> = {
         And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions).toScalar(),
         Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
         Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
         Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar(),
-        Like: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
-        NotLike: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
+        Like: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
+        NotLike: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
     }
     return sqlkeywords
 }
-
-
-// export type ConditionOperatorCall<Props> = (...condition: Array<Expression<Props> > ) => ConditionOperator<Props>
-// const Or = (...condition: Array<Expression<any>>) => new OrOperator<any>(...condition)
-// const Not = (condition: Expression<any>) => new NotOperator<any>(condition)
-// const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
-// const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
-// const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)
-// const NotContain = (...rightOperands: Array<any>) => new NotContainOperator(...rightOperands)
-// const Like = (rightOperand: any) => new LikeOperator(rightOperand)
-// const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
-// const IsNull = () => new IsNullOperator()
-// const IsNotNull = () => new IsNotNullOperator()
-
-// export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator}

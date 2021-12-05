@@ -1,14 +1,17 @@
 # Typescript Support
 
+
 ## type ModelRepository
 
-Some IDE (like VSCode) can provide typescript hints.
-For the ORM config, if you use `models` to register your Models, the type of `ModelRepository` can be determined automatically.
+Some IDE (like VSCode) can provide typescript hints if the types are well-determined.
+![Typescript hints](../images/properties-suggestion.png)
+
+For the `ORMConfig`, if you use `models` to register your Models, the type of `ModelRepository` can be determined automatically.
 
 <CodeGroup>
   <CodeGroupItem title="TS" active>
 
-```ts
+```ts{5}
 import Product from './models/product'
 
 const orm = new ORM({
@@ -23,8 +26,7 @@ let repo = orm.getContext().repos.Product
   </CodeGroupItem>
   <CodeGroupItem title="JS">
 
-```js
-
+```js{3}
 const orm = new ORM({
     models: {
         Product: require('./models/product')
@@ -38,15 +40,14 @@ let repo = orm.getContext().repos.Product
 </CodeGroup>
 
 
-But the Type of the respository cannot be determined if `modelsPath` is used for Model registration.
-If you want the typescript hints provided by your IDE, you have to get the `ModelRepository` by Model class.
-
+But the `type` of the respository cannot be determined if `modelsPath` is used for Model registration.
+If you want the typescript hints shown propertly, you have to get the `ModelRepository` by Model class so that the `type` can be inferred.
 
 
 <CodeGroup>
   <CodeGroupItem title="TS" active>
 
-```ts
+```ts{8}
 import Product from './models/product'
 
 const orm = new ORM({
@@ -60,7 +61,7 @@ let p = orm.getContext().getRepository(Product)
   </CodeGroupItem>
   <CodeGroupItem title="JS">
 
-```js
+```js{5}
 const orm = new ORM({
     modelsPath: './models'
 })

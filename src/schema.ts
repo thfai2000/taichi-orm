@@ -1,20 +1,16 @@
-import util from 'util'
 import { Knex } from "knex"
-import { CompiledComputeFunctionDynamicReturn, CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, Selector, ComputeFunctionDynamicReturn } from "."
-import { Dataset, RawExpression, Scalar } from "./builder"
-import { FieldPropertyType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
-import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, notEmpty, quote, SQLString, thenResult } from "./util"
+import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, Selector, ComputeFunctionDynamicReturn } from "."
+import { Dataset, Scalar } from "./builder"
+import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
+import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
 
 
 export abstract class Property {
     #name?: string
 
-    constructor(){
-    }
-
     register(
         name: string){
-            if( /[\.`' ]/.test(name) || name.startsWith('_') || name.endsWith('_') ){
+            if( /[.`' ]/.test(name) || name.startsWith('_') || name.endsWith('_') ){
                 throw new Error(`The name '${name}' of the NamedProperty is invalid. It cannot contains "'" or startsWith/endsWith '_'.`)
             }
             this.#name = name
@@ -192,7 +188,7 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
 
     parseDataBySchema(row: any, context: DatabaseContext<any>): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
         const schema = this
-        let output = {}
+        const output = {}
         for (const propName in row) {
             const p = schema.propertiesMap[propName]
             if(p){
@@ -208,7 +204,7 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
                     // if(metaInfo.propName === 'products'){
                     //     start = new Date()
                     // }
-                    let propValue = propType.parseRaw ? propType.parseRaw(row[propName], context, propName) : row[propName]
+                    const propValue = propType.parseRaw ? propType.parseRaw(row[propName], context, propName) : row[propName]
                     
                     // if(metaInfo.propName === 'products'){
                     //     //@ts-ignore
@@ -276,11 +272,11 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
         const client = context.client()
         const tableName = this.tableName(context, options)
 
-        let props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyType<any>>[]
+        const props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyType<any>>[]
         
         return `CREATE TABLE IF NOT EXISTS ${quote(client, tableName)} (\n${
             props.map( prop => {
-                let f = prop.definition
+                const f = prop.definition
                 if(f instanceof FieldPropertyType){
                     return `${f.create(prop.name, prop.fieldName(context.orm), context)}`  
                 }
@@ -313,7 +309,7 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     getAllFieldProperty: () => { [key: string]: Scalar<PropertyType<any>, any>}
     getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any>
     getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any> 
-    getComputeProperty: <Name extends string, ARG extends any, S extends Scalar<PropertyType<any>, any> >(name: Name) => CompiledComputeFunction<ARG, S>
+    getComputeProperty: <Name extends string, ARG, S extends Scalar<PropertyType<any>, any> >(name: Name) => CompiledComputeFunction<ARG, S>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -344,7 +340,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                     if(sKey === '$allFields'){
                         return datasource.getAllFieldProperty()
                     } else {
-                        let prop = oTarget._schema.propertiesMap[sKey]
+                        const prop = oTarget._schema.propertiesMap[sKey]
                         if(prop instanceof FieldProperty){
                             return datasource.getFieldProperty(sKey)
                         }
@@ -378,7 +374,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
     getFieldProperty<Name extends string>(name: Name): Scalar<PropertyType<any>, any> {
-        let prop = this._schema.propertiesMap[name]
+        const prop = this._schema.propertiesMap[name]
         if( !(prop instanceof FieldProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
@@ -386,20 +382,20 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             return new Scalar((context: DatabaseContext<any>) => {
                 const orm = context.orm
                 const client = context.client()
-                let rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
+                const rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
                 return context.raw(rawTxt)
             }, fieldProp.definition)
         }
     }
 
 
-    getComputeProperty<Name extends string, ARG extends any, S extends Scalar<any,any> >(name: Name): CompiledComputeFunction<ARG, S>{
-        let prop = this._schema.propertiesMap[name]
+    getComputeProperty<Name extends string, ARG, S extends Scalar<any,any> >(name: Name): CompiledComputeFunction<ARG, S>{
+        const prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
             throw new Error(`Not field property ${name}`)
         }else{
             const cProp = prop
-            let c = (args?: ARG) => {
+            const c = (args?: ARG) => {
                 const subquery: S = cProp.compute.fn.call(cProp, this, args)
                 return subquery
             }
@@ -408,7 +404,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
     getScalarProperty<Name extends string>(name: Name): Scalar<PropertyType<any>, any> {
-        let prop = this._schema.propertiesMap[name]
+        const prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ScalarProperty)){
             throw new Error(`it is not field property ${name}`)
         } else {
@@ -441,7 +437,7 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
     realSource(context: DatabaseContext<any>){
         const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
 
-        let tableName = this.schema.tableName(context, finalOptions)
+        const tableName = this.schema.tableName(context, finalOptions)
         if(!tableName){
             throw new Error('Not yet registered')
         }
