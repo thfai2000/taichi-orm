@@ -22,9 +22,9 @@ export type ObjectTypeDataset<DS extends Dataset<any, any, any, any>>= ObjectTyp
 export type ArrayTypeDataset<DS extends Dataset<any, any, any, any>>= ArrayType< ReturnType< DS["schema"]>>
 
 
-export type ConstructDatasetBySelectiveArg<MT extends typeof Model, F extends SingleSourceArg<ExtractSchemaFromModelType<MT>> > = 
+export type ConstructDatasetBySelectiveArg<MT extends typeof Model, SSA > = 
         Dataset<
-        Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, F>>,
+        Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, SSA>>,
         UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
         UnionToIntersection< { 'root': Selector< ExtractSchemaFromModelType<MT> > }>, 
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>

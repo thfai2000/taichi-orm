@@ -39,7 +39,12 @@ export type SingleSourceArg<S extends Schema<any> > = {
     where?: SingleSourceWhere<S>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S>
+    orderBy?: QueryOrderBy<S> | ((map: {'root': Selector<S>} & SQLKeywords< 
+        UnionToIntersection< 
+            AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'>
+        >,
+        {'root': Selector<S>}
+    > ) => QueryOrderBy<S> )
 }
 
 export type SingleSourceWhere<S extends Schema<any> > = Expression< 
@@ -60,7 +65,12 @@ export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
     where?: TwoSourceWhere<S, S2>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S>
+    orderBy?: QueryOrderBy<S> | ((map: {'root': Selector<S>, 'through': Selector<S2>} & SQLKeywords< 
+            UnionToIntersection< 
+                AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'> | AddPrefix< ExtractPropDictFromSchema<S2> , 'through'>
+            >, 
+            {'root': Selector<S>, 'through': Selector<S2>}
+        > ) => QueryOrderBy<S> )
 }
 
 export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 

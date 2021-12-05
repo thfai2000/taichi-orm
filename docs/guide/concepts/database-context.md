@@ -90,8 +90,14 @@ context.del().from(Model1.datasource('alias'))
 // build select statement
 context.dataset().from(Model1.datasource('alias'))
 
+// build raw sql
+context.scalar('SELECT 1 FROM Model1 WHERE id = ?', [1])
+
 ```
 
+```js
+let records = await querybuilder.execute()
+```
 
 ### SQL Operators
 

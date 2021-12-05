@@ -367,6 +367,13 @@ describe('Select - Query order by', () => {
       return v
     })
     expect(records.map(r => r.id)).toEqual( data.map(d => d.id))
+
+    let records2 = await Shop.find({
+      orderBy: ({root}) => [root.productCount(), {value: root.id, order: 'desc'}]
+    })
+
+    expect(records2.map(r => r.id)).toEqual( data.map(d => d.id))
+
   })
 })
 
