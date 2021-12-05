@@ -37,6 +37,12 @@ export default defineUserConfig<DefaultThemeOptions>({
                 '/guide/concepts/query-builder'
               ]
             },
+            {
+              text: 'Query Examples',
+              children: [
+                '/guide/query-examples/operators'
+              ]
+            },
             '/guide/typescript-support.md',
             {
               text: 'Use Cases',

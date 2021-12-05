@@ -67,29 +67,29 @@ class Shop extends Model {
     products = Shop.hasMany(Product, 'shopId')
     productCount = Shop.compute( (parent): CFReturn<number> => {
       //@ts-expect-error
-      return parent.selector.products().count()
+      return parent.$.products().count()
     })
     hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selector.products().exists()
+      return parent.$.products().exists()
     })
     hasProductsAsync = Shop.compute( (parent): CFReturn<boolean> => {
       return new Scalar( async(context) => {
-        return parent.selector.products().exists()
+        return parent.$.products().exists()
       })
     })
     hasNoProducts = Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selector.products().exists().equals(false)
+      return parent.$.products().exists().equals(false)
     })
     hasOver2Products =  Shop.compute( (parent): CFReturn<boolean> => {
-      return parent.selector.products().count().greaterThan(2)
+      return parent.$.products().count().greaterThan(2)
     })
     hasEnoughProducts = Shop.compute( (parent, arg?: number): CFReturn<boolean> => {
-      return parent.selector.products().count().greaterThanOrEquals(arg ?? 1)
+      return parent.$.products().count().greaterThanOrEquals(arg ?? 1)
     })
     hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
       return new Scalar( (context) => context.op.And(
-          parent.selector.products().count().equals(2),
-          parent.selector.location.like('%A%')
+          parent.$.products().count().equals(2),
+          parent.$.location.like('%A%')
         )
       )
     })
@@ -117,7 +117,7 @@ class Product extends Model{
     colors = Product.hasManyThrough(ProductColor, Color, 'id', 'colorId', 'productId')
     mainColor = Product.compute<typeof Product, ModelObjectRecord<typeof Color> >(
       (parent): any => {
-        return parent.selector.colors({
+        return parent.$.colors({
           where: ({through}) => {
             return through.type.equals('main')
           }

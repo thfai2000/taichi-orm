@@ -238,7 +238,7 @@ export abstract class Model {
                 let dataset = relatedModel.dataset((map) => {
                     let resolved
                     if(args instanceof Function){
-                        args = args({through: throughDatasource.selector, ...map} as any)
+                        args = args({through: throughDatasource.$, ...map} as any)
                     } else {
                         resolved = args
                     }
@@ -247,7 +247,7 @@ export abstract class Model {
                     if(newResolved?.where instanceof Function){
                         let oldWhere = newResolved.where
                         newResolved.where = (map) => {
-                            return oldWhere({...map, through: throughDatasource.selector })
+                            return oldWhere({...map, through: throughDatasource.$ })
                         }
                     }
                     return newResolved as SingleSourceArg<ExtractSchemaFromModelType<RootModelType>>
@@ -371,7 +371,7 @@ export class ModelRepository<MT extends typeof Model>{
         if (args) {
             if (args instanceof Function) {
                 
-                resolvedArgs = args({ root: source.selector, ...this.context.op})
+                resolvedArgs = args({ root: source.$, ...this.context.op})
             } else {
                 resolvedArgs = args
             }

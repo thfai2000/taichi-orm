@@ -4,16 +4,22 @@
     "target": "ES2020",
     "sourceMap": true,
     "strict": true,
-    "moduleResolution": "node",
+    "moduleResolution": "Node",
+    "allowJs": true,
+    "module": "CommonJS",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "typeRoots": [
       "node_modules/@types"
     ],
-    "noErrorTruncation": true
+    "noErrorTruncation": true,
+    "outDir": "dist",
+    "declarationDir": "dist"
   },
-  "include": ["src"],
+  "include": [
+    "src"
+  ],
   "watchOptions": {
     // Use native file system events for files and directories
     "watchFile": "useFsEvents",

@@ -213,6 +213,8 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     entityNameToTableName?: (name:string) => string,
     // function of convert property Name to field name
     propNameTofieldName?: (name:string) => string
+
+    useNullAsDefault?: boolean
 }
 export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
@@ -307,7 +309,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         }
 
         let newKnexConfig = Object.assign({
-            // useNullAsDefault: true
+            useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
         if(typeof newKnexConfig.connection !== 'object'){
@@ -372,22 +374,23 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return this.#config?.tablePrefix ?? ''
     }
 
-    // findModelInstance = <T extends typeof Model>(modelClass: T): InstanceType<T> => {
-    //     let foundKey = Object.keys(this.#modelClassMap).find(key => this.#modelClassMap[key] === modelClass)
-    //     if(!foundKey){
-    //         throw new Error('Cannot find model')
-    //     }
-    //     return this.models[foundKey].modelClass as unknown as InstanceType<T>
-    // }
+    getRepository<T extends typeof Model>(modelName: string): ModelRepository<T>;
 
-    getRepository = <T extends typeof Model>(modelClass: T): ModelRepository<T> => {
-        //@ts-ignore
-        let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === modelClass)
-        if(!foundKey){
-            console.log('cannot find model', modelClass)
-            throw new Error('Cannot find model')
+    getRepository<T extends typeof Model>(modelClass: T): ModelRepository<T>;
+    
+    getRepository<T extends typeof Model>(nameOrClass: T | string): ModelRepository<T> {
+
+        if(typeof nameOrClass === 'string'){
+            return this.repos[nameOrClass] as unknown as ModelRepository<T>
+        } else {
+            //@ts-ignore
+            let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
+            if(!foundKey){
+                console.log('cannot find model', nameOrClass)
+                throw new Error('Cannot find model')
+            }
+            return this.repos[foundKey] as unknown as ModelRepository<T>
         }
-        return this.repos[foundKey] as unknown as ModelRepository<T>
     }
 
     schemaSqls = () => {

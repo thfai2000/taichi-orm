@@ -37,7 +37,7 @@ export default class Product extends Model {
         (parent, args?): any => {
         // the shop Scalar is transformed into another Scalar. 
         // The original dataset ('ds') is modified by adding where clause
-        return parent.selector.shop(args).transform( ds => {
+        return parent.$.shop(args).transform( ds => {
             return ds.andWhere({
               location: 'Hong Kong'
             }).toScalar()
