@@ -29,9 +29,9 @@ export default class Product extends Model {
     //define ComputeProperty based on the value of FieldProperty
     isActive = Product.compute((parent): CFReturn<boolean> => {
         return new Scalar(context => context.op.And(
-            parent.selector.availableStart.lessThan( new Date() ),
-            parent.selector.availableEnd.greaterThan( new Date() ),
-            parent.selector.remainingStock.greaterThan(0)
+            parent.$.availableStart.lessThan( new Date() ),
+            parent.$.availableEnd.greaterThan( new Date() ),
+            parent.$.remainingStock.greaterThan(0)
         ))
     })
 }

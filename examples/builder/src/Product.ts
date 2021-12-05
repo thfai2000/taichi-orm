@@ -18,9 +18,9 @@ export default class Product extends Model {
 
     isActive = Product.compute((parent, arg?: number): CFReturn<boolean> => {
         return new Scalar( (context) => context.op.And(
-            parent.selector.availableStart.lessThan( new Date() ),
-            parent.selector.availableEnd.greaterThan( new Date() ),
-            parent.selector.remainingStock.greaterThan(0)
+            parent.$.availableStart.lessThan( new Date() ),
+            parent.$.availableEnd.greaterThan( new Date() ),
+            parent.$.remainingStock.greaterThan(0)
         ))
     })
 
@@ -29,15 +29,15 @@ export default class Product extends Model {
     })
 
     abc2 = Product.compute((parent, arg?: number): CFReturn<number> => {
-        return Scalar.number(`5 + ? + ?`, [ parent.selector.abc(), arg] )
+        return Scalar.number(`5 + ? + ?`, [ parent.$.abc(), arg] )
     })
 
     // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
     //     (parent, args?): any => {
-    //         return parent.selector.shop(args as Undetermined).transform( ds => {
+    //         return parent.$.shop(args as Undetermined).transform( ds => {
     //             const prevWhere = ds.getWhere()
     //             return ds.andWhere( () => 
-    //                 parent.selector.name.equals('hello')
+    //                 parent.$.name.equals('hello')
     //             ).toScalar(false)
     //         })
     //     }
@@ -46,9 +46,9 @@ export default class Product extends Model {
     shopWithName = Product.computeModelObject<typeof Product, typeof Shop>(
         (parent, args?): any => {
             //@ts-ignore
-            return parent.selector.shop(args).transform( ds => {
+            return parent.$.shop(args).transform( ds => {
                 return ds.andWhere( () => 
-                    parent.selector.name.equals('hello')
+                    parent.$.name.equals('hello')
                 ).toDScalarWithObjectType()
             })
         }

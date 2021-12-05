@@ -43,7 +43,7 @@ class ProductModel extends Model{
     this.colors = ProductModel.hasManyThrough(ProductColorModel, ColorModel, 'id', 'colorId', 'productId')
     //computed property created based on colors
     this.colorsWithType = ProductModel.compute( (parent, type = 'main') => {
-      return parent.selector.colors({
+      return parent.$.colors({
         where: ({through}) => through.type.equals(type)
       })
     })
