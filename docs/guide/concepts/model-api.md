@@ -10,6 +10,8 @@ It is used for carry out `create`, `update`, `delete` operations on a Model.
 
 ## delete()
 
+## deleteOne()
+
 ## find()
 
 ## findOne()

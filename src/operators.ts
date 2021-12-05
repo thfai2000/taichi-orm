@@ -290,18 +290,3 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
     }
     return sqlkeywords
 }
-
-
-// export type ConditionOperatorCall<Props> = (...condition: Array<Expression<Props> > ) => ConditionOperator<Props>
-// const Or = (...condition: Array<Expression<any>>) => new OrOperator<any>(...condition)
-// const Not = (condition: Expression<any>) => new NotOperator<any>(condition)
-// const Equal = (rightOperand: any) => new EqualOperator(rightOperand)
-// const NotEqual = (rightOperand: any) => new NotEqualOperator(rightOperand)
-// const Contain = (...rightOperands: Array<any>) => new ContainOperator(...rightOperands)
-// const NotContain = (...rightOperands: Array<any>) => new NotContainOperator(...rightOperands)
-// const Like = (rightOperand: any) => new LikeOperator(rightOperand)
-// const NotLike = (rightOperand: any) => new NotLikeOperator(rightOperand)
-// const IsNull = () => new IsNullOperator()
-// const IsNotNull = () => new IsNotNullOperator()
-
-// export {And, Or, Not, Equal, NotEqual, Contain, NotContain, Like, NotLike, IsNull, IsNotNull, AndOperator, OrOperator, NotOperator}
