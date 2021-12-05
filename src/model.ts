@@ -137,20 +137,20 @@ export abstract class Model {
 
         if(!this.#schema){
 
-            let props = {} as {[key:string]: Property}
-            for (let field in this) {
+            const props = {} as {[key:string]: Property}
+            for (const field in this) {
                 if(this[field] instanceof Property){
                     props[field] = this[field] as unknown as Property
                 }
             }
-            let z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
-            for (let field in z) {
+            const z = Object.getOwnPropertyDescriptors(this.constructor.prototype)
+            for (const field in z) {
                 if(z[field] instanceof Property){
                     props[field] = z[field] as Property
                 }
             }
 
-            let schema = new TableSchema(this.#entityName, props, this.id)
+            const schema = new TableSchema(this.#entityName, props, this.id)
             // schema.uuid = this.uuid
             // schema.id = this.id
             
@@ -173,16 +173,16 @@ export abstract class Model {
         this: ParentModelType,
         relatedModelType: RootModelType, 
         relatedBy: string,
-        parentKey: string = 'id'
+        parentKey = 'id'
         ){
 
         //() => new ArrayType(relatedSchemaFunc())
         return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args?) => {
             return new DScalar( (context: DatabaseContext<any>) => {
-                let relatedModel = context.getRepository(relatedModelType)
-                let parentColumn = parent.getFieldProperty( parentKey  )
+                const relatedModel = context.getRepository(relatedModelType)
+                const parentColumn = parent.getFieldProperty( parentKey  )
     
-                let dataset = relatedModel.dataset(args)
+                const dataset = relatedModel.dataset(args)
                 dataset.andWhere( ({root}) => parentColumn.equals( 
                     (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
                 ))
@@ -197,16 +197,16 @@ export abstract class Model {
         this: ParentModelType,
         relatedModelType: RootModelType,
         parentKey: string,
-        relatedBy: string = 'id'
+        relatedBy = 'id'
         )
         {
                
         return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((parent, args?) => {
             return new DScalar((context: DatabaseContext<any>) => {
-                let relatedModel = context.getRepository(relatedModelType)
-                let parentColumn = parent.getFieldProperty( parentKey  )
+                const relatedModel = context.getRepository(relatedModelType)
+                const parentColumn = parent.getFieldProperty( parentKey  )
 
-                let dataset = relatedModel.dataset(args)
+                const dataset = relatedModel.dataset(args)
                 dataset.andWhere( ({root}) => parentColumn.equals( 
                     (root.$allFields as {[key:string]: Scalar<any, any>})[relatedBy]
                 ))
@@ -225,27 +225,27 @@ export abstract class Model {
         relatedBy: string,
         throughRelatedBy: string,
         throughParentKey: string,
-        parentKey: string = 'id'
+        parentKey = 'id'
         ){
 
         return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType> >((parent, args?) => {
             return new DScalar( (context: DatabaseContext<any>) => {
-                let relatedModel = context.getRepository(relatedModelType)
-                let parentColumn = parent.getFieldProperty(parentKey)
-                let throughModel = context.getRepository(throughModelType)
-                let throughDatasource = throughModel.datasource('through')
+                const relatedModel = context.getRepository(relatedModelType)
+                const parentColumn = parent.getFieldProperty(parentKey)
+                const throughModel = context.getRepository(throughModelType)
+                const throughDatasource = throughModel.datasource('through')
 
-                let dataset = relatedModel.dataset((map) => {
+                const dataset = relatedModel.dataset((map) => {
                     let resolved
                     if(args instanceof Function){
                         args = args({through: throughDatasource.$, ...map} as any)
                     } else {
                         resolved = args
                     }
-                    let newResolved = {...resolved}
+                    const newResolved = {...resolved}
 
                     if(newResolved?.where instanceof Function){
-                        let oldWhere = newResolved.where
+                        const oldWhere = newResolved.where
                         newResolved.where = (map) => {
                             return oldWhere({...map, through: throughDatasource.$ })
                         }
@@ -361,10 +361,10 @@ export class ModelRepository<MT extends typeof Model>{
         //     throw new Error('Wrong format of ORMConfig.')
         // }
 
-        let source = this.model.datasource('root')
-        let dataset = this.context.dataset().from(source)
+        const source = this.model.datasource('root')
+        const dataset = this.context.dataset().from(source)
 
-        let props = source.getAllFieldProperty()
+        const props = source.getAllFieldProperty()
 
         let resolvedArgs: SingleSourceArg<ExtractSchemaFromModelType<MT>> | undefined
 
@@ -385,10 +385,10 @@ export class ModelRepository<MT extends typeof Model>{
         }
 
         if (resolvedArgs?.select) {
-            let computed = resolvedArgs.select
-            let computedValues = Object.keys(computed).map(key => {
+            const computed = resolvedArgs.select
+            const computedValues = Object.keys(computed).map(key => {
                 //@ts-ignore
-                let arg = computed[key]
+                const arg = computed[key]
                 return { [key]: source.getComputeProperty(key)(arg) }
             }).reduce((acc, v) => Object.assign(acc, v), {})
 

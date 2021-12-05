@@ -82,7 +82,7 @@ export class AndOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
             if(this.args.length === 0){
                 return context.raw('1')
             }
-            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            const items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => context.raw(items.join(' AND ') ) )
         }, new BooleanNotNullType())
     }
@@ -101,7 +101,7 @@ export class OrOperator<Props, PropMap> extends ConditionOperator<Props, PropMap
             if(this.args.length === 0){
                 return context.raw('1')
             }
-            let items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
+            const items = this.args.map(arg =>  this.resolver(arg).toRaw(context) )
             return thenResultArray(items, items => context.raw(items.join(' OR ') ) )
         }, new BooleanNotNullType())
     }
@@ -280,7 +280,7 @@ export type SQLKeywords<Props, PropMap> = {
 }
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
-    let sqlkeywords: SQLKeywords<X, Y> = {
+    const sqlkeywords: SQLKeywords<X, Y> = {
         And: (...conditions: Expression<X, Y>[]) => new AndOperator(resolver, ...conditions).toScalar(),
         Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
         Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),

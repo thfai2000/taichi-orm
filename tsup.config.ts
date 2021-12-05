@@ -6,12 +6,5 @@ export default defineConfig({
     "splitting": false,
     "sourcemap": true,
     "clean": true,
-    "tsconfig": "./tsconfig.json",
-    //@ts-ignore
-    // esbuildPlugins: [babel({
-    //     config: {
-    //         "presets": ["@babel/preset-typescript"],
-    //         "plugins": ["babel-plugin-macros", "@babel/plugin-transform-modules-commonjs"]
-    //     }
-    // })]
+    "tsconfig": "./tsconfig.json"
 })

@@ -2,7 +2,7 @@ import { ComputeFunction } from ".";
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
-import { ComputeProperty, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
+import { ComputeProperty, FieldProperty, ScalarProperty, Schema, TableSchema } from "./schema";
 
 export type Undetermined = 'undetermined'
 
@@ -189,11 +189,11 @@ export function thenResult<T, R>(value: T | Promise<T>, fn: (value: T) => (R | P
 // }
 
 export const quote = (client: string, name: string) => {
-    let c = client
+    const c = client
     if(c.startsWith('sqlite') || c.startsWith('mysql') ){
-        return `\`${name.replace(/\`/g, '``')}\``
+        return `\`${name.replace(/`/g, '``')}\``
     } else if (c.startsWith('pg')){
-        return `"${name.replace(/\"/g, '""')}"`
+        return `"${name.replace(/"/g, '""')}"`
     }
     throw new Error('Unsupport client')
 }
@@ -260,10 +260,10 @@ export function camelize(str: string) {
 // }
 
 export function makeid(length: number) {
-    var result           = [];
-    var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
-    var charactersLength = characters.length;
-    for ( var i = 0; i < length; i++ ) {
+    const result           = [];
+    const characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890';
+    const charactersLength = characters.length;
+    for ( let i = 0; i < length; i++ ) {
       result.push(characters.charAt(Math.floor(Math.random() * charactersLength)));
    }
    return result.join('');
@@ -275,9 +275,9 @@ export interface SQLString{
 
 
 export const parseName = (item: any) => {
-    let text = item.toString().trim()
+    const text = item.toString().trim()
 
-    let e = /((?<![\\])[`'"])((?:.(?!(?<![\\])\1))*.?)\1/g
+    const e = /((?<![\\])[`'"])((?:.(?!(?<![\\])\1))*.?)\1/g
     let r = e.exec(text)
     if(r){
         let last = r[0]
@@ -286,8 +286,8 @@ export const parseName = (item: any) => {
         }
         return last
     } else {
-        let e = /\b[\. ]+([a-zA-Z0-9\_\$]*)$/
-        let r = e.exec(text)
+        const e = /\b[. ]+([a-zA-Z0-9_$]*)$/
+        const r = e.exec(text)
         if(r && r[1]){
             return r[1]
         }else {
@@ -308,7 +308,7 @@ export function isArrayOfStrings(arr: any[]): arr is string[] {
 
 export function isScalarMap(obj: any): obj is { [key: string]: Scalar<any, any> } {
     if(typeof obj === 'object'){
-        let keys = Object.keys(obj)
+        const keys = Object.keys(obj)
         for (const key in keys) {
             if( (obj[keys[key]] instanceof Scalar)){
                 return true

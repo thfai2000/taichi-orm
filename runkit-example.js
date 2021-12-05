@@ -50,7 +50,7 @@ class ProductModel extends Model{
   }
 }
 
-;(async() =>{
+(async() =>{
     // configure database
     const orm = new ORM({
         models: {

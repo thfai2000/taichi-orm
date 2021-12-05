@@ -25,7 +25,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     })
 
     
-    let {
+    const {
         createModels,
         dataset, 
         scalar,
@@ -35,22 +35,22 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         repos: {Shop, Product} 
     } = orm.getContext()
 
-    let context = orm.getContext()
+    const context = orm.getContext()
 
 
     await createModels()
 
-    let s = Shop.datasource('shop')
+    const s = Shop.datasource('shop')
 
-    let p = Product.datasource('product')
+    const p = Product.datasource('product')
 
-    let myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
+    const myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
     
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
     console.log('sql1', builder.toString() )
 
 
-    let shop1 = await insert(Shop.schema).values([{
+    const shop1 = await insert(Shop.schema).values([{
         name: 'shop',
         hour: 5
     }]).execute().getAffectedOne()
@@ -59,7 +59,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     
     for (let i = 0; i < 5; i++) {    
         
-        let product = await insert(Product.schema).values([{
+        const product = await insert(Product.schema).values([{
             ddd: 5,
             name: 'hello',
             availableStart: new Date(),
@@ -74,7 +74,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         console.log('product', product)
     }
 
-    let anotherProducts = await insert(Product.schema).values([{
+    const anotherProducts = await insert(Product.schema).values([{
         ddd: 5,
         name: 'hello',
         availableStart: new Date(),
@@ -95,7 +95,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
 
     console.log('finished')
 
-    let result = await new Dataset()
+    const result = await new Dataset()
             .from(s)
             .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id))
             // .innerJoin(p, ({And}) => And({"product.id": 5}) )
@@ -140,7 +140,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     
     console.log('xxx', util.inspect(result, {showHidden: false, depth: null, colors: true}))
 
-    let r0 = await update()
+    const r0 = await update()
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .set({
@@ -149,7 +149,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
             onSqlRun: console.log
         })
 
-    let r = await dataset()
+    const r = await dataset()
         .from(Shop.datasource("myShop"))
         .where({
             name: 'hello',
@@ -164,7 +164,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
 
     console.log('test', util.inspect(r, {showHidden: false, depth: null, colors: true}))
 
-    let r2 = await dataset()
+    const r2 = await dataset()
         .from(Shop.datasource("myShop"))
         .where(({myShop, And})=> And(
             myShop.hour.equals(myShop.hour),
@@ -212,7 +212,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         .execute())
 
 
-    let shops = await Shop.find({
+    const shops = await Shop.find({
         select: {
             products: {
                 select: {
@@ -228,7 +228,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     console.log('aaaa1', shops)
 
 
-    let allShopsX = await Shop.find({
+    const allShopsX = await Shop.find({
         // selectProps: ['products'],
         select: {
             // products: {

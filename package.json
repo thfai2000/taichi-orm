@@ -38,7 +38,8 @@
     "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" ",
     "docs:dev": "vuepress dev docs",
     "docs:build": "vuepress build docs",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint . --fix --ext .js,.jsx,.ts,.tsx"
   },
   "repository": {
     "type": "git",

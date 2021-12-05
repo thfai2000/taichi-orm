@@ -68,6 +68,7 @@ export class PropertyType<I> implements ParsableTrait<I> {
         this.options = this.options ??options
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
     }
 
@@ -274,7 +275,7 @@ export class DecimalType extends FieldPropertyType<number | null>  {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
+        const c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
         return [
             [
@@ -302,7 +303,7 @@ export class DecimalNotNullType extends FieldPropertyType<number>  {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        let c = [this.options.precision, this.options.scale].filter(v => v).join(',')
+        const c = [this.options.precision, this.options.scale].filter(v => v).join(',')
 
         return [
             [
@@ -434,7 +435,7 @@ export class StringType extends FieldPropertyType<string | null> {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        let c = [this.options.length].filter(v => v).join(',')
+        const c = [this.options.length].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,
@@ -476,7 +477,7 @@ export class StringNotNullType extends FieldPropertyType<string> {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        let c = [this.options.length].filter(v => v).join(',')
+        const c = [this.options.length].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,
@@ -592,7 +593,7 @@ export class DateTimeType extends FieldPropertyType<Date | null> {
 
    create(propName: string, fieldName: string, context: DatabaseContext<any>){
        const client = context.client()
-        let c = [this.options.precision].filter(v => v).join(',')
+        const c = [this.options.precision].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,
@@ -630,7 +631,7 @@ export class DateTimeNotNullType extends FieldPropertyType<Date> {
 
    create(propName: string, fieldName: string, context: DatabaseContext<any>){
        const client = context.client()
-        let c = [this.options.precision].filter(v => v).join(',')
+        const c = [this.options.precision].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,
@@ -674,7 +675,7 @@ export class ObjectType<T extends ParsableObjectTrait<any> > extends ParsablePro
 
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
             const client = context.client()
-            let jsonify =  `SELECT ${jsonArray(client, columns.map(col => quote(client, col)))} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
+            const jsonify =  `SELECT ${jsonArray(client, columns.map(col => quote(client, col)))} AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
             return context.raw(`(${jsonify})`)
         })
     }
@@ -696,7 +697,7 @@ export class ObjectType<T extends ParsableObjectTrait<any> > extends ParsablePro
                 const numCols = header.length
                 const parsableEntity = this.parsable
                 
-                let record = {} as {[key:string]: any}
+                const record = {} as {[key:string]: any}
                 for(let j=0; j<numCols; j++){
                     record[header[j]] = rowData[j] 
                 }
@@ -750,7 +751,7 @@ export class ArrayType<T extends ParsableObjectTrait<any> > extends ParsableProp
 
         return thenResult( rawOrDataset.toNativeBuilder(context), query => {
             const client = context.client()
-            let jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)}) AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
+            const jsonify =  `SELECT coalesce(${jsonArrayAgg(client)}(${jsonArray(client, columns.map(col => quote(client, col)))}), ${jsonArray(client)}) AS ${quote(client, 'data')} FROM (${query}) AS ${quote(client, makeid(5))}`
             return context.raw(`(${jsonify})`)
         })
     }
@@ -774,9 +775,9 @@ export class ArrayType<T extends ParsableObjectTrait<any> > extends ParsableProp
                 const numCols = header.length
                 const len = rowData.length
                 const parsableEntity = this.parsable
-                let records = new Array(len)
+                const records = new Array(len)
                 for(let i=0; i <len;i++){
-                    let record = {} as {[key:string]: any}
+                    const record = {} as {[key:string]: any}
                     for(let j=0; j<numCols; j++){
                         record[header[j]] = rowData[i][j] 
                     }

@@ -135,7 +135,7 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     }
 }
 
-export type CompiledComputeFunction<Arg extends any, S extends Scalar<any,any>> = (args?: Arg) => S
+export type CompiledComputeFunction<Arg, S extends Scalar<any,any>> = (args?: Arg) => S
 
 // export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<ExtractEntityKeyValuesFromPropDict<ExtractFieldPropDictFromSchema<S>>>
 
@@ -249,7 +249,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
     #modelMap: ModelMap = {}
 
     constructor(newConfig: Partial<ORMConfig<ModelMap>>){
-        let newOrmConfig: ORMConfig<ModelMap> = Object.assign({}, this.defaultORMConfig, newConfig)
+        const newOrmConfig: ORMConfig<ModelMap> = Object.assign({}, this.defaultORMConfig, newConfig)
         // newOrmConfig.ormContext = Object.assign({}, defaultORMConfig.ormContext, newConfig.ormContext)
         this.#ormConfig = newOrmConfig
         this.register()
@@ -268,7 +268,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
     private register(){
         //register models 
         if(this.#ormConfig.models){
-            let models = this.#ormConfig.models
+            const models = this.#ormConfig.models
             Object.keys(models).forEach(key => {
                 // @ts-ignore
                 this.#modelMap[key] = models[key]
@@ -277,15 +277,15 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
         //register models by path
         if(this.#ormConfig.modelsPath){
-            let files = fs.readdirSync(this.#ormConfig.modelsPath)
+            const files = fs.readdirSync(this.#ormConfig.modelsPath)
             files.forEach( (file) => {
                 if(file.endsWith('.js')){
                     let path = this.#ormConfig.modelsPath + '/' + file
                     path = path.replace(/\.js$/,'')
                     // console.debug('load model file:', path)
-                    let p = path.split('/')
-                    let entityName = p[p.length - 1]
-                    let entityClass = require(path)
+                    const p = path.split('/')
+                    const entityName = p[p.length - 1]
+                    const entityClass = require(path)
                     // registerEntity(entityName, entityClass.default);
 
                     const camelCase = camelize(entityName)
@@ -318,7 +318,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
             return this.#globalKnexInstance
         }
 
-        let newKnexConfig = Object.assign({
+        const newKnexConfig = Object.assign({
             useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
@@ -369,7 +369,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         // this.#modelClassMap = modelClassMap
 
         this.repos = Object.keys(orm.modelMap).reduce( (acc, key) => {
-            let modelClass = orm.modelMap[key]
+            const modelClass = orm.modelMap[key]
             //@ts-ignore
             acc[key] = new ModelRepository<any>(this, modelClass, key)
             return acc
@@ -394,7 +394,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             return this.repos[nameOrClass] as unknown as ModelRepository<T>
         } else {
             //@ts-ignore
-            let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
+            const foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
             if(!foundKey){
                 console.log('cannot find model', nameOrClass)
                 throw new Error('Cannot find model')
@@ -404,8 +404,8 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
 
     schemaSqls = () => {
-        let m = this.repos
-        let sqls: string[] = Object.keys(m)
+        const m = this.repos
+        const sqls: string[] = Object.keys(m)
             .map(k => m[k].model)
             .map(s => s.schema().createTableStmt(this, { tablePrefix: this.tablePrefix}))
             .filter(notEmpty)
@@ -433,7 +433,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             executionOptions.onSqlRun(sql)
         }
         // console.log('sql', sql)
-        let KnexStmt = this.orm.getKnexInstance().raw(sql, variables)
+        const KnexStmt = this.orm.getKnexInstance().raw(sql, variables)
         if (executionOptions?.trx) {
             KnexStmt.transacting(executionOptions.trx)
         }
@@ -465,15 +465,15 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
 
     raw = (sql: any, args?: any[]) => {
-        let r = this.orm.getKnexInstance().raw(sql, args ?? [])
+        const r = this.orm.getKnexInstance().raw(sql, args ?? [])
         // @ts-ignore
         r.then = 'It is overridden. \'Then\' function is removed to prevent execution when it is passing across any async function(s).'
         return r
     }
 
     get $(): SQLKeywords<{}, any> {
-        let o = {}
-        let f = makeExpressionResolver<{}, any>(o)
+        const o = {}
+        const f = makeExpressionResolver<{}, any>(o)
         return Object.assign(o, constructSqlKeywords(f))
     }
     
@@ -492,7 +492,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     client = (): string => this.orm.ormConfig.knexConfig.client.toString()
 
     async startTransaction<T>(func: (trx: Knex.Transaction) => Promise<T> | T, existingTrx?: Knex.Transaction | null): Promise<T> {
-        let knex = this.orm.getKnexInstance()
+        const knex = this.orm.getKnexInstance()
         const useTrx = (trx: Knex.Transaction, isExistingTrx: boolean) => {
             return thenResult( func(trx), async(result) => {
                 if(!isExistingTrx){
@@ -574,7 +574,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
         : Promise<TResult1 | TResult2> {
 
         try{
-            let result = await this.execAction() 
+            const result = await this.execAction() 
             if(onfulfilled){
                 return onfulfilled( expandRecursively(result))
             } else {
@@ -590,7 +590,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     }
 
     protected async exec(){
-        let result = await this.execAction()
+        const result = await this.execAction()
         return result
     }
 
@@ -627,7 +627,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
 export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
 
     protected parent: DBQueryRunner<any, any> | null = null
-    protected isFullCount: boolean = false
+    protected isFullCount = false
     protected fullCountResult: number | null = null
 
     constructor(context: DatabaseContext<any>, action: DBAction<I>, 
@@ -655,13 +655,13 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     getOne(){
         type NewI = I extends Array<infer T>? T: never
         
-        let m = new DBQueryRunner<NewI, isFullCount>(
+        const m = new DBQueryRunner<NewI, isFullCount>(
             this.context,
             async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    let result = await this.ancestor.action.call(this, executionOptions, options)
+                    const result = await this.ancestor.action.call(this, executionOptions, options)
                     if(Array.isArray(result)){
                         if(result.length !== 1){
                             throw new Error('getFirstOne finds Zero or Many Rows')
@@ -679,13 +679,13 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     getOneOrNull(){
         type NewI = I extends Array<infer T>? T | null: never
         
-        let m = new DBQueryRunner<NewI, isFullCount>(
+        const m = new DBQueryRunner<NewI, isFullCount>(
             this.context,
             async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    let result = await this.ancestor.action.call(this, executionOptions, options)
+                    const result = await this.ancestor.action.call(this, executionOptions, options)
                     if(Array.isArray(result)){
                         if(result.length > 1){
                             throw new Error('getFirstOne finds Many Rows')
@@ -705,7 +705,7 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
             result: I,
             fullCount: isFullCount extends true? number: never,
         }
-        let m = new DBQueryRunner<NewI, isFullCount>(
+        const m = new DBQueryRunner<NewI, isFullCount>(
             this.context,
             async function(this: DBQueryRunner<NewI, isFullCount>,
                 executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) {
@@ -849,7 +849,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
             preflight: isPreflight extends true? PreflightRecordType: never,
             affected: ExtractValueTypeDictFromDataset<D>[] 
         }
-        let m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+        const m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
@@ -916,7 +916,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
             preflight: ExtractValueTypeDictFromDataset<D>,
             affected: isAffected extends true? AffectedRecordType: never,
         }
-        let m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
+        const m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
             this.context,
             async function(this: DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
