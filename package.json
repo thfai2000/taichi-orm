@@ -21,14 +21,13 @@
   "exports": {
     ".": {
       "require": "./dist/index.js",
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.mjs"
     }
   },
   "scripts": {
     "prepare": "npm run build",
     "build": "tsup src/index.ts --dts --format esm,cjs",
-    "dev": "npm install && tsup src/index.ts --dts --watch src",
+    "dev": "npm install && tsup src/index.ts --dts --format esm,cjs --watch src",
     "dev-test": "npm install && tsup test --dts --watch test --outDir dist-test",
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",

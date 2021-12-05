@@ -304,7 +304,7 @@ export type TableOptions = {
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
     schema: E
-    selector: Selector<E>
+    $: Selector<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
@@ -325,7 +325,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
-    readonly selector: Selector<E>
+    readonly $: Selector<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -338,7 +338,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
 
         const datasource = this
         //@ts-ignore
-        this.selector = new Proxy( datasource, {
+        this.$ = new Proxy( datasource, {
             get: (oTarget: typeof datasource, sKey: string) => {
                 if(typeof sKey === 'string'){
                     if(sKey === '$allFields'){

@@ -130,7 +130,7 @@ abstract class WhereClauseBase<SourceProps ={}, SourcePropMap = {}, FromSource e
 
         const sourcePropMap = sources.reduce( (acc, source) => {
             const t = source.sourceAlias
-            acc[t] = source.selector
+            acc[t] = source.$
             return acc
         }, {} as {[key:string]: Selector<any> } )
 
@@ -354,7 +354,7 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SourceP
             if(!this.fromItem){
                 throw new Error(`There must be a FROM`)
             }
-            let from = this.fromItem.selector //as SelectorMap< {[key:string]: any}>
+            let from = this.fromItem.$ //as SelectorMap< {[key:string]: any}>
             item = from[field]
         }
         else {
@@ -1230,7 +1230,7 @@ export class UpdateStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
 
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selector.$allFields })
+                        dataset.select({...dataset.getFrom()!.$.$allFields })
 
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
@@ -1370,7 +1370,7 @@ export class DeleteStatement<SourceProps ={}, SourcePropMap ={}, FromSource exte
                         
                         let dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
-                        dataset.select({...dataset.getFrom()!.selector.$allFields })
+                        dataset.select({...dataset.getFrom()!.$.$allFields })
                         
                         const finalDataset = this.latestPreflightFunctionArg? (await this.latestPreflightFunctionArg(dataset)): dataset
                         this.preflightResult = await finalDataset.execute().withOptions(executionOptions) as any[]
