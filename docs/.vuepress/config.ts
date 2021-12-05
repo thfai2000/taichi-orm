@@ -34,6 +34,8 @@ export default defineUserConfig<DefaultThemeOptions>({
                 '/guide/concepts/database-context',
                 '/guide/concepts/model',
                 '/guide/concepts/property',
+                '/guide/concepts/property-type',
+                '/guide/concepts/datasource',
                 '/guide/concepts/model-api',
                 '/guide/concepts/query-builder'
               ]

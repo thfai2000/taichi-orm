@@ -322,12 +322,12 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
-        return this.dataset(args).execute().getOne()
+    findOne<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(findOptions?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
+        return this.dataset(findOptions).execute().getOne()
     }
 
-    findOneOrNull<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
-        return this.dataset(args).execute().getOneOrNull()
+    findOneOrNull<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(findOptions?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
+        return this.dataset(findOptions).execute().getOneOrNull()
     }
 
     /**
@@ -335,8 +335,8 @@ export class ModelRepository<MT extends typeof Model>{
      * @param applyFilter 
      * @returns the found record
      */
-    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(args?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
-        return this.dataset(args).execute()
+    find<F extends SingleSourceArg< ExtractSchemaFromModelType<MT> >>(findOptions?: F | ((map: ModelArrayRecordFunctionArg<MT>) => F)) {
+        return this.dataset(findOptions).execute()
     }
 
     update(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){

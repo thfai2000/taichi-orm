@@ -212,7 +212,7 @@ The traditional Model API cannot cater this because the FindOption accepts array
 But Taichi Model API is more adaptive, in this case, you just need to modify the OrderBy of the FindOption.
 
 Before:
-```js
+```js{3}
 const products = await Product.find(
   {
     orderBy: ['price']
@@ -223,10 +223,10 @@ const products = await Product.find(
 ```
 
 After:
-```js{4-12}
+```js{3-12}
 const products = await Product.find(
-  ({root, If, Now}) => ({
-    orderBy: [
+  {
+    orderBy: ({root, If, Now}) => ([
       { 
         value: If( 
           root.promotionDate.equals(Now),
@@ -235,9 +235,9 @@ const products = await Product.find(
           ),
         order: 'asc'
       }
-    ],
+    ]),
     limit: 50
-  })
+  }
 )
 ```
 
