@@ -82,13 +82,13 @@ Please see [Query Builder](./query-builder) for more details.
 context.insert(Model1).values([data])
 
 // build update statement
-context.update().set(data).from(Model1.schema().datasource('alias'))
+context.update().set(data).from(Model1.datasource('alias'))
 
 // build delete statement
-context.del().from(Model1.schema().datasource('alias'))
+context.del().from(Model1.datasource('alias'))
 
 // build select statement
-context.dataset().from(Model1.schema().datasource('alias'))
+context.dataset().from(Model1.datasource('alias'))
 
 ```
 

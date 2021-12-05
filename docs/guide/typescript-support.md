@@ -1,6 +1,6 @@
 # Typescript Support
 
-## ModelRepository
+## type ModelRepository
 
 Some IDE (like VSCode) can provide typescript hints.
 For the ORM config, if you use `models` to register your Models, the type of `ModelRepository` can be determined automatically.
@@ -70,6 +70,7 @@ let p = orm.getContext().getRepository(require('./models/product'))
   </CodeGroupItem>
 </CodeGroup>
 
+## type ModelRecord
 
 ## Circular dependencies
 

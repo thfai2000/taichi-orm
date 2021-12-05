@@ -384,7 +384,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             return this.repos[nameOrClass] as unknown as ModelRepository<T>
         } else {
             //@ts-ignore
-            let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === modelClass)
+            let foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
             if(!foundKey){
                 console.log('cannot find model', nameOrClass)
                 throw new Error('Cannot find model')

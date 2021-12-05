@@ -1,3 +1,4 @@
+//@filename: src/index.ts
 import orm from './orm'
 
 (async() =>{

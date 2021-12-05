@@ -3,39 +3,60 @@
 
 ## Prerequisites
 
-You have installed Nodejs with Version >= 12
+You have installed Nodejs with Version >= 14
 
 ## Installation
 
 Following steps will guide you to create the necessary files in your project directory.
 
+<CodeGroup>
+  <CodeGroupItem title="TS" active>
+
 ```:no-line-numbers
-├─ models         # model files
-│  ├─ shop.js
-|  ├─ product.js
-├─ orm.js         # your orm configuration
-├─ index.js       # your program
-└─ package.json
+├─ src
+│  ├─ models         # model files
+│  │  ├─ shop.ts
+│  │  └─ product.ts
+│  ├─ index.ts       # your program
+│  └─ orm.ts         # your orm configuration
+├─  package.json
+└─  tsconfig.json
 ```
 
-Step 1: Create and change into a new directory
+  </CodeGroupItem>
+  <CodeGroupItem title="JS">
+
+```:no-line-numbers
+├─ src
+│  ├─ models         # model files
+│  │  ├─ shop.js
+│  │  └─ product.js
+│  ├─ index.js       # your program
+│  └─ orm.js         # your orm configuration
+└─ package.json
+```
+  </CodeGroupItem>
+</CodeGroup>
+
+
+- Step 1: Create and change into a new directory
 
 ```bash
 mdir my-project
 cd my-project
 ```
 
-Step 2: Initialize your project
+- Step 2: Initialize your project
 ```
 npm init
 ```
 
-Step 3: Install TaiChi ORM and its dependencies
+- Step 3: Install TaiChi ORM and its dependencies
 ```bash
 npm install --save taichi-orm knex
 ```
 
-Step 4: Install the SQL client (mysql, postgresql or sqlite)
+- Step 4: Install the SQL client (mysql, postgresql or sqlite)
 <CodeGroup>
   <CodeGroupItem title="Mysql" active>
 
@@ -59,99 +80,97 @@ npm install --save sqlite3
 ```
 
   </CodeGroupItem>
-
 </CodeGroup>
 
-Step 5: Create `models` folder for your Model files.
+- Step 5: Create `models` folder for your Model files.
 
 ```bash
+mkdir src
+cd src
 mkdir models
 ```
 
+- Step 6: Create Model files inside `models` folders
 
-Step 6: Create Model files inside `models` folders
 
-```js
-//File: models/shop.js
-const { Model, PrimaryKeyType} = require('taichi-orm')
-const Product = require('./product')
+<CodeGroup>
+  <CodeGroupItem title="TS" active>
 
-module.exports = class Shop extends Model {
-    id = this.field(PrimaryKeyType)
-    products = Shop.hasMany(Product, 'shopId')
-}
+@[code ts](../../examples/getting-started-typescript/src/models/shop.ts)
+
+  </CodeGroupItem>
+  <CodeGroupItem title="JS">
+
+
+@[code ts](../../examples/getting-started-javascript/src/models/shop.js)
+
+  </CodeGroupItem>
+</CodeGroup>
+
+
+
+<CodeGroup>
+  <CodeGroupItem title="TS" active>
+
+@[code ts](../../examples/getting-started-typescript/src/models/product.ts)
+
+  </CodeGroupItem>
+  <CodeGroupItem title="JS">
+
+
+@[code ts](../../examples/getting-started-javascript/src/models/product.js)
+
+  </CodeGroupItem>
+</CodeGroup>
+
+
+
+- Step 7: Create a file named 'orm.ts'('orm.js'). It contains settings of your ORM. Here we use 'sqlite3' as example.
+
+
+```bash
+cd ..
 ```
 
+<CodeGroup>
+  <CodeGroupItem title="TS" active>
 
-```js
-//File: models/product.js
-const { Model, PrimaryKeyType, NumberType } = require('taichi-orm')
-const Shop = require('./shop')
+@[code ts](../../examples/getting-started-typescript/src/orm.ts)
 
-module.exports = class Product extends Model {
-    id = this.field(PrimaryKeyType)
-    shopId = this.field(NumberType)
-    shop = Product.belongsTo(Shop, 'shopId')
-}
-```
+  </CodeGroupItem>
+  <CodeGroupItem title="JS">
 
-Step 7: Create a file named 'orm.js'. It contains settings of your ORM. Here we use 'sqlite3' as example.
 
-```js
-//File: orm.js
-const { ORM } = require('taichi-orm')
-const Shop = require('./models/shop')
-const Product = require('./models/product')
+@[code ts](../../examples/getting-started-javascript/src/orm.js)
 
-// configure your orm
-module.exports = new ORM({
-    // register the models here
-    models: {Shop, Product},
-    // knex config with client sqlite3 / mysql / postgresql
-    knexConfig: {
-        client: 'sqlite3',
-        connection: {
-            filename: ':memory:'
-        }
-    }
-})
-```
+  </CodeGroupItem>
+</CodeGroup>
+
+
 ::: tip
 You can also register your Models with directory paths. Please see [Register Model](./concepts/orm.md#register-models)
 :::
 
 
-Step 8: Create a file named 'index.js'.
-```js
-const orm = require('./orm')
+- Step 8: Create a file named 'index.js'.
 
-(async() =>{
-  let {
-      createModels,
-      repos: {Shop, Product} 
-    } = orm.getContext()
 
-    // create the tables (if necessary)
-    await createModels()
+<CodeGroup>
+  <CodeGroupItem title="TS" active>
 
-    let createdShop = await Shop.create([{ id: 1 }, {id: 2}])
-    let createdProducts = await Product.create([
-      {shopId: createdShop.id, name: 'Product1'},
-      {shopId: createdShop.id, name: 'Product2'}
-    ])
+@[code ts](../../examples/getting-started-typescript/src/index.ts)
 
-    //Find Shop with Id 2 and with related products
-    let foundShop2 = await Shop.find({
-      selectProps: ['products']
-      where: {id: 2}
-    })
+  </CodeGroupItem>
+  <CodeGroupItem title="JS">
 
-    console.log('Found', foundShop2)
 
-})()
-```
+@[code ts](../../examples/getting-started-javascript/src/index.js)
 
-Step 9: Run your program
+  </CodeGroupItem>
+</CodeGroup>
+
+
+- Step 9: Run your program
 
 ```bash
 node index.js
@@ -159,5 +178,11 @@ node index.js
 
 Output:
 ```
-
+Found [ { products: [ [Object] ], id: 2 } ]
 ```
+
+::: tip
+
+You can find the [full examples here](https://github.com/thfai2000/taichi-orm/tree/main/examples/). 
+
+:::

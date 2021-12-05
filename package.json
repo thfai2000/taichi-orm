@@ -28,7 +28,8 @@
     "prepare": "npm run build",
     "build": "tsup src/index.ts --dts --format esm,cjs",
     "dev": "npm install && tsup src/index.ts --dts --format esm,cjs --watch src",
-    "dev-test": "npm install && tsup test --dts --watch test --outDir dist-test",
+    "test:build": "tsup test --dts --outDir dist-test",
+    "test:dev": "npm install && tsup test --dts --watch test --outDir dist-test",
     "test": "npm run test:sqlite",
     "test:mysql": "jest --watch --setupFiles=./dist-test/setup-mysql.js",
     "test:sqlite": "jest --watch --setupFiles=./dist-test/setup-sqlite.js",
@@ -50,7 +51,7 @@
   "homepage": "https://github.com/thfai2000/taichi-orm#readme",
   "runkitExampleFilename": "runkit-example.js",
   "engines": {
-    "node": ">=12"
+    "node": ">=14"
   },
   "devDependencies": {
     "@types/jest": "^26.0.23",

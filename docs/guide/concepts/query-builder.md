@@ -25,9 +25,11 @@ Although The Model API allows to use raw SQL, QueryBuilder is still necessary in
 It represent a SQL single value with a specifc type like number, string or date.
 Dataset can be transformed into a Scalar. For example, 'SELECT count(*) FROM table1' can act as a Scalar in number type.
 
-
-
-
-
 ## Dataset
 It is a query builder and represents the SELECT statement.
+
+## InsertStatement
+
+## UpdateStatement
+
+## DeleteStatement

@@ -27,8 +27,8 @@ export default class Product extends Model {
     remainingStock = this.field(NumberNotNullType)
 
     //define ComputeProperty based on the value of FieldProperty
-    isActive = Product.compute((parent): CFReturn<boolean> => {
-        return new Scalar(context => context.op.And(
+    isActive = Product.compute((parent) => {
+        return new Scalar<BooleanNotNull, any>(context => context.op.And(
             parent.$.availableStart.lessThan( new Date() ),
             parent.$.availableEnd.greaterThan( new Date() ),
             parent.$.remainingStock.greaterThan(0)
@@ -122,7 +122,7 @@ It generates several SQL statements
 But actually we can query the data in only one SQL statement instead:
 ```sql:no-line-numbers
   SELECT shop.id, 
-    (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', id, 'colors', colors))
+    (SELECT JSON_ARRAYAGG(JSON_Array(id, colors))
         FROM
         (
           SELECT product.id, 
@@ -135,6 +135,7 @@ But actually we can query the data in only one SQL statement instead:
 ```
 The trick is using the SQL server build-in function to construct JSON objects.
 It may be more efficient than the traditional way. taichi-orm is currently using this approach.
+
 
 ### Better control on relation records
 

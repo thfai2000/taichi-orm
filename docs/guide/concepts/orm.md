@@ -74,11 +74,9 @@ const orm = new ORM({
 ```
 
 ::: tip
+It is suggested to use `models` options to specify your `Models` instead of `modelsPath`.
 If you use `modelsPath`, you will use lose typescript hints provided by `Model API`. 
-
-If your app is using javascript, it is suggested to use `models` options to specify your `Models`.
-
-If your app is using typescript, you can provide type hints manually. Please see [Typescript Support](../typescript-support#model-repository)
+Please see [Typescript Support](../typescript-support#model-repository).
 :::
 
 ## More options

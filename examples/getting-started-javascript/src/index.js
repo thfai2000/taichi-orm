@@ -1,3 +1,4 @@
+//@filename: src/index.js
 const orm = require('./orm');
 
 (async() =>{

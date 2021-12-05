@@ -1,3 +1,4 @@
+//@filename: src/models/shop.ts
 import { Model, PrimaryKeyType, NumberType } from 'taichi-orm'
 import Product from './product'
 

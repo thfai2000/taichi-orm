@@ -1,3 +1,4 @@
+//@filename: src/models/shop.js
 const { Model, PrimaryKeyType, NumberType } = require('taichi-orm')
 
 module.exports = class Shop extends Model {

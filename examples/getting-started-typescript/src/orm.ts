@@ -1,3 +1,4 @@
+//@filename: src/orm.ts
 import { ORM } from 'taichi-orm'
 import Shop from './models/shop'
 import Product from "./models/product"
