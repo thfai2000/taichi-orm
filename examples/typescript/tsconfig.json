@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "declaration": true,
+    "target": "ES2020",
+    "sourceMap": true,
+    "strict": true,
+    "moduleResolution": "Node",
+    "allowJs": true,
+    "module": "CommonJS",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": [
+      "node_modules/@types"
+    ],
+    "noErrorTruncation": true,
+    "outDir": "dist",
+    "declarationDir": "dist"
+  },
+  "include": [
+    "src"
+  ],
+  "watchOptions": {
+    // Use native file system events for files and directories
+    "watchFile": "useFsEvents",
+    "watchDirectory": "useFsEvents",
+    // Poll files for updates more frequently
+    // when they're updated a lot.
+    "fallbackPolling": "dynamicPriority"
+  }
+}
