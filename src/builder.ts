@@ -1790,7 +1790,7 @@ export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, a
     exists(this: DScalar<any, DS>): Scalar<BooleanNotNullType, any> {
         return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
-                return ctx.op.Exists(value)
+                return ctx.$.Exists(value)
             }
             throw new Error('count is only applicable to Dataset.')
         })

@@ -371,7 +371,7 @@ export class ModelRepository<MT extends typeof Model>{
         if (args) {
             if (args instanceof Function) {
                 
-                resolvedArgs = args({ root: source.$, ...this.context.op})
+                resolvedArgs = args({ root: source.$, ...this.context.$})
             } else {
                 resolvedArgs = args
             }

@@ -471,7 +471,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return r
     }
 
-    get op(): SQLKeywords<{}, any> {
+    get $(): SQLKeywords<{}, any> {
         let o = {}
         let f = makeExpressionResolver<{}, any>(o)
         return Object.assign(o, constructSqlKeywords(f))

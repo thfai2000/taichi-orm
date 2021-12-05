@@ -1,6 +1,6 @@
 import {Model, ModelObjectRecord} from '../dist/'
-import {CFReturn, ConstructComputePropertyArgsDictFromSchema, ConstructValueTypeDictBySelectiveArg, DatabaseContext, ORM, SingleSourceArg, SingleSourceSelect} from '../dist/'
-import {snakeCase, omit, random} from 'lodash'
+import {CFReturn, DatabaseContext, ORM} from '../dist/'
+import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
         StringNotNullType, 
@@ -87,7 +87,7 @@ class Shop extends Model {
       return parent.$.products().count().greaterThanOrEquals(arg ?? 1)
     })
     hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
-      return new Scalar( (context) => context.op.And(
+      return new Scalar( (context) => context.$.And(
           parent.$.products().count().equals(2),
           parent.$.location.like('%A%')
         )

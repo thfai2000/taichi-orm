@@ -33,3 +33,8 @@ It is a query builder and represents the SELECT statement.
 ## UpdateStatement
 
 ## DeleteStatement
+
+
+::: tip
+The names of these operators and functions are first-letter captialized
+:::

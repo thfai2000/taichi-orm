@@ -17,7 +17,7 @@ export default class Product extends Model {
     remainingStock = this.field(NumberNotNullType)
 
     isActive = Product.compute((parent, arg?: number): CFReturn<boolean> => {
-        return new Scalar( (context) => context.op.And(
+        return new Scalar( (context) => context.$.And(
             parent.$.availableStart.lessThan( new Date() ),
             parent.$.availableEnd.greaterThan( new Date() ),
             parent.$.remainingStock.greaterThan(0)
