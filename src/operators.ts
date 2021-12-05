@@ -259,7 +259,7 @@ export class NotBetweenOperator extends LeftAndRightAssertionOperator {
     }
 }
 
-export class WaitingLeft {
+export class AssertionOperatorWrapper {
     #func: (left: Scalar<any, any>) => AssertionOperator
     constructor(func: (left: Scalar<any, any>) => AssertionOperator){
         this.#func = func
@@ -275,8 +275,8 @@ export type SQLKeywords<Props, PropMap> = {
     Or: (...condition: Array<Expression<Props, PropMap> > ) => Scalar<BooleanNotNullType, any>,
     Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
     Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>,
-    Like: (right: Scalar<any, any> | string) => WaitingLeft,
-    NotLike: (right: Scalar<any, any> | string) => WaitingLeft
+    Like: (right: Scalar<any, any> | string) => AssertionOperatorWrapper,
+    NotLike: (right: Scalar<any, any> | string) => AssertionOperatorWrapper
 }
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
@@ -285,8 +285,8 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
         Or: (...conditions: Expression<X, Y>[]) => new OrOperator(resolver, ...conditions).toScalar(),
         Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
         Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar(),
-        Like: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
-        NotLike: (right: Scalar<any, any> | string) => new WaitingLeft( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
+        Like: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
+        NotLike: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
     }
     return sqlkeywords
 }

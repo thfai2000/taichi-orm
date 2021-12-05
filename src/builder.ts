@@ -1,6 +1,6 @@
 import { Knex}  from "knex"
 import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
-import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, WaitingLeft } from "./operators"
+import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper } from "./operators"
 import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyType, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
@@ -50,7 +50,7 @@ export type ExpressionFunc<O, M> = (map: UnionToIntersection< M | SQLKeywords<O,
 
 export type ValueTypeDictForExpression<E> = {
     [key in keyof E]: 
-        E[key] | WaitingLeft | Scalar<any, any>
+        E[key] | AssertionOperatorWrapper | Scalar<any, any>
 }
 
 export type Expression<O, M> = 
@@ -1890,7 +1890,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     const leftOperator = resolver(leftOperatorEx)
 
                     let finalScalar: Scalar<any, any>
-                    if(rightOperatorEx instanceof WaitingLeft) {
+                    if(rightOperatorEx instanceof AssertionOperatorWrapper) {
                         finalScalar = rightOperatorEx.toScalar(leftOperatorEx)
                     } else if(rightOperatorEx === null){
                         finalScalar = new IsNullOperator(leftOperator).toScalar()
