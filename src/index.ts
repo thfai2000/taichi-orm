@@ -213,6 +213,8 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     entityNameToTableName?: (name:string) => string,
     // function of convert property Name to field name
     propNameTofieldName?: (name:string) => string
+
+    useNullAsDefault?: boolean
 }
 export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
@@ -307,7 +309,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         }
 
         let newKnexConfig = Object.assign({
-            // useNullAsDefault: true
+            useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
         if(typeof newKnexConfig.connection !== 'object'){
