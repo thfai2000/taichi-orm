@@ -1,6 +1,6 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { FieldPropertyType, PropertyType } from './types'
+import { FieldPropertyType, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
 import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
@@ -352,8 +352,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
     // }
 }
 
-export type DatabaseContextConfig = {
-} & TableOptions
+export type DatabaseContextConfig = TableOptions
 
 //(ModelMap[key] extends Model<infer E>?E:never) 
 export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
@@ -371,9 +370,9 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         this.repos = Object.keys(orm.modelMap).reduce( (acc, key) => {
             const modelClass = orm.modelMap[key]
             //@ts-ignore
-            acc[key] = new ModelRepository<any>(this, modelClass, key)
+            acc[key] = new ModelRepository< ModelMap[typeof key] >(this, modelClass, key)
             return acc
-        }, {} as {[key in keyof ModelMap]: ModelRepository<  ModelMap[key]>})
+        }, {} as {[key in keyof ModelMap]: ModelRepository< ModelMap[key]>})
     }
 
     get config(){
@@ -393,6 +392,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         if(typeof nameOrClass === 'string'){
             return this.repos[nameOrClass] as unknown as ModelRepository<T>
         } else {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             //@ts-ignore
             const foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
             if(!foundKey){
@@ -438,14 +438,8 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             KnexStmt.transacting(executionOptions.trx)
         }
         let result = null
-        try{
-            // console.time('execute-stmt')
-            result = await KnexStmt
-            // console.timeEnd('execute-stmt')
-        }catch(error){
-            throw error
-        }
-        
+        result = await KnexStmt
+ 
         return result
     }
 
@@ -456,24 +450,25 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     scalar<D extends PropertyType<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D, any>;
     
-    scalar(...args: any[]): Scalar<any, any>{
+    scalar(...args:  any[]): Scalar<any, any>{
         
-        if(typeof args[0] ==='string' && Array.isArray(args[1])){
+        if(typeof args[0] ==='string' && Array.isArray(args[1]) ){
             return new Scalar({sql: args[0], args: args[1]}, args[2], this)
         }
         return new Scalar(args[0], args[1], this)
     }
 
-    raw = (sql: any, args?: any[]) => {
+    raw = (sql: string, args?: any[]) => {
         const r = this.orm.getKnexInstance().raw(sql, args ?? [])
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
         r.then = 'It is overridden. \'Then\' function is removed to prevent execution when it is passing across any async function(s).'
         return r
     }
 
-    get $(): SQLKeywords<{}, any> {
+    get $(): SQLKeywords< AddPrefix<Record<string, never>, string>, any> {
         const o = {}
-        const f = makeExpressionResolver<{}, any>(o)
+        const f = makeExpressionResolver< AddPrefix< Record<string, never>, string>, any>(o)
         return Object.assign(o, constructSqlKeywords(f))
     }
     
@@ -485,7 +480,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return new DeleteStatement(this)
     }
 
-    insert = <T extends TableSchema<any>>(into: T): InsertStatement<T> => {
+    insert = <T extends TableSchema< { id: FieldProperty<PrimaryKeyType>; } >>(into: T): InsertStatement<T> => {
         return new InsertStatement(into, this)
     }
 
@@ -514,15 +509,10 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             // use new
             // let result: T | Promise<T>, error
             
-            try{
-                //{isolationLevel: 'read committed'}
-                const trx = await knex.transaction()
-                return await useTrx(trx, false)
-            }catch(e){
-                // console.log('herere error', e)
-                // error = e
-                throw e
-            }
+            //{isolationLevel: 'read committed'}
+            const trx = await knex.transaction()
+            return await useTrx(trx, false)
+            
         }
     }
 }
@@ -638,10 +628,12 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
         ){
         super(context, action)
         this.parent = args?.parent ?? null
-        this.isFullCount = this.isFullCount
+        this.isFullCount = args?.isFullCount ?? false
     }
 
     get ancestor(): DBQueryRunner<any, any>{
+        
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         let parent: DBQueryRunner<any, any> = this
         while(parent && parent.parent){
             parent = parent.parent
@@ -759,6 +751,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     get ancestor(): DBMutationRunner<any, any, any, any, any, any>{
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         let parent: DBMutationRunner<any, any, any, any, any, any> = this
         while(parent && parent.parent){
             parent = parent.parent
@@ -770,6 +763,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     get latestPreflightFunctionArg(): null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>){
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         let target: DBMutationRunner<any, any, any, any, any, any> | null = this
         while( target && !target.preflightFunctionArg) {
             target = target.parent
@@ -779,6 +773,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
 
     get latestQueryAffectedFunctionArg(): null | ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<Dataset<any>> | Dataset<any>){
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
         let target: DBMutationRunner<any, any, any, any, any, any> | null = this
         while( target && !target.queryAffectedFunctionArg) {
             target = target.parent
@@ -799,12 +794,23 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     override getOptions() : MutationExecutionOptions<S> {
         return this.execOptions
     }
+    getAffected()
+    : DBMutationRunner< 
+        ExtractValueTypeDictFromDataset<
+            Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+        >[], S, PreflightRecordType, 
+            ExtractValueTypeDictFromDataset<
+                Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+            >[], isPreflight, true>;
+
+    getAffected<D extends Dataset<Schema<any>>>(onQuery: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
 
 
-    getAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
-        onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
-        
+    getAffected(...args: any[]){
+        type D = Dataset<any>
+        const onQuery: (() => D) = args[0] ?? ((dataset: D) => dataset)
+
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
@@ -813,13 +819,27 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
                 return this.affectedResult as ExtractValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
-                queryAffectedFunctionArg: onQuery ?? ((dataset: any) => dataset)
+                queryAffectedFunctionArg: onQuery
             })
     }
 
-    getAffectedOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true> {
-        
+    getAffectedOne()
+    : DBMutationRunner< 
+        ExtractValueTypeDictFromDataset<
+            Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+        >, S, PreflightRecordType, 
+            ExtractValueTypeDictFromDataset<
+                Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+            >[], isPreflight, true>;
+
+    getAffectedOne<D extends Dataset<Schema<any>>>(onQuery: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
+    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
+
+    getAffectedOne(...args: any[]){
+
+        type D = Dataset<any>
+        const onQuery: (() => D) = args[0] ?? ((dataset: D) => dataset)
+
         return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
@@ -839,11 +859,34 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
                 
             }, {
                 parent: this,
-                queryAffectedFunctionArg: onQuery ?? ((dataset: any) => dataset)
+                queryAffectedFunctionArg: onQuery 
             })
     }
 
-    withAffected<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ){
+    withAffected()
+    : DBMutationRunner<{
+            result: I,
+            preflight: isPreflight extends true? PreflightRecordType: never,
+            affected: ExtractValueTypeDictFromDataset<
+                Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+            >[] 
+        }, S, PreflightRecordType, ExtractValueTypeDictFromDataset<
+                Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
+            >[], isPreflight, true>;
+
+    withAffected<D extends Dataset<Schema<any>>>(onQuery?: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
+    : DBMutationRunner<{
+            result: I,
+            preflight: isPreflight extends true? PreflightRecordType: never,
+            affected: ExtractValueTypeDictFromDataset<
+                D
+            >[] 
+        }, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
+
+    withAffected(...args: any[]){
+        
+        type D = Dataset<any>
+        const onQuery: (() => D) = args[0] ?? ((dataset: D) => dataset)
         type NewI = {
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
@@ -861,7 +904,7 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
                 } as NewI
             }, {
                 parent: this,
-                queryAffectedFunctionArg: onQuery ?? ((dataset: any) => dataset)
+                queryAffectedFunctionArg: onQuery
             })
 
         return m

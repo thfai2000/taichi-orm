@@ -42,14 +42,14 @@ export type ModelArrayRecordByThroughFunctionArg<MT extends typeof Model, MT2 ex
     > , {root: Selector<ExtractSchemaFromModelType<MT>>, through: Selector<ExtractSchemaFromModelType<MT2>>}> 
 
 //Sadly circular dependencies encountered
-export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA 
+export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA 
     | ( (map: ModelArrayRecordFunctionArg<MT>) => SSA)
     
     ) => DScalar< ArrayTypeDataset<ConstructDatasetBySelectiveArg<MT, SSA>>,
             ConstructDatasetBySelectiveArg<MT, SSA>
         >
 
-export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>> = {}>(arg?: SSA 
+export type ModelObjectRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA 
     | ( (map: ModelArrayRecordFunctionArg<MT>) => SSA) ) => 
         
         DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<MT, SSA>>, 
@@ -176,8 +176,8 @@ export abstract class Model {
         parentKey = 'id'
         ){
 
-        //() => new ArrayType(relatedSchemaFunc())
         return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args?) => {
+
             return new DScalar( (context: DatabaseContext<any>) => {
                 const relatedModel = context.getRepository(relatedModelType)
                 const parentColumn = parent.getFieldProperty( parentKey  )
@@ -188,8 +188,7 @@ export abstract class Model {
                 ))
 
                 return dataset //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
-            })
-
+            }) as any
         })
     }
 
@@ -213,7 +212,7 @@ export abstract class Model {
 
                 return dataset
                 //.toScalarWithType( (ds) => new ObjectType(ds.schema() )) as Scalar< ObjectType<ParsableObjectTrait<any>>, any>
-            }).asObjectType()
+            }).asObjectType() as any
         
         })
     }
@@ -265,7 +264,7 @@ export abstract class Model {
                     )
                 return dataset
                 //.toScalarWithType( (ds) => new ArrayType(ds.schema() )) as Scalar< ArrayType<ParsableObjectTrait<any>>, any>
-            })
+            }) as any
         })
     }
 

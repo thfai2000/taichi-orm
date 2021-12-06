@@ -972,16 +972,19 @@ export class InsertStatement<T extends TableSchema<{
         if(!ctx){
             throw new Error('There is no repository provided.')
         }
-        type I = {
-            id: number;
-        }[] | null
         //@ts-ignore
         const statement = this
 
-        return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+        return new DBMutationRunner<{
+                            id: number;
+                        }[] | null, 
+                        T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
             async function(
-                this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+                this: DBMutationRunner<{
+                            id: number;
+                        }[] | null, 
+                        T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
                 if(!statement.getInsertItems()){

@@ -79,6 +79,14 @@ If you use `modelsPath`, you will use lose typescript hints provided by `Model A
 Please see [Typescript Support](../typescript-support#model-repository).
 :::
 
+### Shutdown
+
+Shutdown the ORM instance gracefully when your application quits.
+
+```js
+await orm.shutdown()
+```
+
 ## More options
 
 Here are all the options of ORM
