@@ -1,9 +1,46 @@
-## Schema
-It represents the properties of a Model or a Dataset.
+# Schema
+It represents a dictionary of properties.
 
-`Dataset` can produce a `Schema` instance having `Properties` which 
+`Dataset`, `ModelRepository` or `Model` can produce a `Schema`.
 
-## Datasource
-It is used in data query. 
-It has name (like table alias) that represents of a database table or a temporary table.
-`Datasource.selector` is an object having keys of properties names and with values of corresponding Scalar or ComputeFunction.
+Examples:
+```js
+context.dataset().schema()
+
+context.repos.Model1.schema()
+
+require('./models/Model1').schema()
+
+```
+
+# Datasource
+
+- It is produced from a `Schema` by giving a name (acts as table alias).
+- It refers to a database table or a temporary table.
+- It is used by the Query Builders' `from`, `innerJoin`, `leftJoin` and `rightJoin` functions.
+
+Example: 
+Below it makes a query with selecting fields from table `Model1` with alias `table_alias`.
+
+```js{26,28-30}
+const schema = context.repos.Model1.schema()
+
+let queryBuilder = context.dataset()
+    .from(schema.datasource('table_alias'))
+    .select(
+        'table_alias.id',
+        'table_alias.field1',
+        'table_alias.field2'
+    )
+```
+
+There are some shortcut to make a datasource instance.
+
+```js
+Model.datasource(string)
+ModelRepository.datasource(string)
+```
+
+### $ (Data Selector)
+
+`Datasource.$` is an object having values of `Scalar` or `ComputeFunctions` representing the properties of the Schema.
