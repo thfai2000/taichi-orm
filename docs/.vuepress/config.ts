@@ -36,6 +36,7 @@ export default defineUserConfig<DefaultThemeOptions>({
                 '/guide/concepts/property',
                 '/guide/concepts/property-type',
                 '/guide/concepts/schema',
+                '/guide/concepts/relations',
                 '/guide/concepts/model-api',
                 '/guide/concepts/query-builder'
               ]

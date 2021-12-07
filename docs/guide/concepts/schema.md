@@ -1,7 +1,6 @@
 # Schema
-It represents a dictionary of properties.
-
-`Dataset`, `ModelRepository` or `Model` can produce a `Schema`.
+- It represents a dictionary of properties.
+- `Dataset`, `ModelRepository` or `Model` can produce a `Schema`.
 
 Examples:
 ```js
