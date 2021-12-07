@@ -52,9 +52,35 @@ dataset1.datasource(string)
 
 ### ValueSelector (`$`)
 
-A datasource instance provides an object `$` having values of `Scalar` or `ComputeFunctions` which represents the properties of the Schema.
+A datasource instance provides an object `$` having values of `Scalar` or `CompiledComputeFunction` which represents the properties of the Schema.
 
-Example:
+::: tip
+`Scalar` is a single SQL value that can be a field name or SQL functions.
+
+Please see [Scalar](./query-builder#scalar) for more details.
+:::
+
+Examples:
+```js
+export default class MyModel extends Model {
+  // Nullable Integer
+  prop1 = this.field(NumberType)
+  
+  prop2 = this.compute( (parent) => parent.minus(3) )
+}
+
+const scalar1 = Model1.datasource('table1').$.prop1
+
+const scalar2 = Model1.datasource('table1').$.prop2()
+
 ```
 
-```
+::: details
+If the key of `$` refers to a `FieldProperty`'s name, the value will be a `Scalar`.
+
+If it refers to a `ComputeProperty`'s name, the value is a Function (`CompiledComputeFunction`) that returns a `Scalar`.
+:::
+
+::: tip
+Please see [Property](./property) for more explanation.
+:::
