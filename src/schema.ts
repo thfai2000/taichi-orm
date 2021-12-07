@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, Selector, ComputeFunctionDynamicReturn } from "."
+import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, ValueSelector, ComputeFunctionDynamicReturn } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
@@ -324,7 +324,7 @@ export type TableOptions = {
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
     schema(): E
-    $: Selector<E>
+    $: ValueSelector<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
@@ -345,7 +345,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
-    readonly $: Selector<E>
+    readonly $: ValueSelector<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -378,7 +378,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                     }
                 }
             }
-        }) as Selector<E>
+        }) as ValueSelector<E>
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 

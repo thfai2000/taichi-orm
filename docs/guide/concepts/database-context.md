@@ -71,7 +71,7 @@ await context.startTransaction( (trx) => {
 })
 ```
 
-### Query Builders
+### Create Query Builders
 
 Context provides various kind of query builders for data query, insertion, updates and deletion. 
 

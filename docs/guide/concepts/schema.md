@@ -34,6 +34,7 @@ let queryBuilder = context.dataset()
     )
 ```
 
+
 There are many ways to create a datasource instance.
 
 ```js
@@ -50,6 +51,11 @@ dataset1.schema().datasource(string)
 dataset1.datasource(string)
 ```
 
-### $ (Value Selector)
+### ValueSelector (`$`)
 
-`Datasource.$` is an object having values of `Scalar` or `ComputeFunctions` which represents the properties of the Schema.
+A datasource instance provides an object `$` having values of `Scalar` or `ComputeFunctions` which represents the properties of the Schema.
+
+Example:
+```
+
+```
