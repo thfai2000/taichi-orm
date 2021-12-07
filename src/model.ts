@@ -304,7 +304,7 @@ export class ModelRepository<MT extends typeof Model>{
         return this.#model.datasource(name, options)
     }
 
-    get schema() {
+    schema() {
         return this.#model.schema()
     }
 

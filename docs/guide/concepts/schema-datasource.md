@@ -13,7 +13,7 @@ require('./models/Model1').schema()
 
 ```
 
-# Datasource
+## Datasource
 
 - It is produced from a `Schema` by giving a name (acts as table alias).
 - It refers to a database table or a temporary table.
@@ -22,7 +22,7 @@ require('./models/Model1').schema()
 Example: 
 Below it makes a query with selecting fields from table `Model1` with alias `table_alias`.
 
-```js{26,28-30}
+```js{4,6-8}
 const schema = context.repos.Model1.schema()
 
 let queryBuilder = context.dataset()
@@ -34,13 +34,22 @@ let queryBuilder = context.dataset()
     )
 ```
 
-There are some shortcut to make a datasource instance.
+There are many ways to create a datasource instance.
 
 ```js
-Model.datasource(string)
-ModelRepository.datasource(string)
+Model1.schema().datasource(string)
+//OR a shortcut:
+Model1.datasource(string)
+
+modelRepository1.schema().datasource(string)
+//OR a shortcut:
+modelRepository1.datasource(string)
+
+dataset1.schema().datasource(string)
+//OR a shortcut:
+dataset1.datasource(string)
 ```
 
-### $ (Data Selector)
+### $ (Value Selector)
 
-`Datasource.$` is an object having values of `Scalar` or `ComputeFunctions` representing the properties of the Schema.
+`Datasource.$` is an object having values of `Scalar` or `ComputeFunctions` which represents the properties of the Schema.

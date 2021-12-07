@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
 import { Selector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper } from "./operators"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyType, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType } from "./types"
-import { ComputeProperty, Datasource, DerivedDatasource, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
+import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyType, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
+import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
@@ -232,14 +232,14 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
 
 }
 
-export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, SelectorMap ={}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, SelectorMap =any, FromSource extends Datasource<any, any> = Datasource<any, any>> 
     extends WhereClauseBase<SourceProps, SelectorMap, FromSource>
     // implements Scalarable<ArrayType<ExistingSchema>, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > 
     {
 
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
-    protected datasetSchema: null | Schema<any> = null
+    protected datasetSchema: null | DerivedTableSchema<any> = null
 
     #selectItems: { [key: string]: Scalar<any, any> } | null = null
 
@@ -480,11 +480,13 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, Selecto
     }
 
     toDScalarWithArrayType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ArrayTypeDataset<T>, T> {
-        return new DScalar(this, new ArrayType(this.schema()), this.context)
+        const a = new ArrayType(this.schema())
+        return new DScalar(this, a, this.context)
     }
 
     toDScalarWithObjectType<T extends Dataset<any, any, any, any>>(this: T): DScalar< ObjectTypeDataset<T>, T> {
-        return new DScalar(this, new ObjectType(this.schema()), this.context)
+        const o = new ObjectType(this.schema()) as ObjectType<ParsableObjectTrait<any>>
+        return new DScalar(this, o, this.context)
     }
 
     toDScalarWithType<T extends PropertyType<any>>(
@@ -719,27 +721,23 @@ export class Dataset<ExistingSchema extends Schema<{}>, SourceProps ={}, Selecto
         return this
     }
 
-    datasource<Name extends string>(name: Name): Datasource<any, Name> {
-        return new DerivedDatasource(this, name)
+    datasource<T extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>, Name extends string>(this: T, name: Name): DerivedDatasource<T, Name> {
+        return this.schema().datasource(name)
     }
 
-    schema(): ExistingSchema {
-        if(!this.#selectItems){
-            throw new Error('No selectItems for a schema')
-        }
+    schema<T extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>>(this: T)
+    : DerivedTableSchema<T> {
+
         if(!this.datasetSchema){
-            const selectItems = this.#selectItems
-            const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
-                acc[key] = new ScalarProperty(selectItems[key])
-                return acc
-            }, {} as {[key:string]: ScalarProperty<any>})
-            
-            const schema = new Schema(propertyMap)
-            this.datasetSchema = schema
+
+            this.datasetSchema = new DerivedTableSchema(this)
         }
-        return this.datasetSchema as ExistingSchema
+        return this.datasetSchema
     }
 
+    selectItems() {
+        return this.#selectItems
+    }
     // hasSelectedItems(){
     //     return Object.keys(this.#selectItems ?? {}).length > 0
     // }
@@ -1185,7 +1183,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
 
         await this.buildWhereClause(context, nativeQB)
 
-        const updateItems = await this.scalarMap2RawMap(this.fromItem.schema, this.#updateItems, context)
+        const updateItems = await this.scalarMap2RawMap(this.fromItem.schema(), this.#updateItems, context)
         if(Object.keys(updateItems).length === 0 && !this.fromItem){
             throw new Error('No UPDATE and FROM are provided for Dataset')
         }
@@ -1207,7 +1205,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         }
 
         const fromSource = this.fromItem as unknown as TableDatasource<TableSchema<{id: FieldProperty<any>}>, any>
-        const schema = fromSource.schema
+        const schema = fromSource.schema()
         const statement = this 
         type T = (FromSource extends TableDatasource<infer S, any>?S: never)
         type CurrentSchemaFieldOnly = ExtractSchemaFieldOnlyFromSchema<T>
@@ -1347,7 +1345,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         }
 
         const fromSource = this.fromItem as unknown as TableDatasource<TableSchema<{id: FieldProperty<any>}>, any>
-        const schema = fromSource.schema
+        const schema = fromSource.schema()
         const statement = this 
         type T = (FromSource extends TableDatasource<infer S, any>?S: never)
         type CurrentSchemaFieldOnly = ExtractSchemaFieldOnlyFromSchema<T>
@@ -1884,7 +1882,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     throw new Error(`cannot found source (${sourceName})`)
                 }
 
-                const prop = source.schema.propertiesMap[propName]
+                const prop = source.schema().propertiesMap[propName]
                 if(!prop){
                     throw new Error(`cannot found prop (${propName})`)
                 }

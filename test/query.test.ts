@@ -66,7 +66,6 @@ class Shop extends Model {
     tel = this.field(StringType)
     products = Shop.hasMany(Product, 'shopId')
     productCount = Shop.compute( (parent): CFReturn<number> => {
-      //@ts-expect-error
       return parent.$.products().count()
     })
     hasProducts = Shop.compute( (parent): CFReturn<boolean> => {

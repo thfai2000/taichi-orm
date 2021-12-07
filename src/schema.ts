@@ -230,6 +230,30 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
 
 }
 
+export class DerivedTableSchema<D extends Dataset<any>> extends Schema<any> implements ParsableObjectTrait<any> {
+
+    readonly dataset: D
+
+    constructor(dataset: D){
+        
+        const selectItems = dataset.selectItems()
+        if(!selectItems){
+            throw new Error('No selectItems for a schema')
+        }
+        const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
+            acc[key] = new ScalarProperty(selectItems[key])
+            return acc
+        }, {} as {[key:string]: ScalarProperty<any>})
+        super(propertyMap)
+        this.dataset = dataset
+    }
+
+    datasource<Name extends string>(name: Name) : DerivedDatasource<D, Name>{
+        const source = new DerivedDatasource(this.dataset, name)
+        return source
+    }
+}
+
 
 export class TableSchema<PropertyDict extends {[key:string]: Property}> extends Schema<PropertyDict> {
 
@@ -299,7 +323,7 @@ export type TableOptions = {
 
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
-    schema: E
+    schema(): E
     $: Selector<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
@@ -333,6 +357,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
 
         const datasource = this
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         //@ts-ignore
         this.$ = new Proxy( datasource, {
             get: (oTarget: typeof datasource, sKey: string) => {
@@ -357,7 +382,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
-    get schema(): E {
+    schema(): E {
         return this._schema
     }
 
@@ -430,14 +455,14 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
         this.options = options
     }
 
-    get schema(): E {
+    schema(): E {
         return this._schema
     }
 
     realSource(context: DatabaseContext<any>){
         const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
 
-        const tableName = this.schema.tableName(context, finalOptions)
+        const tableName = this.schema().tableName(context, finalOptions)
         if(!tableName){
             throw new Error('Not yet registered')
         }
