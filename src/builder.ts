@@ -1,9 +1,9 @@
 import { Knex}  from "knex"
 import { ValueSelector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
-import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, AssertionOperator, ExistsOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper } from "./operators"
-import { BooleanType, BooleanNotNullType, DateTimeType, FieldPropertyType, NumberType, NumberNotNullType, ObjectType, ParsableTrait, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
+import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
+import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromSchema_FieldsOnly, expand, isScalarMap, isArrayOfStrings, ExtractComputePropDictFromSchema } from "./util"
+import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -347,6 +347,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
 
     private propNameToScalar(selectorMap: SelectorMap, key: string): { [key2: string]: Scalar<any, any>} {
         const map = selectorMap as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
+        // eslint-disable-next-line prefer-const
         let [source, field] = key.split('.')
         let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
         if(!field){

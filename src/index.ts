@@ -1,19 +1,19 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from './types'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawExpression, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
 
-import { Expand, expandRecursively, ExpandRecursively, ExtractComputePropDictFromDict, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, FilterPropDictFromDict, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
 import {ExtractComputePropDictFromSchema} from './util'
-import { AndOperator, constructSqlKeywords, ExistsOperator, NotOperator, OrOperator, SQLKeywords } from './operators'
+import { constructSqlKeywords, SQLKeywords } from './sqlkeywords'
 
 
 export * from './model'
 export * from './builder'
-export * from './operators'
+export * from './sqlkeywords'
 export * from './schema'
 export * from './types'
 export * from './util'

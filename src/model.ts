@@ -4,7 +4,7 @@ import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFrom
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
-import { SQLKeywords } from "./operators"
+import { SQLKeywords } from "./sqlkeywords"
 // import util from 'util'
 // type FindSchema<F> = F extends SingleSourceArg<infer S>?S:boolean
 
