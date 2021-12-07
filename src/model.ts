@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, Selector, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, ValueSelector, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
@@ -26,20 +26,20 @@ export type ConstructDatasetBySelectiveArg<MT extends typeof Model, SSA > =
         Dataset<
         Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, SSA>>,
         UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
-        UnionToIntersection< { 'root': Selector< ExtractSchemaFromModelType<MT> > }>, 
+        UnionToIntersection< { 'root': ValueSelector< ExtractSchemaFromModelType<MT> > }>, 
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
 export type ModelArrayRecordFunctionArg<MT extends typeof Model> = 
-    {root: Selector<ExtractSchemaFromModelType<MT>>} 
-    & SQLKeywords< AddPrefix< ExtractPropDictFromModelType<MT>,'root'> , {root: Selector<ExtractSchemaFromModelType<MT>>}> 
+    {root: ValueSelector<ExtractSchemaFromModelType<MT>>} 
+    & SQLKeywords< AddPrefix< ExtractPropDictFromModelType<MT>,'root'> , {root: ValueSelector<ExtractSchemaFromModelType<MT>>}> 
 
 export type ModelArrayRecordByThroughFunctionArg<MT extends typeof Model, MT2 extends typeof Model> = 
-    {root: Selector<ExtractSchemaFromModelType<MT>>, through: Selector<ExtractSchemaFromModelType<MT2>>} 
+    {root: ValueSelector<ExtractSchemaFromModelType<MT>>, through: ValueSelector<ExtractSchemaFromModelType<MT2>>} 
     & SQLKeywords< UnionToIntersection< 
         AddPrefix< ExtractPropDictFromModelType<MT>,'root'> | 
         AddPrefix< ExtractPropDictFromModelType<MT2>,'through'>
-    > , {root: Selector<ExtractSchemaFromModelType<MT>>, through: Selector<ExtractSchemaFromModelType<MT2>>}> 
+    > , {root: ValueSelector<ExtractSchemaFromModelType<MT>>, through: ValueSelector<ExtractSchemaFromModelType<MT2>>}> 
 
 //Sadly circular dependencies encountered
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA 
@@ -304,7 +304,7 @@ export class ModelRepository<MT extends typeof Model>{
         return this.#model.datasource(name, options)
     }
 
-    get schema() {
+    schema() {
         return this.#model.schema()
     }
 

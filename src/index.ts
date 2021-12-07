@@ -39,20 +39,20 @@ export type SingleSourceArg<S extends Schema<any> > = {
     where?: SingleSourceWhere<S>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S> | ((map: {'root': Selector<S>} & SQLKeywords< 
+    orderBy?: QueryOrderBy<S> | ((map: {'root': ValueSelector<S>} & SQLKeywords< 
         UnionToIntersection< 
             AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'>
         >,
-        {'root': Selector<S>}
+        {'root': ValueSelector<S>}
     > ) => QueryOrderBy<S> )
 }
 
 export type SingleSourceWhere<S extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': Selector< S> }  >        
+        UnionToIntersection< { 'root': ValueSelector< S> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': Selector< S> }  >
+        UnionToIntersection< { 'root': ValueSelector< S> }  >
         >
 
 export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
@@ -65,23 +65,23 @@ export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
     where?: TwoSourceWhere<S, S2>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S> | ((map: {'root': Selector<S>, 'through': Selector<S2>} & SQLKeywords< 
+    orderBy?: QueryOrderBy<S> | ((map: {'root': ValueSelector<S>, 'through': ValueSelector<S2>} & SQLKeywords< 
             UnionToIntersection< 
                 AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'> | AddPrefix< ExtractPropDictFromSchema<S2> , 'through'>
             >, 
-            {'root': Selector<S>, 'through': Selector<S2>}
+            {'root': ValueSelector<S>, 'through': ValueSelector<S2>}
         > ) => QueryOrderBy<S> )
 }
 
 export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': Selector< S>, 'through': Selector<S2> }  >        
+        UnionToIntersection< { 'root': ValueSelector< S>, 'through': ValueSelector<S2> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': Selector< S>, 'through': Selector<S2> }  >         
+        UnionToIntersection< { 'root': ValueSelector< S>, 'through': ValueSelector<S2> }  >         
         >
 
-export type Selector<E extends Schema<any>> = {
+export type ValueSelector<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         ArgR:
@@ -157,10 +157,10 @@ type SelectiveArg = { select?: any, selectProps?: any }
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
         P extends ComputeProperty<ComputeFunction<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
-        P extends ComputeProperty<ComputeFunction<any, ((map: {root: Selector<infer S>, through: Selector<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((map: {root: ValueSelector<infer S>, through: ValueSelector<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
-        P extends ComputeProperty<ComputeFunction<any, ((map: {root: Selector<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeFunction<any, ((map: {root: ValueSelector<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
         ExtractValueTypeFromComputeProperty< P>

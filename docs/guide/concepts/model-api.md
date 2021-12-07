@@ -1,19 +1,68 @@
 # Model API
 
-It is used for carry out `create`, `update`, `delete` operations on a Model.
+- Model API (`ModelRepository` methods) is actually implemented by using Query Builder.
+- But it provides a simpler way to carry out `create`, `update` and `delete` operations on a Model.
 
-## createOne()
+## `.createOne()`
 
-## createEach()
+- Creates one record of Model
+Example:
 
-## update()
+```js
+const createdRecord = await context.ModelRepo1.createOne(data)
+```
 
-## delete()
+## `.createEach()`
 
-## deleteOne()
+- Creates many record of Model
+- The records are created one by one in multiple sql statements
 
-## find()
+Example:
 
-## findOne()
+```js
+const createdRecords = await context.ModelRepo1.createEach(arrayOfData)
+```
 
-## findOneOrNull()
+## `.update()`
+
+
+
+## `delete()`
+
+## `deleteOne()`
+
+## `find()`
+
+## `findOne()`
+
+## `findOneOrNull()`
+
+
+## `findOptions`
+
+
+### `select`
+
+### `selectProps`
+
+### `where`
+
+- Model API is implemented by using Query Builder.
+- The `where` option is passed to the Builder. For more options, please see [where](./query-builder/where)
+- But the target Model (table) is assigned a table alias with 'root'. About table alias, please see [Datasource](./schema/datasource).
+
+Example: 
+```js
+const records = await context.ModelRepo1.find({
+    where: ({root}) => root.id.equals(1)
+})
+```
+
+It equals to `dataset`
+```js
+const records = await context.dataset()
+    .from(ModelRepo1.datasource('root'))
+    .where({ 
+        'root.id': 1
+    }).execute()
+```

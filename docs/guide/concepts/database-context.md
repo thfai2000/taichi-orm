@@ -54,11 +54,11 @@ const rawRecords = context.executeStatement('SELECT 1 FROM table1')
 
 ### Start Transaction
 
-It runs the callback function after the transaction started and return a `Promise` of the result.
+- It runs the callback function after the transaction started and return a `Promise` of the result.
 
-`trx` is the Knex Transaction instance that is used by Model API calls or Query Builder.
+- `trx` is the Knex Transaction instance that is used by Model API calls or Query Builder.
 
-`ModelRepository` can run query with Transaction instance by using `usingConnection()`.
+- Model API or Query Builders can run query with Transaction instance by using `usingConnection()`.
 
 ```js{1,8}
 await context.startTransaction( (trx) => {
@@ -71,7 +71,7 @@ await context.startTransaction( (trx) => {
 })
 ```
 
-### Query Builders
+### Create Query Builders
 
 Context provides various kind of query builders for data query, insertion, updates and deletion. 
 

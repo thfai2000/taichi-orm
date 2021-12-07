@@ -50,7 +50,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     console.log('sql1', builder.toString() )
 
 
-    const shop1 = await insert(Shop.schema).values([{
+    const shop1 = await insert(Shop.schema()).values([{
         name: 'shop',
         hour: 5
     }]).execute().getAffectedOne()
@@ -59,7 +59,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     
     for (let i = 0; i < 5; i++) {    
         
-        const product = await insert(Product.schema).values([{
+        const product = await insert(Product.schema()).values([{
             ddd: 5,
             name: 'hello',
             availableStart: new Date(),
@@ -74,7 +74,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         console.log('product', product)
     }
 
-    const anotherProducts = await insert(Product.schema).values([{
+    const anotherProducts = await insert(Product.schema()).values([{
         ddd: 5,
         name: 'hello',
         availableStart: new Date(),
@@ -157,7 +157,7 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
         })
         // .select( ({myShop}) => myShop.$allFields)
         .select('name','myShop.id','myShop.products')
-        // .toScalar(new ArrayType(Shop.schema))
+        // .toScalar(new ArrayType(Shop.schema()))
         .execute().withOptions({
             onSqlRun: console.log
         })
