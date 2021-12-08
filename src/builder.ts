@@ -1823,7 +1823,9 @@ export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, a
     }
 }
 
-export function resolveValueIntoScalar(value: any): any{
+export function resolveValueIntoScalar(
+        value: null | boolean | string | number | Date | ConditionOperator<any, any> | Dataset<any, any, any, any> | Scalar<any, any>
+    ): Scalar<any, any> {
     if( value === null){
         return new Scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
     } else if (typeof value === 'boolean') {
@@ -1857,7 +1859,12 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
         } else {
             value = expression
         }
-        value = resolveValueIntoScalar(value)
+        if(value === null ||  typeof value === 'boolean' || typeof value === 'string'
+            || typeof value === 'number' || value instanceof Date || value instanceof ConditionOperator
+            || value instanceof Dataset
+        ){
+            value = resolveValueIntoScalar(value)
+        }
         if(value instanceof Scalar){
             return value
         } else if(Array.isArray(value)){

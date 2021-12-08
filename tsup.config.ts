@@ -6,5 +6,6 @@ export default defineConfig({
     "splitting": false,
     "sourcemap": true,
     "clean": true,
-    "tsconfig": "./tsconfig.json"
+    "tsconfig": "./tsconfig.json",
+    "target": "es2020"
 })

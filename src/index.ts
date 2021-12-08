@@ -206,7 +206,7 @@ export type ConstructScalarPropDictBySelectiveArg<S extends Schema<any>, SSA > =
         } : {}
     )
 
-    
+
 export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
     // sql client connection
     knexConfig: Omit<Knex.Config, "client" | "connection"> & {
@@ -466,7 +466,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         return r
     }
 
-    get $(): SQLKeywords< AddPrefix<Record<string, never>, string>, any> {
+    get $(): SQLKeywords< any, any> {
         const o = {}
         const f = makeExpressionResolver< AddPrefix< Record<string, never>, string>, any>(o)
         return Object.assign(o, constructSqlKeywords(f))

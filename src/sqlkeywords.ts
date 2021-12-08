@@ -1,8 +1,8 @@
 import {Scalar, ExpressionResolver, Expression, Dataset, resolveValueIntoScalar} from './builder'
 import {Knex} from 'knex'
-import { BooleanNotNullType } from './types'
+import { BooleanNotNullType, PropertyType } from './types'
 import { thenResult, thenResultArray } from './util'
-import { DatabaseContext } from '.'
+import { DatabaseContext, DateNotNullType, DateTimeNotNullType } from '.'
 
 // abstract class SQLFunction<Props, SourcePropMap> {
 //     resolver: ExpressionResolver<Props, SourcePropMap>
@@ -276,8 +276,13 @@ export type SQLKeywords<Props, PropMap> = {
     Not: (condition: Expression<Props, PropMap>) => Scalar<BooleanNotNullType, any>,
     Exists: (dataset: Dataset<any, any, any>) => Scalar<BooleanNotNullType, any>,
     Like: (right: Scalar<any, any> | string) => AssertionOperatorWrapper,
-    NotLike: (right: Scalar<any, any> | string) => AssertionOperatorWrapper
+    NotLike: (right: Scalar<any, any> | string) => AssertionOperatorWrapper,
+    Now: () => Scalar<DateTimeNotNullType, any>,
+    Case: (target: Expression<Props, PropMap>, whenThens: WhenCase<Props, PropMap>[], elseValue: Expression<Props, PropMap>) => Scalar<any, any>,
+    If: (matchingCondition: Expression<Props, PropMap>, thenValue: Expression<Props, PropMap>, elseValue: Expression<Props, PropMap> ) => Scalar<any, any>
 }
+
+export type WhenCase<X, Y> = {when: Expression<X, Y>, then: Expression<X, Y>}
 
 export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
     const sqlkeywords: SQLKeywords<X, Y> = {
@@ -286,7 +291,37 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
         Not: (condition: Expression<X, Y>) => new NotOperator(resolver, condition).toScalar(),
         Exists: (dataset: Dataset<any, any, any>) => new ExistsOperator(resolver, dataset).toScalar(),
         Like: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new LikeOperator(left, resolveValueIntoScalar(right) ) ) ),
-        NotLike: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) )
+        NotLike: (right: Scalar<any, any> | string) => new AssertionOperatorWrapper( ( (left) => new NotLikeOperator(left, resolveValueIntoScalar(right) ) ) ),
+        Now: () => new Scalar( (context) => {
+            
+            const client = context.client()
+            if( client.startsWith('sqlite') ){
+                return {sql: `strftime('%s','now')`}
+            } else {
+                return {sql: 'NOW()'} 
+            }
+        }, DateTimeNotNullType),
+        Case: (target: Expression<X, Y>, whenThens: WhenCase<X, Y>[], elseValue: Expression<X, Y>) => new Scalar( ()=> {
+
+            if(whenThens.length === 0){
+                throw new Error('There must be at least one When case')
+            }
+
+            return {
+                sql: ` CASE ?? ${whenThens.map(w => ` WHEN ?? THEN ?? `)} ELSE ?? END `,
+                args: [ resolver(target), ...whenThens.flatMap(w => [resolver(w.when), resolver(w.then)]), resolver(elseValue) ]
+            }
+        }),
+        If: ( onCondition: Expression<X, Y>, thenValue: Expression<X, Y>, elseValue: Expression<X, Y> ) => new Scalar( (context)=> {
+
+            return context.$.Case(onCondition, 
+                [
+                    {when: true, then: thenValue}
+                ],
+                elseValue
+                )
+            
+        })
     }
     return sqlkeywords
 }
