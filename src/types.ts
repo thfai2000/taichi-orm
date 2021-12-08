@@ -180,6 +180,12 @@ export class NumberType extends FieldPropertyType<number | null> {
     get nullable() {
         return true
     }
+
+    override parseRaw(rawValue: any): number | null{
+        if(rawValue === null)
+            return null
+        return parseInt(rawValue)
+    }
         
     // parseRaw(rawValue: any, prop: string, client: string): number | null {
     //     if(rawValue === null)
@@ -229,12 +235,13 @@ export class NumberNotNullType extends FieldPropertyType<number> {
     //     }
     //     throw new Error('Cannot parse Raw into Boolean')
     // }
-    // parseProperty(propertyvalue: number, propName: string, client: string) {
-    //     if(propertyvalue === null && !this.options){
-    //         throw new Error(`The Property '${propName}' cannot be null.`)
-    //     }
-    //     return propertyvalue
-    // }
+
+    override parseRaw(rawValue: any): number {
+        if(rawValue === null)
+            throw new Error('Cannot null')
+        return parseInt(rawValue)
+    }
+
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         return [
@@ -262,8 +269,8 @@ export class DecimalType extends FieldPropertyType<number | null>  {
         return true
     }
 
-    parseRaw(rawValue: any): number | null{
-            return rawValue === null? null: parseFloat(rawValue)
+    override parseRaw(rawValue: any): number | null{
+        return rawValue === null? null: parseFloat(rawValue)
     }
 
     // parseProperty(propertyvalue: number | null, propName: string): any {
@@ -301,7 +308,7 @@ export class DecimalNotNullType extends FieldPropertyType<number>  {
         return false
     }
 
-    parseRaw(rawValue: any): number {
+    override parseRaw(rawValue: any): number {
 
         if(rawValue === null){
             throw new Error('value should not be null')

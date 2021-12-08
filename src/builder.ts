@@ -1210,7 +1210,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                         const nativeSql = await statement.toNativeBuilder(this.context)
                         const result = await this.context.executeStatement(nativeSql, {}, executionOptions)
                         if (this.context.client().startsWith('pg')) {
-                            const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
+                            const updatedIds: number[] = result.rows.map( (row: {id: number}) => row.id )
                             return updatedIds
                         }
                         return null
@@ -1228,13 +1228,18 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                         await statement.execute().withOptions(executionOptions)
 
                         if(this.latestQueryAffectedFunctionArg){
-                            const queryDataset = this.context.dataset()
-                            .from( schema.datasource('root') )
-                            .where( ({root}) => root.id.in(...updatedIds) )
-                            .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
 
-                            const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
-                            this.affectedResult = await finalDataset.execute().withOptions(executionOptions) as any[]
+                            if(updatedIds.length === 0){
+                                this.affectedResult = []
+                            } else {
+                                const queryDataset = this.context.dataset()
+                                .from( schema.datasource('root') )
+                                .where( ({root}) => root.id.in(...updatedIds) )
+                                .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
+    
+                                const finalDataset = await this.latestQueryAffectedFunctionArg(queryDataset)
+                                this.affectedResult = await finalDataset.execute().withOptions(executionOptions) as any[]
+                            }
                         }
 
                         return updatedIds
