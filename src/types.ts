@@ -262,9 +262,9 @@ export class DecimalType extends FieldPropertyType<number | null>  {
         return true
     }
 
-    // parseRaw(rawValue: any): number | null{
-    //         return rawValue === null? null: parseFloat(rawValue)
-    // }
+    parseRaw(rawValue: any): number | null{
+            return rawValue === null? null: parseFloat(rawValue)
+    }
 
     // parseProperty(propertyvalue: number | null, propName: string): any {
     //     if(propertyvalue === null && !this.nullable){
@@ -301,6 +301,15 @@ export class DecimalNotNullType extends FieldPropertyType<number>  {
         return false
     }
 
+    parseRaw(rawValue: any): number {
+
+        if(rawValue === null){
+            throw new Error('value should not be null')
+        }
+        
+        return parseFloat(rawValue)
+    }
+    
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
         const c = [this.options.precision, this.options.scale].filter(v => v).join(',')
@@ -329,7 +338,7 @@ export class BooleanType extends FieldPropertyType<boolean | null>  {
         return true
     }
 
-    override parseRaw(rawValue: any, context: DatabaseContext<any>,propName: string): boolean | null {
+    override parseRaw(rawValue: any, context: DatabaseContext<any>, propName: string): boolean | null {
         //TODO: warning if nullable is false but value is null
         if(rawValue === null)
             return null
@@ -346,7 +355,11 @@ export class BooleanType extends FieldPropertyType<boolean | null>  {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
-        return propertyvalue === null? null: (propertyvalue? '1': '0')
+        if(context.client().startsWith('pg')){
+            return propertyvalue === null? null: !!propertyvalue
+        } else {
+            return propertyvalue === null? null: (propertyvalue? '1': '0')
+        }
     }
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
@@ -354,7 +367,7 @@ export class BooleanType extends FieldPropertyType<boolean | null>  {
         return [
             [
                 `${quote(client, fieldName)}`,
-                ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
+                ( client.startsWith('pg')?'BOOLEAN':`TINYINT(1)`),
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'') 
             ].join(' ')
@@ -391,7 +404,11 @@ export class BooleanNotNullType extends FieldPropertyType<boolean>  {
         if(propertyvalue === null && !this.nullable){
             throw new Error(`The Property '${propName}' cannot be null.`)
         }
-        return propertyvalue === null? null: (propertyvalue? '1': '0')
+        if(context.client().startsWith('pg')){
+            return propertyvalue === null? null: !!propertyvalue
+        } else {
+            return propertyvalue === null? null: (propertyvalue? '1': '0')
+        }
     }
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
@@ -399,7 +416,7 @@ export class BooleanNotNullType extends FieldPropertyType<boolean>  {
         return [
             [
                 `${quote(client, fieldName)}`,
-                ( client.startsWith('pg')?'SMALLINT':`TINYINT(1)`),
+                ( client.startsWith('pg')?'BOOLEAN':`TINYINT(1)`),
                 nullableText(this.nullable), 
                 (this.options?.default !== undefined?`DEFAULT ${this.options?.default}`:'')
             ].join(' ')

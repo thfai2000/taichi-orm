@@ -68,9 +68,11 @@ describe('Basic Read and Write', () => {
       id: 1,
       location: 'Shatin'
     }
+
     let shop1 = await Shop.createOne({
       ...omit(expectedShop1, ['id'])
     })
+
     expect(shop1).toMatchObject(expect.objectContaining(expectedShop1))
 
     let expectedShop2 = {

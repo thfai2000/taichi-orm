@@ -805,8 +805,8 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
         return nativeQB
     }
 
-    execute<S extends Schema<any>>(this: Dataset<S, any, any, any>, ctx?: DatabaseContext<any>): 
-        DBQueryRunner<ExtractValueTypeDictFromSchema<S>[], false>
+    execute<S extends Schema<any>, D extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource> >(this: D, ctx?: DatabaseContext<any>): 
+        DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>
     {
         const context = ctx ?? this.context
 
@@ -815,9 +815,10 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
         }
         const current = this
 
-        return new DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>(
+        return new DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>(
+                current,
                 context,
-                async function(this: DBQueryRunner< ExtractValueTypeDictFromSchema<S>[], false>, executionOptions: ExecutionOptions){
+                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>, executionOptions: ExecutionOptions){
 
                     const nativeSql = await current.toNativeBuilder(this.context)
 
@@ -830,7 +831,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
                     } else if(this.context.client().startsWith('sqlite')){
                         rows = data
                     } else if(this.context.client().startsWith('pg')){
-                        rows = data.rows[0]
+                        rows = data.rows
                     } else {
                         throw new Error('Unsupport client.')
                     }
@@ -931,23 +932,8 @@ export class InsertStatement<T extends TableSchema<{
 
         const targetSchema = this.#insertIntoSchema
         const schemaPrimaryKeyFieldName = targetSchema.id.fieldName(context.orm)
-        const schemaPrimaryKeyPropName = targetSchema.id.name
-        // const schemaUUIDPropName = targetSchema.uuid?.name
-        // const schemaUUIDFieldName = targetSchema.uuid?.fieldName(context.orm)
+        // const schemaPrimaryKeyPropName = targetSchema.id.name
 
-        // let useUuid: boolean = !!context.orm.ormConfig.enableUuid
-        // if (context.client().startsWith('sqlite')) {
-        //     if (!context.orm.ormConfig.enableUuid ){
-        //         throw new Error('Entity creation in sqlite environment requires \'enableUuid = true\'')
-        //     }
-        // }
-        // let additionalFields = {}
-        // if(useUuid){
-        //     if(!schemaUUIDPropName) {
-        //         throw new Error('No UUID')
-        //     }
-        //     additionalFields = {[schemaUUIDPropName]: Scalar.value(`:uuid`, [], new StringNotNullType() )}
-        // }
         const filteredInsertItems = atRowIdx === null? this.#insertItems : [this.#insertItems[atRowIdx]]
 
         const insertItems = await Promise.all(filteredInsertItems.map( async(insertItem) => await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, insertItem), context)))
@@ -999,7 +985,7 @@ export class InsertStatement<T extends TableSchema<{
                         // let afterMutationHooks = schema.hooks.filter()
 
                         if (!this.latestQueryAffectedFunctionArg || this.context.client().startsWith('pg')) {
-                            const queryBuilder = statement.toNativeBuilder(this.context)
+                            const queryBuilder = await statement.toNativeBuilder(this.context)
                             const insertStmt = queryBuilder.toString()
                             // let insertedId: number
                             const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
@@ -1724,8 +1710,8 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return this
     // }
 
-    execute(this: Scalar<T, Value>, context?: DatabaseContext<any>)
-    : DBQueryRunner<T extends PropertyType<infer D>? D: any, false> 
+    execute<S extends Scalar<T, Value>>(this: S, context?: DatabaseContext<any>)
+    : DBQueryRunner<S, T extends PropertyType<infer D>? D: any> 
         {
         const ctx = context ?? this.context
 
@@ -1734,9 +1720,10 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         }
         const currentScalar = this
 
-        return new DBQueryRunner<T extends PropertyType<infer D>? D: never, false>(
+        return new DBQueryRunner<S, T extends PropertyType<infer D>? D: never>(
+            currentScalar,
             ctx,
-            async function(this: DBQueryRunner<T extends PropertyType<infer D>? D: never, false>, executionOptions: ExecutionOptions) {
+            async function(this: DBQueryRunner<S, T extends PropertyType<infer D>? D: never>, executionOptions: ExecutionOptions) {
 
                 const result = await this.context.dataset().select({
                     root: currentScalar
@@ -1745,7 +1732,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                 return result[0].root as Promise<T extends PropertyType<infer D>? D: never>
             }
         )
-    } 
+    }
 }
 
 export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, any, any>> extends Scalar<T, DS> {
@@ -1875,6 +1862,7 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
             const scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
                 let source: Datasource<any, any> | null | undefined = null
+                // eslint-disable-next-line prefer-const
                 let [sourceName, propName] = key.split('.')
                 if(!propName){
                     // if(!fromSource){

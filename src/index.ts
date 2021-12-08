@@ -226,7 +226,7 @@ export type ORMConfig<ModelMap extends {[key:string]: typeof Model}> = {
 
     useNullAsDefault?: boolean
 }
-export class ORM<ModelMap extends {[key:string]: typeof Model}>{
+export class ORM<ModelMap extends Record<string, typeof Model>>{
 
     #globalKnexInstance: Knex | null = null
     #contextMap = new Map<string, DatabaseContext<ModelMap>>()
@@ -245,8 +245,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
     }
 
     #ormConfig: ORMConfig<ModelMap>
-    // @ts-ignore
-    #modelMap: ModelMap = {}
+    #modelMap: ModelMap = {} as ModelMap
 
     constructor(newConfig: Partial<ORMConfig<ModelMap>>){
         const newOrmConfig: ORMConfig<ModelMap> = Object.assign({}, this.defaultORMConfig, newConfig)
@@ -270,7 +269,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
         if(this.#ormConfig.models){
             const models = this.#ormConfig.models
             Object.keys(models).forEach(key => {
-                // @ts-ignore
+                //@ts-ignore
                 this.#modelMap[key] = models[key]
             })
         }
@@ -290,6 +289,7 @@ export class ORM<ModelMap extends {[key:string]: typeof Model}>{
 
                     const camelCase = camelize(entityName)
                     const finalName = camelCase.charAt(0).toUpperCase() + camelCase.slice(1)
+                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                     // @ts-ignore
                     this.#modelMap[finalName] = entityClass.default
                 }
@@ -547,7 +547,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     // private trx?: Knex.Transaction | null
     protected sqlRunCallback?: ((sql: string) => void) | null
 
-    constructor(context: DatabaseContext<any>, action: DBAction<I>, ){
+    constructor(context: DatabaseContext<any>, action: DBAction<I>){
         // this.beforeAction = beforeAction
         this.context = context
         this.execOptions = {}
@@ -614,21 +614,23 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     }
 } 
 
-export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
+export class DBQueryRunner<Source extends Dataset<any, any, any, any> | Scalar<any, any>, I> extends DBActionRunnerBase<I> {
 
     protected parent: DBQueryRunner<any, any> | null = null
-    protected isFullCount = false
-    protected fullCountResult: number | null = null
+    // protected isFullCount = false
+    // protected fullCountResult: number | null = null
+    protected source: Source
 
-    constructor(context: DatabaseContext<any>, action: DBAction<I>, 
+    constructor(source: Source, context: DatabaseContext<any>, action: DBAction<I>, 
         args?: {
             parent?: DBQueryRunner<any, any>
-            isFullCount?: boolean
+            // isFullCount?: boolean
         }
         ){
         super(context, action)
         this.parent = args?.parent ?? null
-        this.isFullCount = args?.isFullCount ?? false
+        this.source = source
+        // this.isFullCount = args?.isFullCount ?? false
     }
 
     get ancestor(): DBQueryRunner<any, any>{
@@ -647,9 +649,10 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     getOne(){
         type NewI = I extends Array<infer T>? T: never
         
-        const m = new DBQueryRunner<NewI, isFullCount>(
+        const m = new DBQueryRunner<Source, NewI>(
+            this.source,
             this.context,
-            async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+            async function(this: DBQueryRunner<Source, NewI>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
@@ -671,9 +674,10 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
     getOneOrNull(){
         type NewI = I extends Array<infer T>? T | null: never
         
-        const m = new DBQueryRunner<NewI, isFullCount>(
+        const m = new DBQueryRunner<Source, NewI>(
+            this.source,
             this.context,
-            async function(this: DBQueryRunner<NewI, isFullCount>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+            async function(this: DBQueryRunner<Source, NewI>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
@@ -692,27 +696,32 @@ export class DBQueryRunner<I, isFullCount> extends DBActionRunnerBase<I> {
         return m
     }
 
-    withFullCount(){
-        type NewI = {
-            result: I,
-            fullCount: isFullCount extends true? number: never,
-        }
-        const m = new DBQueryRunner<NewI, isFullCount>(
-            this.context,
-            async function(this: DBQueryRunner<NewI, isFullCount>,
-                executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) {
-                const result = await this.ancestor.action.call(this, executionOptions, options)
-                return {
-                    result,
-                    fullCount: this.fullCountResult
-                } as NewI
-            }, {
-                parent: this,
-                isFullCount: true
-            })
-
-        return m
+    getBuilder(){
+        return this.source
     }
+
+    // withFullCount(){
+    //     type NewI = {
+    //         result: I,
+    //         fullCount: isFullCount extends true? number: never,
+    //     }
+    //     const m = new DBQueryRunner<NewI, isFullCount>(
+    //         this.dataset,
+    //         this.context,
+    //         async function(this: DBQueryRunner<NewI, isFullCount>,
+    //             executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) {
+    //             const result = await this.ancestor.action.call(this, executionOptions, options)
+    //             return {
+    //                 result,
+    //                 fullCount: this.fullCountResult
+    //             } as NewI
+    //         }, {
+    //             parent: this,
+    //             isFullCount: true
+    //         })
+
+    //     return m
+    // }
 }
 
 // type AffectedOne<X> = X extends Array<infer T>? (T|null): never
