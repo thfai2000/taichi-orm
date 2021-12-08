@@ -991,7 +991,7 @@ export class InsertStatement<T extends TableSchema<{
                             const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
 
                             if( this.context.client().startsWith('pg')){
-                                return Object.keys(r.rows[0]).map(k => ({id: r.rows[0][k] as number }) )
+                                return r.rows.map( (r : {id: number}) => ({id: r.id}) )
                             } else {
                                 return null
                             }
