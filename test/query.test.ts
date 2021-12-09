@@ -19,14 +19,14 @@ import { Dataset, Scalar } from '../dist/'
 import { expand, ExpandRecursively, ExtractComputePropWithArgDictFromSchema, ExtractSchemaFromModelType } from '../dist/'
 
 let shopData = [
-  { id: 1, name: 'Shop 1', location: 'Shatin', tel: null},
-  { id: 2, name: 'Shop 2', location: 'Yuen Long', tel: '12345678'},
-  { id: 3, name: 'Shop 3', location: 'Tsuen Wan', tel: null},
-  { id: 4, name: 'Shop 4', location: 'Tsuen Wan', tel: '12345678'},
-  { id: 5, name: 'Shop 5', location: 'Tsuen Wan', tel: '12345678'},
-  { id: 6, name: 'Shop 6', location: 'Tai Po', tel: null},
-  { id: 7, name: 'Shop 7', location: 'Tsuen Wan', tel: '98765432'},
-  { id: 8, name: 'Shop 8', location: 'MongKok', tel: '91234567'},
+  { id: 1, name: 'Shop 1', location: 'Shatin', tel: null, fax: null},
+  { id: 2, name: 'Shop 2', location: 'Yuen Long', tel: '12345678', fax: '12345678'},
+  { id: 3, name: 'Shop 3', location: 'Tsuen Wan', tel: null, fax: null},
+  { id: 4, name: 'Shop 4', location: 'Tsuen Wan', tel: '12345678', fax: '12345678'},
+  { id: 5, name: 'Shop 5', location: 'Tsuen Wan', tel: '12345678', fax: null},
+  { id: 6, name: 'Shop 6', location: 'Tai Po', tel: null, fax: null},
+  { id: 7, name: 'Shop 7', location: 'Tsuen Wan', tel: '98765432', fax: '98765432'},
+  { id: 8, name: 'Shop 8', location: 'MongKok', tel: '91234567', fax: '91234567'},
 ]
 
 let productData = [
@@ -65,6 +65,7 @@ class Shop extends Model {
     name = this.field(new StringNotNullType({length: 255}))
     location = this.field(new StringNotNullType({length:255}))
     tel = this.field(StringType)
+    fax = this.field(StringType)
     products = Shop.hasMany(Product, 'shopId')
     productCount = Shop.compute( (parent): CFReturn<number> => {
       return parent.$.products().count()
@@ -444,7 +445,7 @@ describe('Where - Using Raw', () => {
       expected.map( s => expect.objectContaining(s))
     ))
   })
-  
+
 })
 
 describe('Where - Operators', () => {
@@ -560,6 +561,18 @@ describe('Where - Operators', () => {
     expect(records3).toEqual( expect.arrayContaining(
       expectedNotEquals.map( s => expect.objectContaining(s))
     ))
+
+    //test using field as value
+    let records4 = await Shop.find({
+      where: ({root}) => root.id.equals(root.id)
+    })
+
+    const expected4 = shopData.filter(s => s.id === s.id)
+    expect(records4).toHaveLength(expected4.length)
+    expect(records4).toEqual( expect.arrayContaining(
+      expected4.map( s => expect.objectContaining(s))
+    ))
+
   })
 
   test('Query by object filter - :null + isNull() + isNotNull()', async () => {
@@ -622,6 +635,7 @@ describe('Where - Operators', () => {
     await loadData(ctx)
     let {Shop, Product, Color, ProductColor} = ctx.repos
 
+    // like
     const likeStr = '2'
     let expectedShops = shopData.filter(s => s.name.includes(likeStr) )
     let records = await Shop.find({
@@ -632,7 +646,7 @@ describe('Where - Operators', () => {
     expect(records).toEqual( expect.arrayContaining(
       expectedShops.map( s => expect.objectContaining(s))
     ))
-    
+    // not like
     let expectedShops2 = shopData.filter(s => !s.name.includes(likeStr) )
     let records2 = await Shop.find({
       where: ({root}) => root.name.notLike(`%${likeStr}%`)

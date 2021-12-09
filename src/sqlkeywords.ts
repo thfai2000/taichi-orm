@@ -49,15 +49,15 @@ export abstract class LeftAndRightAssertionOperator extends AssertionOperator{
         this.leftOperand = leftOperand
     }
 
-    abstract leftAndRightToRaw(context: DatabaseContext<any>, left: Knex.Raw | any, ...rights: Knex.Raw[] | any[]): Knex.Raw
+    abstract leftAndRightToRaw(context: DatabaseContext<any>, left: Knex.Raw, ...rights: Knex.Raw[]): Knex.Raw
 
     toScalar(): Scalar<BooleanNotNullType, any>{
 
         return new Scalar((context: DatabaseContext<any>) => {
             
-            return thenResultArray(this.rightOperands.map(s => (s.toRaw && s.toRaw(context)) ?? s), rights => {
+            return thenResultArray(this.rightOperands.map(s => resolveValueIntoScalar(s).toRaw()), rights => {
 
-                return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
+                return thenResult( resolveValueIntoScalar(this.leftOperand).toRaw(), left => {
 
                     return this.leftAndRightToRaw(context, left, ...rights)
 
@@ -308,7 +308,7 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
             }
 
             return {
-                sql: ` CASE ?? ${whenThens.map(w => `WHEN ?? THEN ??`).join(' ')} ELSE ?? END `,
+                sql: ` CASE ? ${whenThens.map(w => `WHEN ? THEN ?`).join(' ')} ELSE ? END `,
                 args: [ resolver(target), ...whenThens.flatMap(w => [resolver(w.when), resolver(w.then)]), resolver(elseValue) ]
             }
         }),
