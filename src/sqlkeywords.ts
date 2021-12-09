@@ -308,7 +308,7 @@ export function constructSqlKeywords<X, Y>(resolver: ExpressionResolver<X, Y>) {
             }
 
             return {
-                sql: ` CASE ?? ${whenThens.map(w => ` WHEN ?? THEN ?? `)} ELSE ?? END `,
+                sql: ` CASE ?? ${whenThens.map(w => `WHEN ?? THEN ??`).join(' ')} ELSE ?? END `,
                 args: [ resolver(target), ...whenThens.flatMap(w => [resolver(w.when), resolver(w.then)]), resolver(elseValue) ]
             }
         }),

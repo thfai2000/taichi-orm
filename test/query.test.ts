@@ -26,6 +26,7 @@ let shopData = [
   { id: 5, name: 'Shop 5', location: 'Tsuen Wan', tel: '12345678'},
   { id: 6, name: 'Shop 6', location: 'Tai Po', tel: null},
   { id: 7, name: 'Shop 7', location: 'Tsuen Wan', tel: '98765432'},
+  { id: 8, name: 'Shop 8', location: 'MongKok', tel: '91234567'},
 ]
 
 let productData = [
@@ -443,8 +444,7 @@ describe('Where - Using Raw', () => {
       expected.map( s => expect.objectContaining(s))
     ))
   })
-
-
+  
 })
 
 describe('Where - Operators', () => {
@@ -641,6 +641,61 @@ describe('Where - Operators', () => {
     expect(records2).toHaveLength(expectedShops2.length)
     expect(records2).toEqual( expect.arrayContaining(
       expectedShops2.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - Case()', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.repos
+
+    let expectedShops = shopData.filter(s => {
+      let tel
+      switch(s.name){
+        case 'Shop 4': tel = '12345678'; break;
+        case 'Shop 7': tel = '98765432'; break;
+        default: tel = '91234567'
+      }
+      return s.tel === tel
+    })
+    let records = await Shop.find({
+      where: ({root, Case}) => ({
+        tel: Case(root.name, 
+        [
+          {when: 'Shop 4', then: '12345678'},
+          {when: 'Shop 7', then: '98765432'}
+        ], '91234567')
+      })
+    })
+
+    expect(records).toHaveLength(expectedShops.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
+    ))
+  })
+
+  test('Query by object filter - If', async () => {
+    let ctx = orm.getContext({tablePrefix: tablePrefix()})
+    await loadData(ctx)
+    let {Shop, Product, Color, ProductColor} = ctx.repos
+
+    let expectedShops = shopData.filter(s => {
+      let tel
+      switch(s.name){
+        case 'Shop 4': tel = '12345678'; break;
+        default: tel = '98765432'
+      }
+      return s.tel === tel
+    })
+    let records = await Shop.find({
+      where: ({root, If}) => ({
+        tel: If(root.name.equals('Shop 4'), '12345678', '98765432')
+      })
+    })
+
+    expect(records).toHaveLength(expectedShops.length)
+    expect(records).toEqual( expect.arrayContaining(
+      expectedShops.map( s => expect.objectContaining(s))
     ))
   })
   
