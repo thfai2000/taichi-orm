@@ -1003,10 +1003,10 @@ export class InsertStatement<T extends TableSchema<{
                                 //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
-                                    const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id'
+                                    const insertStmt = queryBuilder.toString()
                                     const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
-                                    // the result of second statement, and its first row
-                                    insertedId = r[0][1][0].id
+                                    // get ResultSetHeader.insertId
+                                    insertedId = r[0].insertId
                                     return {id: insertedId}
                                 }))
 
@@ -1022,7 +1022,7 @@ export class InsertStatement<T extends TableSchema<{
                                     acc.push({id: result[0].id})
                                     return acc
 
-                                }, Promise.resolve([]) as Promise<{id: number}[]>) 
+                                }, Promise.resolve([]) as Promise<{id: number}[]>)
                 
                             } else {
                                 throw new Error('Unsupport client')
