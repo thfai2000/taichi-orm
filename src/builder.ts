@@ -827,7 +827,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
                     // console.log('data', data)
                     let rows: any
                     if(this.context.client().startsWith('mysql')){
-                        rows = data[0][0]
+                        rows = data[0]
                     } else if(this.context.client().startsWith('sqlite')){
                         rows = data
                     } else if(this.context.client().startsWith('pg')){
@@ -1003,9 +1003,10 @@ export class InsertStatement<T extends TableSchema<{
                                 //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
-                                    const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id '
+                                    const insertStmt = queryBuilder.toString() + '; SELECT LAST_INSERT_ID() AS id'
                                     const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
-                                    insertedId = r[0][0].id
+                                    // the result of second statement, and its first row
+                                    insertedId = r[0][1][0].id
                                     return {id: insertedId}
                                 }))
 
@@ -1018,7 +1019,6 @@ export class InsertStatement<T extends TableSchema<{
                                     // let uuid = uuidv4()
                                     await this.context.executeStatement(insertStmt, {}, executionOptions)
                                     const result = await this.context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
-                                    // console.log('inserted id...', result)
                                     acc.push({id: result[0].id})
                                     return acc
 

@@ -459,7 +459,13 @@ export class StringType extends FieldPropertyType<string | null> {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        const c = [this.options.length].filter(v => v).join(',')
+        let length = this.options.length
+        if(client.startsWith('mysql')){
+            if(!length){
+                length = 255
+            }
+        }
+        const c = [length].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,
@@ -501,7 +507,13 @@ export class StringNotNullType extends FieldPropertyType<string> {
 
     create(propName: string, fieldName: string, context: DatabaseContext<any>){
         const client = context.client()
-        const c = [this.options.length].filter(v => v).join(',')
+        let length = this.options.length
+        if(client.startsWith('mysql')){
+            if(!length){
+                length = 255
+            }
+        }
+        const c = [length].filter(v => v).join(',')
         return [
             [
                 `${quote(client, fieldName)}`,

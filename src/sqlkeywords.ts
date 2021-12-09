@@ -54,7 +54,7 @@ export abstract class LeftAndRightAssertionOperator extends AssertionOperator{
     toScalar(): Scalar<BooleanNotNullType, any>{
 
         return new Scalar((context: DatabaseContext<any>) => {
-
+            
             return thenResultArray(this.rightOperands.map(s => (s.toRaw && s.toRaw(context)) ?? s), rights => {
 
                 return thenResult( (this.leftOperand.toRaw && this.leftOperand.toRaw(context)) ?? this.leftOperand, left => {
