@@ -1,7 +1,7 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from './types'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, makeExpressionResolver, ExpressionResolver} from './builder'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver} from './builder'
 
 import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
 import { Model, ModelRepository } from './model'
@@ -322,7 +322,7 @@ export class ORM<ModelMap extends Record<string, typeof Model>>{
             useNullAsDefault: true
         }, this.#ormConfig.knexConfig)
 
-        if(typeof newKnexConfig.connection !== 'object'){
+        if(newKnexConfig.connection !== undefined && typeof newKnexConfig.connection !== 'object'){
             throw new Error('Configuration connection only accept object.')
         }
 
@@ -468,8 +468,8 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     get $(): SQLKeywords< any, any> {
         const o = {}
-        const f = makeExpressionResolver< AddPrefix< Record<string, never>, string>, any>(o)
-        return Object.assign(o, constructSqlKeywords(f))
+        const f = new ExpressionResolver< AddPrefix< Record<string, never>, string>, any>(o)
+        return Object.assign(o, constructSqlKeywords(f, this))
     }
     
     update = () => {

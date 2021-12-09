@@ -199,14 +199,12 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
 
     protected async buildWhereClause(context: DatabaseContext<any>, nativeQB: Knex.QueryBuilder<any, unknown[]>) {
         const selectorMap = this.getSelectorMap()
-
-        const resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
-
-        Object.assign(selectorMap, constructSqlKeywords(resolver))
+        const resolver = new ExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+        Object.assign(selectorMap, constructSqlKeywords(resolver, this.context))
 
         await this.joinItems.reduce(async (acc, item) => {
             await acc
-            const finalExpr = await resolver(item.expression).toRaw(context)
+            const finalExpr = await resolver.resolve(item.expression).toRaw(context)
 
             if (item.type === 'inner') {
                 nativeQB.innerJoin(await item.source.toRaw(context), finalExpr)
@@ -219,7 +217,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
         }, Promise.resolve(true))
 
         if (this.whereRawItem) {
-            const where: Knex.Raw = await resolver(this.whereRawItem).toRaw(context)
+            const where: Knex.Raw = await resolver.resolve(this.whereRawItem).toRaw(context)
             nativeQB.where(where)
         }
     }
@@ -259,18 +257,18 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
     protected func2ScalarMap<S extends { [key: string]: Scalar<any, any>} , Y extends UnionToIntersection<SelectorMap | SQLKeywords< SourceProps, SelectorMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: { [key: string]: Scalar<any, any>} 
         const selectorMap = this.getSelectorMap()
-        const resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+        const resolver = new ExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
-            Object.assign(selectorMap, constructSqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver, this.context))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver, this.context)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
         }
 
         const result = Object.keys(nameMap).reduce((acc, key) => {
-            acc[key] = resolver(nameMap[key])
+            acc[key] = resolver.resolve(nameMap[key])
             return acc
         }, {} as { [key: string]: Scalar<any, any>} )
         return result
@@ -279,11 +277,11 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
     protected func2ScalarArray<S extends Scalar<any, any>[] , Y extends UnionToIntersection<SelectorMap | SQLKeywords< SourceProps, SelectorMap>>>(named: S | ((map: Y) => S)) {
         let nameMap: Scalar<any, any>[]
         const selectorMap = this.getSelectorMap()
-        const resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+        const resolver = new ExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
-            Object.assign(selectorMap, constructSqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver, this.context))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver, this.context)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
@@ -295,11 +293,11 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
     : {value: Scalar<any, any>, order: 'asc'|'desc'}[] {
         let nameMap: S
         const selectorMap = this.getSelectorMap()
-        const resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+        const resolver = new ExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
 
         if (named instanceof Function) {
-            Object.assign(selectorMap, constructSqlKeywords(resolver))
-            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+            Object.assign(selectorMap, constructSqlKeywords(resolver, this.context))
+            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver, this.context)) as Y
             nameMap = named(map)
         } else {
             nameMap = named
@@ -743,12 +741,17 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
     //     return Object.keys(this.#selectItems ?? {}).length > 0
     // }
 
+    async toSqlString(ctx?: DatabaseContext<any>): Promise<string>{
+        let b: Knex.QueryBuilder = await this.toNativeBuilder(ctx)
+        return b.toString()
+    }
+
     async toNativeBuilder(ctx?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
 
         const context = ctx ?? this.context
 
         if(!context){
-            throw new Error('There is no repository provided.')
+            throw new Error('There is no repository provided for dataset')
         }
 
         const nativeQB = context.orm.getKnexInstance().clearSelect()
@@ -890,18 +893,18 @@ export class InsertStatement<T extends TableSchema<{
         
         let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
         const selectorMap = {}
-        const resolver = makeExpressionResolver(selectorMap, undefined, [])
+        const resolver = new ExpressionResolver(selectorMap, undefined, [])
         
         if(arrayOfkeyValues instanceof Function){    
             Object.assign(selectorMap, this.sqlKeywords(resolver) )
-            const map = Object.assign({}, constructSqlKeywords<any, any>(resolver)) as Y
+            const map = Object.assign({}, constructSqlKeywords<any, any>(resolver, this.context)) as Y
             arrayOfNameMap = arrayOfkeyValues(map)
         } else {
             arrayOfNameMap = arrayOfkeyValues
         }
 
         this.#insertItems = arrayOfNameMap.map(nameMap => Object.keys(nameMap).reduce( (acc, key) => {
-            acc[key] = resolver(nameMap[key])
+            acc[key] = resolver.resolve(nameMap[key])
             return acc
         }, {} as { [key: string]: Scalar<any, any> } ))
 
@@ -1121,18 +1124,18 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         let nameMap: { [key: string]: any | Scalar<any, any> }
         const selectorMap = this.getSelectorMap()
         
-        const resolver = makeExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
+        const resolver = new ExpressionResolver(selectorMap, this.fromItem, this.joinItems.map(item => item.source))
         
-        if(keyValues instanceof Function){    
-            Object.assign(selectorMap, constructSqlKeywords(resolver) )
-            const map = Object.assign({}, this.getSelectorMap(), constructSqlKeywords<any, any>(resolver)) as Y
+        if(keyValues instanceof Function){
+            const keywords = constructSqlKeywords<any, any>(resolver, this.context)
+            const map = Object.assign({}, selectorMap, keywords) as Y
             nameMap = keyValues(map)
         } else {
             nameMap = keyValues
         }
 
         this.#updateItems = Object.keys(nameMap).reduce( (acc, key) => {
-            acc[key] = resolver(nameMap[key])
+            acc[key] = resolver.resolve(nameMap[key])
             return acc
         }, {} as { [key: string]: Scalar<any, any> } )
 
@@ -1463,11 +1466,11 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     }
 
     isNull(): Scalar<BooleanNotNullType, any> {
-        return new IsNullOperator(this).toScalar()
+        return new IsNullOperator(this.context, this).toScalar()
     }
 
     isNotNull(): Scalar<BooleanNotNullType, any> {
-        return new IsNotNullOperator(this).toScalar()
+        return new IsNotNullOperator(this.context, this).toScalar()
     }
 
     looseEquals(rightOperand: any | DScalar<any, any>): Scalar<BooleanNotNullType, any> {
@@ -1491,55 +1494,55 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     }
     
     equals(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new EqualOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new EqualOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     notEquals(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new NotEqualOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new NotEqualOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     like(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new LikeOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new LikeOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     notLike(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new NotLikeOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new NotLikeOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     in(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
         const rights = rightOperands.length === 1 && Array.isArray(rightOperands[0]) ? rightOperands[0]: rightOperands
 
-        return new InOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
+        return new InOperator(this.context, this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
     }
 
     notIn(...rightOperands: any[]): Scalar<BooleanNotNullType, any> {
         const rights = rightOperands.length === 1 && Array.isArray(rightOperands[0]) ? rightOperands[0]: rightOperands
 
-        return new NotInOperator(this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
+        return new NotInOperator(this.context, this, ...(rights.map(r => resolveValueIntoScalar(r))) ).toScalar()
     }
 
     greaterThan(rightOperand: any): Scalar<BooleanNotNullType, any>{
-        return new GreaterThanOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new GreaterThanOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     lessThan(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new LessThanOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new LessThanOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     greaterThanOrEquals(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new GreaterThanOrEqualsOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new GreaterThanOrEqualsOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     lessThanOrEquals(rightOperand: any): Scalar<BooleanNotNullType, any> {
-        return new LessThanOrEqualsOperator(this, resolveValueIntoScalar(rightOperand) ).toScalar()
+        return new LessThanOrEqualsOperator(this.context, this, resolveValueIntoScalar(rightOperand) ).toScalar()
     }
 
     between(rightOperand1: any, rightOperand2: any): Scalar<BooleanNotNullType, any> {
-        return new BetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
+        return new BetweenOperator(this.context, this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 
     notBetween(rightOperand1: any, rightOperand2: any): Scalar<BooleanNotNullType, any> {
-        return new NotBetweenOperator(this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
+        return new NotBetweenOperator(this.context, this, resolveValueIntoScalar(rightOperand1), resolveValueIntoScalar(rightOperand2) ).toScalar()
     }
 
     // private toRealRaw() {
@@ -1614,7 +1617,8 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     }
 
     private calculateRaw(context?: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> {
-        
+
+    
         const ctx = (context ?? this.context)
         if(!ctx){
             throw new Error('There is no repository provided')
@@ -1840,14 +1844,14 @@ export function resolveValueIntoScalar(
     return value
 }
 
-export type ExpressionResolver<Props, M> = (expression: Expression<Props, M>) => Scalar<any, any>
+export class ExpressionResolver<Props, M>  {
 
-export const makeExpressionResolver = function<Props, M>(dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >, fromSource?: Datasource<any, any>, sources?: Datasource<any, any>[]) {
+    constructor(private dictionary: UnionToIntersection< M | SQLKeywords<Props, M> >, private fromSource?: Datasource<any, any>, private sources?: Datasource<any, any>[]){}
 
-    const resolver: ExpressionResolver<Props, M> = (expression: Expression<Props, M>): Scalar<any, any> => {
+    resolve(expression: Expression<Props, M>): Scalar<any, any> {
         let value
         if( expression instanceof Function) {
-            value = expression(dictionary)
+            value = expression(this.dictionary)
         } else {
             value = expression
         }
@@ -1860,9 +1864,9 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
         if(value instanceof Scalar){
             return value
         } else if(Array.isArray(value)){
-            const expr = new OrOperator<Props, M>(resolver, ...value)
-            return resolver( expr )
-        } else if( (fromSource) && value instanceof SimpleObjectClass){
+            const expr = new OrOperator<Props, M>(null, this, ...value)
+            return this.resolve( expr )
+        } else if( (this.fromSource) && value instanceof SimpleObjectClass){
             const dict = value as SimpleObject
             const scalars = Object.keys(dict).reduce( (scalars, key) => {
                 
@@ -1874,9 +1878,9 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                     //     throw new Error(`There must be a FROM before using in 'where'.`)
                     // }
                     propName = sourceName
-                    source = fromSource
+                    source = this.fromSource
                 } else{
-                    source = [fromSource, ...(sources?sources:[]) ].find(s => s && s.sourceAlias === sourceName)
+                    source = [this.fromSource, ...( this.sources? this.sources:[]) ].find(s => s && s.sourceAlias === sourceName)
                 }
                 if(!source){
                     // console.log('sources', sources, sourceName)
@@ -1889,15 +1893,15 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
                 }
                 
                 const operatorScalar = (leftOperatorEx: any, rightOperatorEx: any) => {
-                    const leftOperator = resolver(leftOperatorEx)
+                    const leftOperator = this.resolve(leftOperatorEx)
 
                     let finalScalar: Scalar<any, any>
                     if(rightOperatorEx instanceof AssertionOperatorWrapper) {
                         finalScalar = rightOperatorEx.toScalar(leftOperatorEx)
                     } else if(rightOperatorEx === null){
-                        finalScalar = new IsNullOperator(leftOperator).toScalar()
+                        finalScalar = new IsNullOperator(null, leftOperator).toScalar()
                     } else {
-                        finalScalar = new EqualOperator(leftOperator, resolver(rightOperatorEx)).toScalar()
+                        finalScalar = new EqualOperator(null, leftOperator, this.resolve(rightOperatorEx)).toScalar()
                     }
                     return finalScalar
                 }
@@ -1914,12 +1918,10 @@ export const makeExpressionResolver = function<Props, M>(dictionary: UnionToInte
     
             }, [] as Scalar<BooleanNotNullType, any>[] )
 
-            const arr = new AndOperator<Props, M>(resolver, ...scalars)
-            return resolver(arr)
+            const arr = new AndOperator<Props, M>(null, this, ...scalars)
+            return this.resolve(arr)
         } else {
             throw new Error('Unsupport value')
         }
     }
-
-    return resolver
 }

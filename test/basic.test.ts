@@ -1,8 +1,8 @@
-import {Model} from '../dist/'
-import {ORM} from '../dist'
 import {snakeCase, omit, random} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
-import { PrimaryKeyType, 
+import { 
+        Model, ORM,
+        PrimaryKeyType, 
         StringNotNullType, 
         StringType,
         BooleanType,
