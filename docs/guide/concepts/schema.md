@@ -57,7 +57,7 @@ A datasource instance provides an object `$` having values of `Scalar` or `Compi
 ::: tip
 `Scalar` is a single SQL value that can be a field name or SQL functions.
 
-Please see [Scalar](./query-builder#scalar) for more details.
+Please see [Scalar](./query-builder.md#scalar) for more details.
 :::
 
 Examples:

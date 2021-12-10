@@ -49,6 +49,7 @@ export default defineUserConfig<DefaultThemeOptions>({
           {
             text: 'Query Examples',
             children: [
+              '/guide/query-examples/filtering',
               '/guide/query-examples/operators'
             ]
           },
@@ -62,9 +63,6 @@ export default defineUserConfig<DefaultThemeOptions>({
           }
         ]
       },
-      
-      {text: 'Playground', link: '/playground'},
-      
       {
         text: 'Reference',
         link: '/reference/',
