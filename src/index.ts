@@ -27,8 +27,11 @@ export type SelectableProps<E> = {
 
 export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = {
     [key in keyof ExtractComputePropWithArgDictFromSchema<E>]:
+        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
+        Parameters<ArgR>[0]:
         ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
-                Arg: never
+        Arg: 
+        never
 }
 
 export type QueryOrderBy<S extends Schema<any>> = ( ((keyof ExtractPropDictFromSchema<S>) | Scalar<any, any> ) | {value: ((keyof ExtractPropDictFromSchema<S>)|Scalar<any, any>), order: 'asc' | 'desc'} )[]
@@ -145,7 +148,7 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
 }
 export type ExtractValueTypeFromComputeProperty<T extends Property> = 
     T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
-   
+
 
 // type ActualSelectiveArg = { select: {[key:string]: any}} | {selectProps: string[] }
 type SelectiveArg = { select?: any, selectProps?: any }
