@@ -346,19 +346,25 @@ export class ModelRepository<MT extends typeof Model>{
         return this.context.update().set(data).from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getAffectedOne()
     }
    
+
+    dataset() 
+    : ConstructDatasetBySelectiveArg<MT, {}>;
+
+    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(findOptions: F | ((map: ModelArrayRecordFunctionArg<MT>) => F) | undefined) 
+    : ConstructDatasetBySelectiveArg<MT, F>;
     /**
      * return a dataset with selected all field Property
      * 
      * @param applyFilter 
      * @returns dataset with selected all field Property
      */
-    dataset<F extends SingleSourceArg<ExtractSchemaFromModelType<MT>>>(args: F | ((map: ModelArrayRecordFunctionArg<MT>) => F) | undefined) {
+    dataset(...args: any[])
+    {
+        if(args.length !== 1){
+            throw new Error('Wrong argument')
+        }
 
-        // const errs: any[] = []
-        // if( !createDetailedValidator<F | ((map: ModelArrayRecordFunctionArg<MT>) => F) | undefined>()(args, errs) ){
-        //     console.log(errs)
-        //     throw new Error('Wrong format of ORMConfig.')
-        // }
+        const findOptions = args[0]
 
         const source = this.model.datasource('root')
         const dataset = this.context.dataset().from(source)
@@ -367,12 +373,12 @@ export class ModelRepository<MT extends typeof Model>{
 
         let resolvedArgs: SingleSourceArg<ExtractSchemaFromModelType<MT>> | undefined
 
-        if (args) {
-            if (args instanceof Function) {
+        if (findOptions) {
+            if (findOptions instanceof Function) {
                 
-                resolvedArgs = args({ root: source.$, ...this.context.$})
+                resolvedArgs = findOptions({ root: source.$, ...this.context.$})
             } else {
-                resolvedArgs = args
+                resolvedArgs = findOptions
             }
         }
         if (resolvedArgs?.where) {
@@ -408,7 +414,7 @@ export class ModelRepository<MT extends typeof Model>{
             dataset.limit(resolvedArgs.limit)
         }
         
-        return dataset as unknown as ConstructDatasetBySelectiveArg<MT, F>
+        return dataset as any
     }
 
     delete(args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){

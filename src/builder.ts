@@ -8,11 +8,11 @@ import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
 
-type ScalarDictToScalarPropertyDict<D> = {
+export type ScalarDictToScalarPropertyDict<D> = {
     [key in keyof D]: D[key] extends Scalar<any, any>? ScalarProperty<D[key]>: never
 }
 
-type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
+export type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
                 [key in keyof SourceProps
                     as 
                     (
@@ -230,7 +230,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
 
 }
 
-export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, SelectorMap =any, FromSource extends Datasource<any, any> = Datasource<any, any>> 
+export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, SelectorMap = {}, FromSource extends Datasource<any, any> = Datasource<any, any>> 
     extends WhereClauseBase<SourceProps, SelectorMap, FromSource>
     // implements Scalarable<ArrayType<ExistingSchema>, Dataset<ExistingSchema, SourceProps, SourcePropMap, FromSource> > 
     {
@@ -808,8 +808,8 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
         return nativeQB
     }
 
-    execute<S extends Schema<any>, D extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource> >(this: D, ctx?: DatabaseContext<any>): 
-        DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>
+    execute<D extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource> >(this: D, ctx?: DatabaseContext<any>): 
+        DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>
     {
         const context = ctx ?? this.context
 
@@ -818,10 +818,10 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
         }
         const current = this
 
-        return new DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>(
+        return new DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>(
                 current,
                 context,
-                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<S>[]>, executionOptions: ExecutionOptions){
+                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>, executionOptions: ExecutionOptions){
 
                     const nativeSql = await current.toNativeBuilder(this.context)
 
@@ -848,7 +848,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps =any, Selec
                     
                     await schema.prepareForParsing(this.context)
 
-                    const parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (S extends Schema<infer Dict>?Dict:never) >[]
+                    const parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (ExistingSchema extends Schema<infer Dict>?Dict:never) >[]
                     // console.log(schema)
                     for(let i=0; i <len;i++){
                         parsedRows[i] = schema.parseRaw(rows[i], this.context)
