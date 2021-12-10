@@ -1,13 +1,10 @@
-import { Dataset, Scalar } from "../../../dist/"
+import { AddPrefix, ConstructDatasetBySelectiveArg, ConstructScalarPropDictBySelectiveArg, Dataset, Datasource, DBQueryRunner, DerivedTableSchema, DScalar, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExtractValueTypeDictFromDataset, ExtractValueTypeDictFromPropertyDict, ModelArrayRecordFunctionArg, ObjectTypeDataset, ParsableObjectTrait, ParsablePropertyTypeDefinition, Scalar, Schema, SelectedPropsToScalarPropertyDict, ValueSelector } from "../../../dist/"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import { CompiledComputeFunction, ComputeFunction, ComputeFunctionDynamicReturn, ORM, Selector } from "../../../dist"
+import {  ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { NumberNotNullType, ObjectType } from "../../../dist/"
-import { ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType } from "../../../dist/"
-import { ComputeProperty, FieldProperty, ScalarProperty } from "../../../dist/"
-import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
 
 
 (async() => {
@@ -45,7 +42,6 @@ import { ModelArrayRecord, ModelArrayRecordFunctionArg } from "../../../dist/"
     const p = Product.datasource('product')
 
     const myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
-    
     const builder = await myShopDS.toNativeBuilder(orm.getContext())
     console.log('sql1', builder.toString() )
 

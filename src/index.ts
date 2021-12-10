@@ -468,7 +468,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     get $(): SQLKeywords< any, any> {
         const o = {}
-        const f = new ExpressionResolver< AddPrefix< Record<string, never>, string>, any>(o)
+        const f = new ExpressionResolver< AddPrefix< {}, string>, any>(o)
         return Object.assign(o, constructSqlKeywords(f, this))
     }
     

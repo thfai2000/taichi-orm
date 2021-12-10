@@ -237,7 +237,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
 
     // parsableType: ParsableTrait<any> | null = null
     // __type: 'Dataset' = 'Dataset'
-    protected datasetSchema: null | DerivedTableSchema<any> = null
+    protected datasetSchema: null | DerivedTableSchema<any, any> = null
 
     #selectItems: { [key: string]: Scalar<any, any> } | null = null
 
@@ -720,12 +720,12 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
         return this
     }
 
-    datasource<T extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>, Name extends string>(this: T, name: Name): DerivedDatasource<T, Name> {
+    datasource<Name extends string>(name: Name): DerivedDatasource< Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>, Name> {
         return this.schema().datasource(name)
     }
 
-    schema<T extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>>(this: T)
-    : DerivedTableSchema<T> {
+    schema()
+    : DerivedTableSchema<Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource>, ExtractPropDictFromSchema<ExistingSchema> > {
 
         if(!this.datasetSchema){
 
@@ -848,7 +848,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
                     
                     await schema.prepareForParsing(this.context)
 
-                    const parsedRows = new Array(len) as ExtractValueTypeDictFromPropertyDict< (ExistingSchema extends Schema<infer Dict>?Dict:never) >[]
+                    const parsedRows = new Array(len) //as ExtractValueTypeDictFromPropertyDict< (ExistingSchema extends Schema<infer Dict>?Dict:never) >[]
                     // console.log(schema)
                     for(let i=0; i <len;i++){
                         parsedRows[i] = schema.parseRaw(rows[i], this.context)
