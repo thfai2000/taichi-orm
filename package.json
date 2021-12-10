@@ -1,6 +1,6 @@
 {
   "name": "taichi-orm",
-  "version": "0.1.6-alpha",
+  "version": "0.1.8",
   "description": "Object Relation Mapper for SQL Database. Flexible and Strong",
   "keywords": [
     "data modeling",
@@ -36,8 +36,9 @@
     "test:pg": "jest --watch --setupFiles=./dist-test/setup-pg.js",
     "mysql": "docker-compose down && docker-compose up",
     "test-mysql-db": "docker-compose down && concurrently -i -r \"jest --watch\" \"docker-compose up\" ",
+    "browser": "cp dist/index.js docs/.vuepress/public/.",
     "docs:dev": "vuepress dev docs",
-    "docs:build": "vuepress build docs",
+    "docs:build": "npm run build && npm run browser && vuepress build docs",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
     "lint:fix": "eslint . --fix --ext .js,.jsx,.ts,.tsx"
   },

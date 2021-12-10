@@ -2,7 +2,7 @@
 
 - It represents a database table.
 - It used as a parent class for your data models. Your models should `extends` `Model` and be defined with `Properties`.
-- All `Models` have to be registered before using them. Please see [Register Models](./orm/register-models)
+- All `Models` have to be registered before using them. Please see [Register Models](./orm.md#register-models)
 
 ## Usage
 
@@ -26,7 +26,7 @@ class MyModel extends Model {
 ```
 
 ::: tip
-Please read the [FieldProperty](./property#fieldproperty) for more details
+Please read the [FieldProperty](./property.md#fieldproperty) for more details
 :::
 
 
@@ -46,7 +46,7 @@ class MyModel extends Model {
 ```
 
 ::: tip
-Please read the [FieldProperty](./property#computeproperty) for more details
+Please read the [FieldProperty](./property.md#computeproperty) for more details
 :::
 
 ### Define Relations

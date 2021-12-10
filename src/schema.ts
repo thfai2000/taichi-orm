@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, ValueSelector, ComputeFunctionDynamicReturn } from "."
+import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, ValueSelector, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
@@ -230,7 +230,7 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
 
 }
 
-export class DerivedTableSchema<D extends Dataset<any>> extends Schema<any> implements ParsableObjectTrait<any> {
+export class DerivedTableSchema<D extends Dataset<Schema<PropDict>>, PropDict extends {[key:string]: ScalarProperty<any>} > extends Schema<PropDict> {
 
     readonly dataset: D
 
@@ -241,9 +241,10 @@ export class DerivedTableSchema<D extends Dataset<any>> extends Schema<any> impl
             throw new Error('No selectItems for a schema')
         }
         const propertyMap =  Object.keys(selectItems).reduce((acc, key) => {
+            //@ts-ignore
             acc[key] = new ScalarProperty(selectItems[key])
             return acc
-        }, {} as {[key:string]: ScalarProperty<any>})
+        }, {} as PropDict)
         super(propertyMap)
         this.dataset = dataset
     }

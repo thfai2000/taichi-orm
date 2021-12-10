@@ -7,11 +7,11 @@ Some IDE (like VSCode) can show typescript hints if the type `ModelRepository` i
 
 - Shows `Property` Suggestion in data query
 
-<img src="../images/properties-suggestion.png" style="width:500px"/>
+<img :src="$withBase('/images/properties-suggestion.png')" style="width:500px"/>
 
 - Shows the type of records found by Model API
 
-<img src="../images/result-types.png" style="width:300px"/>
+<img :src="$withBase('/images/result-types.png')" style="width:300px"/>
 
 For the `ORMConfig`, if you use `models` to register your Models, the type of `ModelRepository` can be determined automatically.
 

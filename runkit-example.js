@@ -1,4 +1,5 @@
-require('sqlite3')
+require('mysql2')
+const { format } = require('sql-formatter')
 const { ORM, Model, PrimaryKeyType, StringType, StringNotNullType, DateType, NumberNotNullType } = require('taichi-orm')
 
 /*
@@ -60,66 +61,29 @@ class ProductModel extends Model{
           ProductColor: ProductColorModel
         },
         knexConfig: {
-            client: 'sqlite3',
-            connection: {
-                filename: ':memory:'
-            }
+            client: 'mysql2'
         }
     })
-    try{
+   
+    const { Shop, Product, Color, ProductColor } = orm.getContext().repos
 
-      // create tables
-      await orm.getContext().createModels()
-      const { Shop, Product, Color, ProductColor } = orm.getContext().repos
-
-      // prepare the database
-      const [createdShop1, createdShop2] = await Shop.createEach([{name: 'Shop1'}, {name: 'Shop2'}])
-      const [createdProduct1] = await Product.createEach([
-        {name: 'Product1', shopId: createdShop1.id},
-        {name: 'Product2', shopId: createdShop2.id},
-        {name: 'Product3', shopId: createdShop2.id}
-      ])
-      const [createdColor1, createdColor2] = await Color.createEach([{code: 'red'}, {code: 'blue'}])
-      await ProductColor.createEach([
-        {productId: createdProduct1.id, colorId: createdColor1.id, type: 'main'},
-        {productId: createdProduct1.id, colorId: createdColor2.id, type: 'minor'}
-      ])
-      
-      // computed fields are the relations
-      // you can do complicated query in one go
-      // Graph-like selecting Models "Shop > Product > Color"
-      let records = await Shop.find({
-        select: {
-          products: {
-            select: {
-              colors: {
-                limit: 2
-              },
-              colorsWithType: 'main'
-            }
+    // computed fields are the relations
+    // you can do complicated query in one go
+    // Graph-like selecting Models "Shop > Product > Color"
+    let records = await Shop.find({
+      select: {
+        products: {
+          select: {
+            colors: {
+              limit: 2
+            },
+            colorsWithType: 'main'
           }
         }
-      })
-  
-      console.log('Shop with related entities', records)
-  
-      // use computed fields for filtering
-      // for example: find all shops with Product Count is at least 2
-      let shopsWithAtLeast2Products = await Shop.find({
-        where: ({root}) => root.products().count().greaterThanOrEquals(2)
-      })
-  
-      console.log('Shops with at least 2 products', shopsWithAtLeast2Products)
-  
-      // Console.log the sql statements
-      await Shop.find({
-        selectProps: ['products']
-      }).onSqlRun(console.log)
-      
+      }
+    }).getBuilder().toSqlString()
 
-    }finally{
-      await orm.shutdown()
-    }
+  console.log('print the sql', format(records))
 
 
 })()

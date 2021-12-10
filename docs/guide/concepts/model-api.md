@@ -48,8 +48,8 @@ const createdRecords = await context.ModelRepo1.createEach(arrayOfData)
 ### `where`
 
 - Model API is implemented by using Query Builder.
-- The `where` option is passed to the Builder. For more options, please see [where](./query-builder/where)
-- But the target Model (table) is assigned a table alias with 'root'. About table alias, please see [Datasource](./schema/datasource).
+- The `where` option is passed to the Builder. For more options, please see [where](./query-builder.md#where)
+- But the target Model (table) is assigned a table alias with 'root'. About table alias, please see [Datasource](./schema.md#datasource).
 
 Example: 
 ```js
