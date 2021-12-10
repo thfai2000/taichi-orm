@@ -7,3 +7,4 @@ jest.config.js
 ts*.json
 .gitignore
 miscs
+docs
