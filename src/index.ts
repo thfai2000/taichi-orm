@@ -29,7 +29,7 @@ export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = 
     [key in keyof ExtractComputePropWithArgDictFromSchema<E>]:
         ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         Parameters<ArgR>[0]:
-        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>?
+        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>>?
         Arg: 
         never
 }
@@ -42,20 +42,20 @@ export type SingleSourceArg<S extends Schema<any> > = {
     where?: SingleSourceWhere<S>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S> | ((map: {'root': ValueSelector<S>} & SQLKeywords< 
+    orderBy?: QueryOrderBy<S> | ((map: {'root': PropertyValueGetters<S>} & SQLKeywords< 
         UnionToIntersection< 
             AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'>
         >,
-        {'root': ValueSelector<S>}
+        {'root': PropertyValueGetters<S>}
     > ) => QueryOrderBy<S> )
 }
 
 export type SingleSourceWhere<S extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': ValueSelector< S> }  >        
+        UnionToIntersection< { 'root': PropertyValueGetters< S> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': ValueSelector< S> }  >
+        UnionToIntersection< { 'root': PropertyValueGetters< S> }  >
         >
 
 export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
@@ -68,28 +68,28 @@ export type TwoSourceArg<S extends Schema<any>, S2 extends Schema<any> > = {
     where?: TwoSourceWhere<S, S2>
     limit?: number,
     offset?: number,
-    orderBy?: QueryOrderBy<S> | ((map: {'root': ValueSelector<S>, 'through': ValueSelector<S2>} & SQLKeywords< 
+    orderBy?: QueryOrderBy<S> | ((map: {'root': PropertyValueGetters<S>, 'through': PropertyValueGetters<S2>} & SQLKeywords< 
             UnionToIntersection< 
                 AddPrefix< ExtractPropDictFromSchema<S> , ''> | AddPrefix< ExtractPropDictFromSchema<S> , 'root'> | AddPrefix< ExtractPropDictFromSchema<S2> , 'through'>
             >, 
-            {'root': ValueSelector<S>, 'through': ValueSelector<S2>}
+            {'root': PropertyValueGetters<S>, 'through': PropertyValueGetters<S2>}
         > ) => QueryOrderBy<S> )
 }
 
 export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Expression< 
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': ValueSelector< S>, 'through': ValueSelector<S2> }  >        
+        UnionToIntersection< { 'root': PropertyValueGetters< S>, 'through': PropertyValueGetters<S2> }  >        
                 > | ExpressionFunc<
         UnionToIntersection< AddPrefix< ExtractPropDictFromSchema<S>, '', ''> >,
-        UnionToIntersection< { 'root': ValueSelector< S>, 'through': ValueSelector<S2> }  >         
+        UnionToIntersection< { 'root': PropertyValueGetters< S>, 'through': PropertyValueGetters<S2> }  >         
         >
 
-export type ValueSelector<E extends Schema<any>> = {
+export type PropertyValueGetters<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
         ArgR:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunction<any, infer Arg, infer S>>?
-        CompiledComputeFunction<Arg, S>: 
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, infer S>>?
+        ComputeValueGetter<Arg, S>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
         Scalar<D, any>:
         ExtractPropDictFromSchema<E>[key] extends ScalarProperty<infer S>?
@@ -110,10 +110,10 @@ export type ValueSelector<E extends Schema<any>> = {
 // }
 
 
-export type CompiledComputeFunctionDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
+export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
 
 
-export class ComputeFunction<DS extends Datasource<any, any>, ARG, 
+export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG, 
     S extends Scalar<PropertyType<any>, any>
 >{
     fn: (source: DS, arg?: ARG) => S
@@ -123,8 +123,8 @@ export class ComputeFunction<DS extends Datasource<any, any>, ARG,
 }
 
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
-    CCF extends CompiledComputeFunctionDynamicReturn
-> extends ComputeFunction<DS,
+    CCF extends ComputeValueGetterDynamicReturn
+> extends ComputeValueGetterDefinition<DS,
             Parameters<CCF>[0],
             ReturnType<CCF>
             >{
@@ -138,7 +138,7 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     }
 }
 
-export type CompiledComputeFunction<Arg, S extends Scalar<any,any>> = (args?: Arg) => S
+export type ComputeValueGetter<Arg, S extends Scalar<any,any>> = (args?: Arg) => S
 
 // export type PartialMutationEntityPropertyKeyValues<S extends Schema<any>> = Partial<ExtractEntityKeyValuesFromPropDict<ExtractFieldPropDictFromSchema<S>>>
 
@@ -147,11 +147,11 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive : never
 }
 export type ExtractValueTypeFromComputeProperty<T extends Property> = 
-    T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
+    T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
 
 
 // type ActualSelectiveArg = { select: {[key:string]: any}} | {selectProps: string[] }
-type SelectiveArg = { select?: any, selectProps?: any }
+// type SelectiveArg = { select?: any, selectProps?: any }
 // type SelectiveArgFunction = ((root: SelectorMap<any>) => SingleSourceArg<any> )
 
 
@@ -159,11 +159,11 @@ type SelectiveArg = { select?: any, selectProps?: any }
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
-        P extends ComputeProperty<ComputeFunction<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
-        P extends ComputeProperty<ComputeFunction<any, ((map: {root: ValueSelector<infer S>, through: ValueSelector<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>, through: PropertyValueGetters<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
-        P extends ComputeProperty<ComputeFunction<any, ((map: {root: ValueSelector<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
         ExtractValueTypeFromComputeProperty< P>
@@ -298,10 +298,6 @@ export class ORM<ModelMap extends Record<string, typeof Model>>{
                 }
             })
         }
-
-        // Object.keys(this.#registeredModels).forEach(k => {
-        //     this.#registeredModels[k].registerPostAction()
-        // })
     }
 
     getContext(config?: Partial<DatabaseContextConfig>): DatabaseContext<ModelMap> {

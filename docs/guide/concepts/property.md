@@ -60,10 +60,10 @@ await MyModelRepo.find({
 ## ComputeProperty
 
 - It represents a SQL value calculated by using other `FieldProperty` or SQL functions.
-- It can be created by method `Model.compute()` that accepts a `ComputeFunction`. 
-- `ComputeFunction` that defines how to create a `Scalar` (a single SQL value). Please see [PropertType](./property-type) for details.
+- It can be created by method `Model.compute()` that accepts a `ComputeValueGetterDefinition`. 
+- `ComputeValueGetterDefinition` that defines how to create a `Scalar` (a single SQL value). Please see [PropertType](./property-type) for details.
 
-### ComputeFunction
+### ComputeValueGetterDefinition
 
 - It is a function accepts two arguments 
 - returns a `Scalar` (a single SQL value)
@@ -76,7 +76,7 @@ await MyModelRepo.find({
 
 
 
-A simple `ComputeFunction` Example:
+A simple `ComputeValueGetterDefinition` Example:
 ```js
 (parent, args) => {
     // add 5 to the number value of prop1
@@ -84,10 +84,10 @@ A simple `ComputeFunction` Example:
 })
 ```
 
-### CompiledComputeFunction
+### CompiledComputeValueGetterDefinition
 
-- It is a function that wraps the `Datasource` and call the `ComputeFunction`. 
-- `Datasource.$` of a `Model` can access the `CompiledComputeFunction` of any `Property` of a `Model`
+- It is a function that wraps the `Datasource` and call the `ComputeValueGetterDefinition`. 
+- `Datasource.$` of a `Model` can access the `CompiledComputeValueGetterDefinition` of any `Property` of a `Model`
 - Returns a `Scalar` (a single SQL value)
 
 | Function Arguments | Descriptions | Optional |
@@ -98,7 +98,7 @@ A simple `ComputeFunction` Example:
 ### Usage
 
 #### Example 1:
-Access the `CompiledComputeFunction`
+Access the `CompiledComputeValueGetterDefinition`
 
 ```js{4-5,9}
 class MyModel extends Model {
@@ -117,7 +117,7 @@ console.log(await scalar.toRaw() )
 
 
 #### Example 2:
-Use the `CompiledComputeFunction` in data query.
+Use the `CompiledComputeValueGetterDefinition` in data query.
 
 ```js{11}
 class MyModel extends Model {

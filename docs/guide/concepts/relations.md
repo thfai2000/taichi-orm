@@ -2,7 +2,7 @@
 # Relations
 
 - `Models` can define `ComputeProperty` which related to other Models.
-- These Relation `ComputeProperty`'s `CompiledComputeFunction` accept `findOptions` as arguments, it allows filtering or ordering the records of the related Models by your `findOptions`.
+- These Relation `ComputeProperty`'s `CompiledComputeValueGetterDefinition` accept `findOptions` as arguments, it allows filtering or ordering the records of the related Models by your `findOptions`.
 - For `Model`, there are several function to create Relation `ComputeProperty`
 1. `.belongsTo()`
 2. `.hasMany()`

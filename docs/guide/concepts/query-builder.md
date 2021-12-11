@@ -1,6 +1,6 @@
 # Query Builder
 
-Taichi Query Builder doesn't like `Knex.QueryBuilder`. It is more high-level in usage because it use the defined `Schema` and `Property` to build Query. It means that the actual table names and actual field names are abstracted and taken care by ORM. Besides, the `ComputeFunction` can be used in building your Query.
+Taichi Query Builder doesn't like `Knex.QueryBuilder`. It is more high-level in usage because it use the defined `Schema` and `Property` to build Query. It means that the actual table names and actual field names are abstracted and taken care by ORM. Besides, the `ComputeValueGetterDefinition` can be used in building your Query.
 
 The `DatabaseContext` provides several kinds of `Query Builder` for querying, creating, updating and deleting data:
 - Scalar
@@ -53,7 +53,7 @@ const shop1 = await insert(Shop.schema()).values([{
 ## UpdateStatement
 
 
-The `where` is same as that of `Dataset`. You can use `ValueSelector` to build the Where Clause.
+The `where` is same as that of `Dataset`. You can use `PropertyValueGetters` to build the Where Clause.
 
 ```js{3}
 const shop1 = await update()

@@ -1,4 +1,4 @@
-import { ComputeFunction } from ".";
+import { ComputeValueGetterDefinition } from ".";
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
@@ -64,7 +64,7 @@ export type ConstructMutationFromValueTypeDict<D> = {
 export type ExtractValueTypeFromProperty<T> = 
     T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
         (
-            T extends ComputeProperty<ComputeFunction<any, any, Scalar<PropertyType<infer X>, any> >>? X: 
+            T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >>? X: 
                         (
                     T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
                     T
@@ -146,7 +146,7 @@ Pick<E, ({
 
 export type ExtractComputePropWithArgDictFromDict<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<ComputeFunction<any, infer Arg, any>>? 
+    [key in keyof E]: E[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>>? 
             (Arg extends NoArg? never: key)
                 : never
 })[keyof E]>

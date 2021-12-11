@@ -38,7 +38,7 @@ export default class Product extends Model {
 ```
 We define the schema with a `isActive` ComputeProperty which combines the values of other `FieldProperty`. It means a product is active when the current time are within these dates and the remainingStock are not zero.
 
-That `ComputeProperty` consists of `ComputeFunction` that defines how to make a SQL value (we called `Scalar`). The variable `parent` represents the Datasource of `Product` Model. The `FieldProperty` can be accessible through the `parent` variables.
+That `ComputeProperty` consists of `ComputeValueGetterDefinition` that defines how to make a SQL value (we called `Scalar`). The variable `parent` represents the Datasource of `Product` Model. The `FieldProperty` can be accessible through the `parent` variables.
 
 
 
@@ -55,8 +55,8 @@ The `where` part specifies the data filtering condition.
 You can use the `isActive` ComputeProperty simply just like a normal field in the `where` object.
 
 
-Besides, `ComputeFunction` can accept argument. 
-Below variable `spare` is the argument. The argument of `ComputeFunction` must be optional.
+Besides, `ComputeValueGetterDefinition` can accept argument. 
+Below variable `spare` is the argument. The argument of `ComputeValueGetterDefinition` must be optional.
 
 ```ts
 export default class Product extends Model {
@@ -69,11 +69,11 @@ export default class Product extends Model {
 }
 ```
 
-Then you can use the `ComputeFunction` with passing an argument:
+Then you can use the `ComputeValueGetterDefinition` with passing an argument:
 
 
 ```ts
-//use ComputeFunction argument
+//use ComputeValueGetterDefinition argument
 const products = await Product.find({
   where: ({root}) => root.hasEnoughStock(5) //at least 5 remainings
 })
@@ -89,7 +89,7 @@ const products = await Product.find({
 })
 ```
 ::: tip
-If you use it as object Key, the argument of that `ComputeFunction` will be given as undefined.
+If you use it as object Key, the argument of that `ComputeValueGetterDefinition` will be given as undefined.
 :::
 
 

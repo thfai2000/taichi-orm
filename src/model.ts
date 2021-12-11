@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeFunction, Hook, ValueSelector, ComputeFunctionDynamicReturn, CompiledComputeFunctionDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeFunctionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
@@ -26,20 +26,20 @@ export type ConstructDatasetBySelectiveArg<MT extends typeof Model, SSA > =
         Dataset<
         Schema<ConstructScalarPropDictBySelectiveArg<ExtractSchemaFromModelType<MT>, SSA>>,
         UnionToIntersection< AddPrefix< ExtractPropDictFromModelType<MT>, '', ''> | AddPrefix< ExtractPropDictFromModelType<MT>, 'root'> >,
-        UnionToIntersection< { 'root': ValueSelector< ExtractSchemaFromModelType<MT> > }>, 
+        UnionToIntersection< { 'root': PropertyValueGetters< ExtractSchemaFromModelType<MT> > }>, 
         Datasource<ExtractSchemaFromModelType<MT>, 'root'>
     >
 
 export type ModelArrayRecordFunctionArg<MT extends typeof Model> = 
-    {root: ValueSelector<ExtractSchemaFromModelType<MT>>} 
-    & SQLKeywords< AddPrefix< ExtractPropDictFromModelType<MT>,'root'> , {root: ValueSelector<ExtractSchemaFromModelType<MT>>}> 
+    {root: PropertyValueGetters<ExtractSchemaFromModelType<MT>>} 
+    & SQLKeywords< AddPrefix< ExtractPropDictFromModelType<MT>,'root'> , {root: PropertyValueGetters<ExtractSchemaFromModelType<MT>>}> 
 
 export type ModelArrayRecordByThroughFunctionArg<MT extends typeof Model, MT2 extends typeof Model> = 
-    {root: ValueSelector<ExtractSchemaFromModelType<MT>>, through: ValueSelector<ExtractSchemaFromModelType<MT2>>} 
+    {root: PropertyValueGetters<ExtractSchemaFromModelType<MT>>, through: PropertyValueGetters<ExtractSchemaFromModelType<MT2>>} 
     & SQLKeywords< UnionToIntersection< 
         AddPrefix< ExtractPropDictFromModelType<MT>,'root'> | 
         AddPrefix< ExtractPropDictFromModelType<MT2>,'through'>
-    > , {root: ValueSelector<ExtractSchemaFromModelType<MT>>, through: ValueSelector<ExtractSchemaFromModelType<MT2>>}> 
+    > , {root: PropertyValueGetters<ExtractSchemaFromModelType<MT>>, through: PropertyValueGetters<ExtractSchemaFromModelType<MT2>>}> 
 
 //Sadly circular dependencies encountered
 export type ModelArrayRecord<MT extends typeof Model> = <SSA extends SingleSourceArg< ExtractSchemaFromModelType<MT>>>(arg?: SSA 
@@ -96,11 +96,11 @@ export abstract class Model {
             compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
         )
             : ComputeProperty<
-                ComputeFunction<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>
+                ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>
             >;
 
     static compute<M extends typeof Model,
-            CCF extends CompiledComputeFunctionDynamicReturn
+            CCF extends ComputeValueGetterDynamicReturn
         >(
             this: M,
             compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF>
@@ -111,7 +111,7 @@ export abstract class Model {
 
     static compute(...args: any[])
     {
-        return new ComputeProperty(new ComputeFunction(args[0]))
+        return new ComputeProperty(new ComputeValueGetterDefinition(args[0]))
     }
 
     static computeModelObject<M extends typeof Model,
@@ -125,7 +125,7 @@ export abstract class Model {
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >
             >
     {
-        return new ComputeProperty(new ComputeFunction(compute)) as any
+        return new ComputeProperty(new ComputeValueGetterDefinition(compute)) as any
     }
 
     hook(newHook: Hook){

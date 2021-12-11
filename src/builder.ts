@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { ValueSelector, CompiledComputeFunction, DatabaseContext, ComputeFunction, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
+import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
@@ -30,7 +30,7 @@ export type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
                             (C extends FieldProperty<infer D>?
                                 ScalarProperty<Scalar<D, any>>:
                                 (
-                                    C extends ComputeProperty<ComputeFunction<any, any, infer S>>? 
+                                    C extends ComputeProperty<ComputeValueGetterDefinition<any, any, infer S>>? 
                                     ScalarProperty<S>:
                                     (
                                         C extends ScalarProperty<any>? 
@@ -132,7 +132,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
             const t = source.sourceAlias
             acc[t] = source.$
             return acc
-        }, {} as {[key:string]: ValueSelector<any> } )
+        }, {} as {[key:string]: PropertyValueGetters<any> } )
 
         return selectorMap as any
     }
@@ -152,7 +152,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
     protected baseFrom<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         WhereClauseBase<
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: ValueSelector< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: PropertyValueGetters< S> }>, Datasource<S, SName>
         > {
             this.fromItem = source
             return this as any
@@ -160,7 +160,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
 
     protected baseInnerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -173,7 +173,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
      
     protected baseLeftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -186,7 +186,7 @@ abstract class WhereClauseBase<SourceProps ={}, SelectorMap = {}, FromSource ext
 
     protected baseRightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): WhereClauseBase<X,Y, FromSource>{
         this.joinItems.push( {
@@ -347,7 +347,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
         const map = selectorMap as unknown as {[key1: string]: { [key2: string]: Scalar<any, any>}}
         // eslint-disable-next-line prefer-const
         let [source, field] = key.split('.')
-        let item: Scalar<any, any> | CompiledComputeFunction<any, any> | null = null
+        let item: Scalar<any, any> | ComputeValueGetter<any, any> | null = null
         if(!field){
             field = source
             if(!this.fromItem){
@@ -522,14 +522,14 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
     from<S extends Schema<any>, SName extends string>(source: Datasource<S, SName>):
         Dataset< Schema<{}>, 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: ValueSelector< S> }>, Datasource<S, SName>
+            UnionToIntersection< { [key in SName ]: PropertyValueGetters< S> }>, Datasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema<S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         
@@ -538,7 +538,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -546,7 +546,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): Dataset<ExistingSchema,X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1083,7 +1083,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: ValueSelector< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: PropertyValueGetters< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1094,7 +1094,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -1103,7 +1103,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -1111,7 +1111,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any
@@ -1270,7 +1270,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
     from<S extends TableSchema<any>, SName extends string>(source: TableDatasource<S, SName>):
         UpdateStatement< 
             UnionToIntersection< AddPrefix< ExtractPropDictFromSchema< S>, '', ''> | AddPrefix< ExtractPropDictFromSchema< S>, SName> >,
-            UnionToIntersection< { [key in SName ]: ValueSelector< S> }>, TableDatasource<S, SName>
+            UnionToIntersection< { [key in SName ]: PropertyValueGetters< S> }>, TableDatasource<S, SName>
         > {
             return this.baseFrom(source) as any
         }
@@ -1281,7 +1281,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
 
     innerJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         
@@ -1290,7 +1290,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
      
     leftJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseLeftJoin(source, expression) as any
@@ -1298,7 +1298,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
 
     rightJoin<S extends Schema<any>, SName extends string, 
         X extends UnionToIntersection< SourceProps | AddPrefix< ExtractPropDictFromSchema< S>, SName>>,
-        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: ValueSelector< S> }>
+        Y extends UnionToIntersection< SelectorMap | { [key in SName ]: PropertyValueGetters< S> }>
         >(source: Datasource<S, SName>, 
         expression: Expression<X, Y>): UpdateStatement<X,Y, FromSource>{
         return this.baseRightJoin(source, expression) as any

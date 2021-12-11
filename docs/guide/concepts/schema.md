@@ -50,9 +50,9 @@ dataset1.schema().datasource(string)
 dataset1.datasource(string)
 ```
 
-### ValueSelector (`$`)
+### PropertyValueGetters (`$`)
 
-A datasource instance provides an object `$` having values of `Scalar` or `CompiledComputeFunction` which represents the properties of the Schema.
+A datasource instance provides an object `$` having values of `Scalar` or `CompiledComputeValueGetterDefinition` which represents the properties of the Schema.
 
 ::: tip
 `Scalar` is a single SQL value that can be a field name or SQL functions.
@@ -78,7 +78,7 @@ const scalar2 = Model1.datasource('table1').$.prop2()
 ::: details
 If the key of `$` refers to a `FieldProperty`'s name, the value will be a `Scalar`.
 
-If it refers to a `ComputeProperty`'s name, the value is a Function (`CompiledComputeFunction`) that returns a `Scalar`.
+If it refers to a `ComputeProperty`'s name, the value is a Function (`CompiledComputeValueGetterDefinition`) that returns a `Scalar`.
 :::
 
 ::: tip

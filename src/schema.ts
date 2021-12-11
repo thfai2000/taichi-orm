@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { CompiledComputeFunction, ComputeFunction, DatabaseContext, Hook, ORM, ValueSelector, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset } from "."
+import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
@@ -17,28 +17,6 @@ export abstract class Property {
             
         }
 
-    // get definition(): D{
-
-    //     if(!this.#definition){
-    //         let definition: D | null = null
-    //         if(this.#definitionConstructor instanceof PropertyType){
-    //             definition = this.#definitionConstructor
-    //         } else if( isFunction(this.#definitionConstructor) ){
-    //             definition = (this.#definitionConstructor as () => D)()
-    //         } else if(this.#definitionConstructor instanceof Function){
-    //             const c = (this.#definitionConstructor as (new () => D ))
-    //             definition = new c()
-    //         }
-    
-    //         if(definition instanceof PropertyType){
-    //             this.#definition = definition
-    //         }
-    //         else throw new Error('Invalid parameters')
-    //     }
-
-    //     return this.#definition
-    // }
-
     get name(){
         if(!this.#name){
             throw new Error('Property not yet registered')
@@ -50,7 +28,7 @@ export abstract class Property {
 
 }
 
-export class ComputeProperty<F extends (ComputeFunction<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
+export class ComputeProperty<F extends (ComputeValueGetterDefinition<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
     compute: F
@@ -325,7 +303,7 @@ export type TableOptions = {
 export interface Datasource<E extends Schema<any>, alias extends string> {
     sourceAlias: alias
     schema(): E
-    $: ValueSelector<E>
+    $: PropertyValueGetters<E>
 
     toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
     realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
@@ -334,7 +312,7 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     getAllFieldProperty: () => { [key: string]: Scalar<PropertyType<any>, any>}
     getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any>
     getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any> 
-    getComputeProperty: <Name extends string, ARG, S extends Scalar<PropertyType<any>, any> >(name: Name) => CompiledComputeFunction<ARG, S>
+    getComputeProperty: <Name extends string, ARG, S extends Scalar<PropertyType<any>, any> >(name: Name) => ComputeValueGetter<ARG, S>
     // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
     // tableAlias: {
     //     [key in keyof [alias] as alias]: string 
@@ -346,7 +324,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
-    readonly $: ValueSelector<E>
+    readonly $: PropertyValueGetters<E>
 
     constructor(schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
@@ -379,7 +357,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
                     }
                 }
             }
-        }) as ValueSelector<E>
+        }) as PropertyValueGetters<E>
     }
     abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
 
@@ -415,7 +393,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
     }
 
 
-    getComputeProperty<Name extends string, ARG, S extends Scalar<any,any> >(name: Name): CompiledComputeFunction<ARG, S>{
+    getComputeProperty<Name extends string, ARG, S extends Scalar<any,any> >(name: Name): ComputeValueGetter<ARG, S>{
         const prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
             throw new Error(`Not field property ${name}`)

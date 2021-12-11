@@ -27,7 +27,7 @@ let shops = await Shop.find({
 })
 ```
 
-## Filter related records by ValueSelector
+## Filter related records by PropertyValueGetters
 
 ```js
 
@@ -56,9 +56,9 @@ await Product.find({
 })
 ```
 
-## `ValueSelector` 
+## `PropertyValueGetters` 
 
-The `CompiledComputeFunction` returns a `Scalar` that can transformed into `Count(*)` Subquery
+The `CompiledComputeValueGetterDefinition` returns a `Scalar` that can transformed into `Count(*)` Subquery
 
 ```js
 // find all shops which has more than 5 products

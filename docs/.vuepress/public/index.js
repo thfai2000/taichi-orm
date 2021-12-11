@@ -49,8 +49,8 @@ __export(exports, {
   BetweenOperator: () => BetweenOperator,
   BooleanNotNullType: () => BooleanNotNullType,
   BooleanType: () => BooleanType,
-  ComputeFunction: () => ComputeFunction2,
-  ComputeFunctionDynamicReturn: () => ComputeFunctionDynamicReturn2,
+  ComputeValueGetterDefinition: () => ComputeValueGetterDefinition2,
+  ComputeValueGetterDefinitionDynamicReturn: () => ComputeValueGetterDefinitionDynamicReturn2,
   ComputeProperty: () => ComputeProperty,
   ConditionOperator: () => ConditionOperator,
   DBActionRunnerBase: () => DBActionRunnerBase,
@@ -2531,10 +2531,10 @@ var Model = class {
     return new FieldProperty(new definition());
   }
   static compute(...args) {
-    return new ComputeProperty(new ComputeFunction2(args[0]));
+    return new ComputeProperty(new ComputeValueGetterDefinition2(args[0]));
   }
   static computeModelObject(compute) {
-    return new ComputeProperty(new ComputeFunction2(compute));
+    return new ComputeProperty(new ComputeValueGetterDefinition2(compute));
   }
   hook(newHook) {
   }
@@ -2711,12 +2711,12 @@ _modelClass = new WeakMap();
 _context = new WeakMap();
 
 // src/index.ts
-var ComputeFunction2 = class {
+var ComputeValueGetterDefinition2 = class {
   constructor(fn) {
     this.fn = fn;
   }
 };
-var ComputeFunctionDynamicReturn2 = class extends ComputeFunction2 {
+var ComputeValueGetterDefinitionDynamicReturn2 = class extends ComputeValueGetterDefinition2 {
   constructor(fn) {
     super(fn);
     this.mode = "dynamic";
@@ -3174,8 +3174,8 @@ var Hook2 = class {
   BetweenOperator,
   BooleanNotNullType,
   BooleanType,
-  ComputeFunction,
-  ComputeFunctionDynamicReturn,
+  ComputeValueGetterDefinition,
+  ComputeValueGetterDefinitionDynamicReturn,
   ComputeProperty,
   ConditionOperator,
   DBActionRunnerBase,
