@@ -1,6 +1,7 @@
 # Select and Filter
 
-## Select target model and relations
+
+## Query and filter related records
 
 ```js
 // Simply select shop, each with array of products
@@ -9,8 +10,6 @@ let shops = await Shop.find({
 })
 ```
 
-
-## Select target model and relations by `findOptions` 
 ```js
 // find shops with related products which are only in color 'red'
 let shops = await Shop.find({
@@ -28,7 +27,7 @@ let shops = await Shop.find({
 })
 ```
 
-## Select target model with relations match criteria
+## Filter related records by ValueSelector
 
 ```js
 
@@ -57,9 +56,10 @@ await Product.find({
 })
 ```
 
-## Select target model with certain number of related records 
+## `ValueSelector` 
 
-Besides, the funtion call of `ComputeProperty` returns a `Scalar` that can be transformed into subquery like "SELECT count(*) FROM ..."
+The `CompiledComputeFunction` returns a `Scalar` that can transformed into `Count(*)` Subquery
+
 ```js
 // find all shops which has more than 5 products
 let shops = await Shop.find({
