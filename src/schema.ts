@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset } from "."
+import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
@@ -28,14 +28,20 @@ export abstract class Property {
 
 }
 
-export class ComputeProperty<F extends (ComputeValueGetterDefinition<any, any, any> | ComputeFunctionDynamicReturn<any, any>)> extends Property {
+export class ComputeProperty<
+        Getter extends (ComputeValueGetterDefinition<any, any, any> | ComputeFunctionDynamicReturn<any, any>),
+        Setter extends (ComputeValueSetterDefinition<any, any, any> | undefined)
+
+    > extends Property {
 
     // type: 'ComputeProperty' = 'ComputeProperty'
-    compute: F
+    computeValueGetterDefinition: Getter
+    computeValueSetterDefinition?: Setter
 
-    constructor(compute:  F){
+    constructor(computeValueGetterDefinition: Getter, computeValueSetterDefinition: Setter){
             super()
-            this.compute = compute
+            this.computeValueGetterDefinition = computeValueGetterDefinition
+            this.computeValueSetterDefinition = computeValueSetterDefinition
         }
     
     async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
@@ -400,7 +406,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }else{
             const cProp = prop
             const c = (args?: ARG) => {
-                const subquery: S = cProp.compute.fn.call(cProp, this, args)
+                const subquery: S = cProp.computeValueGetterDefinition.fn.call(cProp, this, args)
                 return subquery
             }
             return c

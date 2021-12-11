@@ -30,7 +30,7 @@ export type SelectedPropsToScalarPropertyDict<SourceProps, P> = {
                             (C extends FieldProperty<infer D>?
                                 ScalarProperty<Scalar<D, any>>:
                                 (
-                                    C extends ComputeProperty<ComputeValueGetterDefinition<any, any, infer S>>? 
+                                    C extends ComputeProperty<ComputeValueGetterDefinition<any, any, infer S>, any>? 
                                     ScalarProperty<S>:
                                     (
                                         C extends ScalarProperty<any>? 
@@ -742,7 +742,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
     // }
 
     async toSqlString(ctx?: DatabaseContext<any>): Promise<string>{
-        let b: Knex.QueryBuilder = await this.toNativeBuilder(ctx)
+        const b: Knex.QueryBuilder = await this.toNativeBuilder(ctx)
         return b.toString()
     }
 
@@ -821,19 +821,19 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
         return new DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>(
                 current,
                 context,
-                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>, executionOptions: ExecutionOptions){
+                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>, context: DatabaseContext<any>, executionOptions: ExecutionOptions){
 
-                    const nativeSql = await current.toNativeBuilder(this.context)
+                    const nativeSql = await current.toNativeBuilder(context)
 
-                    const data = await this.context.executeStatement(nativeSql, {}, executionOptions)
+                    const data = await context.executeStatement(nativeSql, {}, executionOptions)
         
                     // console.log('data', data)
                     let rows: any
-                    if(this.context.client().startsWith('mysql')){
+                    if(context.client().startsWith('mysql')){
                         rows = data[0]
-                    } else if(this.context.client().startsWith('sqlite')){
+                    } else if(context.client().startsWith('sqlite')){
                         rows = data
-                    } else if(this.context.client().startsWith('pg')){
+                    } else if(context.client().startsWith('pg')){
                         rows = data.rows
                     } else {
                         throw new Error('Unsupport client.')
@@ -846,12 +846,12 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
                     const len = rows.length
                     const schema = current.schema()
                     
-                    await schema.prepareForParsing(this.context)
+                    await schema.prepareForParsing(context)
 
                     const parsedRows = new Array(len) //as ExtractValueTypeDictFromPropertyDict< (ExistingSchema extends Schema<infer Dict>?Dict:never) >[]
                     // console.log(schema)
                     for(let i=0; i <len;i++){
-                        parsedRows[i] = schema.parseRaw(rows[i], this.context)
+                        parsedRows[i] = schema.parseRaw(rows[i], context)
                     }
                 
                     // console.timeEnd('parsing')
@@ -973,13 +973,14 @@ export class InsertStatement<T extends TableSchema<{
                             id: number;
                         }[] | null, 
                         T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
                 if(!statement.getInsertItems()){
                     throw new Error('Unexpected')
                 }
 
-                return await this.context.startTransaction(async (trx) => {
+                return await context.startTransaction(async (trx) => {
 
                     //replace the trx
                     executionOptions = {...executionOptions, trx: trx}
@@ -987,13 +988,13 @@ export class InsertStatement<T extends TableSchema<{
                     const executionFuncton = async() => {
                         // let afterMutationHooks = schema.hooks.filter()
 
-                        if (!this.latestQueryAffectedFunctionArg || this.context.client().startsWith('pg')) {
-                            const queryBuilder = await statement.toNativeBuilder(this.context)
+                        if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
+                            const queryBuilder = await statement.toNativeBuilder(context)
                             const insertStmt = queryBuilder.toString()
                             // let insertedId: number
-                            const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
+                            const r = await context.executeStatement(insertStmt, {}, executionOptions)
 
-                            if( this.context.client().startsWith('pg')){
+                            if( context.client().startsWith('pg')){
                                 return r.rows.map( (r : {id: number}) => ({id: r.id}) )
                             } else {
                                 return null
@@ -1001,27 +1002,27 @@ export class InsertStatement<T extends TableSchema<{
                             // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
             
                         } else {
-                            if (this.context.client().startsWith('mysql')) {
+                            if (context.client().startsWith('mysql')) {
                                 let insertedId: number
                                 //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString()
-                                    const r = await this.context.executeStatement(insertStmt, {}, executionOptions)
+                                    const r = await context.executeStatement(insertStmt, {}, executionOptions)
                                     // get ResultSetHeader.insertId
                                     insertedId = r[0].insertId
                                     return {id: insertedId}
                                 }))
 
-                            } else if (this.context.client().startsWith('sqlite')) {
+                            } else if (context.client().startsWith('sqlite')) {
                                 //only allow one by one insert
                                 return await statement.getInsertItems()!.reduce( async (preAcc, item, idx) => {
                                     const acc = await preAcc
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, this.context)
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx, context)
                                     const insertStmt = queryBuilder.toString()
                                     // let uuid = uuidv4()
-                                    await this.context.executeStatement(insertStmt, {}, executionOptions)
-                                    const result = await this.context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
+                                    await context.executeStatement(insertStmt, {}, executionOptions)
+                                    const result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
                                     acc.push({id: result[0].id})
                                     return acc
 
@@ -1046,7 +1047,7 @@ export class InsertStatement<T extends TableSchema<{
                             const i = insertedIds as {id: number}[]
                             const schema = statement.#insertIntoSchema as TableSchema<{id: FieldProperty<PrimaryKeyType>}>
     
-                            const queryDataset = this.context.dataset()
+                            const queryDataset = context.dataset()
                                 .from(schema.datasource('root'))
                                 .where( ({root}) => root.id.in(i.map(r => r.id)) )
                                 .select( ({root}) => root.$allFields ) as unknown as Dataset<ExtractSchemaFieldOnlyFromSchema<T>>
@@ -1204,22 +1205,23 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
             async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
-                const updatedIds = await this.context.startTransaction(async (trx) => {
+                const updatedIds = await context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder(this.context)
-                        const result = await this.context.executeStatement(nativeSql, {}, executionOptions)
-                        if (this.context.client().startsWith('pg')) {
+                        const nativeSql = await statement.toNativeBuilder(context)
+                        const result = await context.executeStatement(nativeSql, {}, executionOptions)
+                        if (context.client().startsWith('pg')) {
                             const updatedIds: number[] = result.rows.map( (row: {id: number}) => row.id )
                             return updatedIds
                         }
                         return null
                     } else {
 
-                        const dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
+                        const dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.$.$allFields })
 
@@ -1235,7 +1237,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                             if(updatedIds.length === 0){
                                 this.affectedResult = []
                             } else {
-                                const queryDataset = this.context.dataset()
+                                const queryDataset = context.dataset()
                                 .from( schema.datasource('root') )
                                 .where( ({root}) => root.id.in(...updatedIds) )
                                 .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
@@ -1349,22 +1351,23 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
             async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
-                const updatedIds = await this.context.startTransaction(async (trx) => {
+                const updatedIds = await context.startTransaction(async (trx) => {
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder(this.context)
-                        const result = await this.context.executeStatement(nativeSql, {}, executionOptions)
-                        if (this.context.client().startsWith('pg')) {
+                        const nativeSql = await statement.toNativeBuilder(context)
+                        const result = await context.executeStatement(nativeSql, {}, executionOptions)
+                        if (context.client().startsWith('pg')) {
                             const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
                             return updatedIds
                         }
                         return null
                     } else {
                         
-                        const dataset = this.context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
+                        const dataset = context.dataset() as Dataset<CurrentSchemaFieldOnly, any, any, FromSource >
                         dataset.cloneFrom(statement)
                         dataset.select({...dataset.getFrom()!.$.$allFields })
                         
@@ -1376,7 +1379,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                         await statement.execute().withOptions(executionOptions)
                         
                         if(this.latestQueryAffectedFunctionArg){
-                            const queryDataset = this.context.dataset()
+                            const queryDataset = context.dataset()
                             .from( schema.datasource('root') )
                             .where( ({root}) => root.id.in(...updatedIds) )
                             .select( ({root}) => root.$allFields ) as unknown as Dataset<CurrentSchemaFieldOnly>
@@ -1732,9 +1735,9 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         return new DBQueryRunner<S, T extends PropertyType<infer D>? D: never>(
             currentScalar,
             ctx,
-            async function(this: DBQueryRunner<S, T extends PropertyType<infer D>? D: never>, executionOptions: ExecutionOptions) {
+            async function(this: DBQueryRunner<S, T extends PropertyType<infer D>? D: never>, context: DatabaseContext<any>, executionOptions: ExecutionOptions) {
 
-                const result = await this.context.dataset().select({
+                const result = await context.dataset().select({
                     root: currentScalar
                 }).execute().withOptions(executionOptions)
 

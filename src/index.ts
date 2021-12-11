@@ -25,11 +25,11 @@ export type SelectableProps<E> = {
 } | SelectableProps<E>[]
 
 
-export type ConstructComputePropertyArgsDictFromSchema<E extends Schema<any>> = {
+export type ConstructComputeValueGetterArgsDictFromSchema<E extends Schema<any>> = {
     [key in keyof ExtractComputePropWithArgDictFromSchema<E>]:
-        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
+        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >, any>? 
         Parameters<ArgR>[0]:
-        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>>?
+        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>, any>?
         Arg: 
         never
 }
@@ -58,7 +58,7 @@ export type SingleSourceWhere<S extends Schema<any> > = Expression<
         UnionToIntersection< { 'root': PropertyValueGetters< S> }  >
         >
 
-export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputePropertyArgsDictFromSchema<S>>
+export type SingleSourceSelect<S extends Schema<any> > = Partial<ConstructComputeValueGetterArgsDictFromSchema<S>>
 
 export type SingleSourceSelectProps<S extends Schema<any>> = (keyof ExtractComputePropDictFromSchema<S>)[]
 
@@ -86,9 +86,9 @@ export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Exp
 
 export type PropertyValueGetters<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >>? 
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >, any>? 
         ArgR:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, infer S>>?
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, infer S>, any>?
         ComputeValueGetter<Arg, S>: 
         ExtractPropDictFromSchema<E>[key] extends FieldProperty<infer D>? 
         Scalar<D, any>:
@@ -122,6 +122,14 @@ export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG,
     }
 }
 
+export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, ARG, A extends DBAction<void> >{
+    fn: (source: DS, arg: ARG) => A
+
+    constructor(fn: (source: DS, arg?: ARG) => A ){
+        this.fn = fn
+    }
+}
+
 export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends ComputeValueGetterDynamicReturn
 > extends ComputeValueGetterDefinition<DS,
@@ -147,7 +155,7 @@ export type ExtractValueTypeDictFromFieldProperties<E> = {
         ExtractFieldPropDictFromDict<E>[key] extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive : never
 }
 export type ExtractValueTypeFromComputeProperty<T extends Property> = 
-    T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer V>, any> >>? V : never
+    T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer V>, any> >, any>? V : never
 
 
 // type ActualSelectiveArg = { select: {[key:string]: any}} | {selectProps: string[] }
@@ -159,11 +167,11 @@ export type ExtractValueTypeFromComputeProperty<T extends Property> =
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
-        P extends ComputeProperty<ComputeValueGetterDefinition<any, NoArg, any>>? ExtractValueTypeFromComputeProperty<P>:
-        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>, through: PropertyValueGetters<any>}) => TwoSourceArg<any, any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, NoArg, any>, any>? ExtractValueTypeFromComputeProperty<P>:
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>, through: PropertyValueGetters<any>}) => TwoSourceArg<any, any>), any>, any>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
-        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>}) => SingleSourceArg<any>), any>>? ConstructValueTypeDictBySelectiveArg<S, 
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>}) => SingleSourceArg<any>), any>, any>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
         ExtractValueTypeFromComputeProperty< P>
@@ -391,7 +399,6 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         if(typeof nameOrClass === 'string'){
             return this.repos[nameOrClass] as unknown as ModelRepository<T>
         } else {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             //@ts-ignore
             const foundKey = Object.keys(this.repos).find(key => this.repos[key].modelClass === nameOrClass)
             if(!foundKey){
@@ -533,9 +540,9 @@ export type DBActionOptions = {
     // failIfNotOne: boolean
     // failIfMoreThanOne: boolean
 }
-export type DBAction<I> = (executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
+export type DBAction<I> = (context: DatabaseContext<any>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
 
-export type DBMutationAction<I, S extends Schema<any>> = (executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
+export type DBMutationAction<I, S extends Schema<any>> = (context: DatabaseContext<any>, executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) => Promise<DBActionResult<I>>
 
 
 export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >{
@@ -554,7 +561,7 @@ export class DBActionRunnerBase<I> implements PromiseLike<ExpandRecursively<I> >
     }
 
     protected async execAction(execOptions?: ExecutionOptions){
-        return await this.action.call(this, execOptions ?? this.execOptions, this.options)
+        return await this.action.call(this, this.context, execOptions ?? this.execOptions, this.options)
     }
 
     async then<TResult1, TResult2 = never>(
@@ -651,11 +658,11 @@ export class DBQueryRunner<Source extends Dataset<any, any, any, any> | Scalar<a
         const m = new DBQueryRunner<Source, NewI>(
             this.source,
             this.context,
-            async function(this: DBQueryRunner<Source, NewI>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+            async function(this: DBQueryRunner<Source, NewI>, context: DatabaseContext<any>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    const result = await this.ancestor.action.call(this, executionOptions, options)
+                    const result = await this.ancestor.action.call(this, context, executionOptions, options)
                     if(Array.isArray(result)){
                         if(result.length !== 1){
                             throw new Error('getFirstOne finds Zero or Many Rows')
@@ -676,11 +683,11 @@ export class DBQueryRunner<Source extends Dataset<any, any, any, any> | Scalar<a
         const m = new DBQueryRunner<Source, NewI>(
             this.source,
             this.context,
-            async function(this: DBQueryRunner<Source, NewI>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
+            async function(this: DBQueryRunner<Source, NewI>, context: DatabaseContext<any>, executionOptions: ExecutionOptions, options: Partial<DBActionOptions>){
                 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    const result = await this.ancestor.action.call(this, executionOptions, options)
+                    const result = await this.ancestor.action.call(this, context, executionOptions, options)
                     if(Array.isArray(result)){
                         if(result.length > 1){
                             throw new Error('getFirstOne finds Many Rows')
@@ -822,8 +829,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
-                await this.ancestor.action.call(this, executionOptions, options)
+                await this.ancestor.action.call(this, context, executionOptions, options)
                 return this.affectedResult as ExtractValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
@@ -851,11 +859,12 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                     
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    await this.ancestor.action.call(this, executionOptions, options)
+                    await this.ancestor.action.call(this, context, executionOptions, options)
                     if(Array.isArray(this.affectedResult)){
                         if(this.affectedResult.length !== 1){
                             throw new Error('getAffectedOne finds Zero or Many Rows')
@@ -903,8 +912,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         const m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
             async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>,
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
-                const result = await this.ancestor.action.call(this, executionOptions, options)
+                const result = await this.ancestor.action.call(this, context, executionOptions, options)
                 return {
                     result,
                     preflight: this.preflightResult,
@@ -925,8 +935,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
             this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
-                await this.ancestor.action.call(this, executionOptions, options)
+                await this.ancestor.action.call(this, context, executionOptions, options)
                 return this.preflightResult as ExtractValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
@@ -941,11 +952,12 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
             this.context,
             async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
 
                 return await this.context.startTransaction( async (trx)=> {
                     executionOptions = {...executionOptions, trx}
-                    await this.ancestor.action.call(this, executionOptions, options)
+                    await this.ancestor.action.call(this, context, executionOptions, options)
                     if(Array.isArray(this.preflightResult)){
                         if(this.preflightResult.length !== 1){
                             throw new Error('getPreflightOne finds Zero or Many Rows')
@@ -970,8 +982,9 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         const m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
             this.context,
             async function(this: DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
+                context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
-                const result = await this.ancestor.action.call(this, executionOptions, options)
+                const result = await this.ancestor.action.call(this, context, executionOptions, options)
                 return {
                     result,
                     preflight: this.preflightResult,

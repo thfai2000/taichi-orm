@@ -64,7 +64,7 @@ export type ConstructMutationFromValueTypeDict<D> = {
 export type ExtractValueTypeFromProperty<T> = 
     T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
         (
-            T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >>? X: 
+            T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >, any>? X: 
                         (
                     T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
                     T
@@ -125,7 +125,7 @@ export type ExtractComputePropWithArgDictFromSchema<S extends Schema<any>> = Ext
 export type FilterPropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: 
-                    E[key] extends ComputeProperty<any>? key:
+                    E[key] extends ComputeProperty<any, any>? key:
                     E[key] extends FieldProperty<any>? key:
                     E[key] extends ScalarProperty<any>? key:
                     never
@@ -140,13 +140,13 @@ Pick<E, ({
 
 export type ExtractComputePropDictFromDict<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<any>? key:
+    [key in keyof E]: E[key] extends ComputeProperty<any, any>? key:
                     never
 })[keyof E]> 
 
 export type ExtractComputePropWithArgDictFromDict<E> = 
 Pick<E, ({
-    [key in keyof E]: E[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>>? 
+    [key in keyof E]: E[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>, any>? 
             (Arg extends NoArg? never: key)
                 : never
 })[keyof E]>

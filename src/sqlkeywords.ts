@@ -1,8 +1,8 @@
 import {Scalar, ExpressionResolver, Expression, Dataset, resolveValueIntoScalar} from './builder'
 import {Knex} from 'knex'
-import { BooleanNotNullType, PropertyType } from './types'
+import { BooleanNotNullType } from './types'
 import { thenResult, thenResultArray } from './util'
-import { DatabaseContext, DateNotNullType, DateTimeNotNullType } from '.'
+import { DatabaseContext, DateTimeNotNullType } from '.'
 
 
 export abstract class ConditionOperator<Props, SourcePropMap> {

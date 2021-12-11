@@ -96,7 +96,8 @@ export abstract class Model {
             compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
         )
             : ComputeProperty<
-                ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>
+                ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>,
+                any
             >;
 
     static compute<M extends typeof Model,
@@ -106,12 +107,13 @@ export abstract class Model {
             compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF>
         ) 
             : ComputeProperty< 
-                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>
+                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>,
+                any
             >;
 
     static compute(...args: any[])
     {
-        return new ComputeProperty(new ComputeValueGetterDefinition(args[0]))
+        return new ComputeProperty(new ComputeValueGetterDefinition(args[0]), undefined)
     }
 
     static computeModelObject<M extends typeof Model,
@@ -122,10 +124,11 @@ export abstract class Model {
             compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA) ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>
         ) 
             : ComputeProperty< 
-                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >
+                ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >,
+                any
             >
     {
-        return new ComputeProperty(new ComputeValueGetterDefinition(compute)) as any
+        return new ComputeProperty(new ComputeValueGetterDefinition(compute), undefined) as any
     }
 
     hook(newHook: Hook){
