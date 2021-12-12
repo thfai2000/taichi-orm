@@ -68,6 +68,7 @@ class Shop extends Model {
     fax = this.field(StringType)
     products = Shop.hasMany(Product, 'shopId')
     productCount = Shop.compute( (parent): CFReturn<number> => {
+      //@ts-ignore
       return parent.$.products().count()
     })
     hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
