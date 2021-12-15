@@ -1,4 +1,4 @@
-import { AddPrefix, ConstructDatasetBySelectiveArg, ConstructScalarPropDictBySelectiveArg, Dataset, Datasource, DBQueryRunner, DerivedTableSchema, DScalar, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExtractValueTypeDictFromDataset, ExtractValueTypeDictFromPropertyDict, ModelArrayRecordFunctionArg, ObjectTypeDataset, ParsableObjectTrait, ParsablePropertyTypeDefinition, Scalar, Schema, SelectedPropsToScalarPropertyDict, ValueSelector } from "../../../dist/"
+import { AddPrefix, ConstructDatasetBySelectiveArg, ConstructScalarPropDictBySelectiveArg, Dataset, Datasource, DBQueryRunner, DerivedTableSchema, DScalar, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExtractValueTypeDictFromDataset, ExtractValueTypeDictFromPropertyDict, ModelArrayRecordFunctionArg, ObjectTypeDataset, ParsableObjectTrait, ParsablePropertyTypeDefinition, Scalar, Schema, SelectedPropsToScalarPropertyDict } from "../../../dist/"
 import util from 'util'
 import {snakeCase} from 'lodash'
 import {  ORM } from "../../../dist"
@@ -26,6 +26,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
         createModels,
         dataset, 
         scalar,
+        scalarNumber,
         insert,
         del,
         update,
@@ -41,8 +42,8 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
 
     const p = Product.datasource('product')
 
-    const myShopDS = new Dataset().from(s).select("shop.id", "shop.name")
-    const builder = await myShopDS.toNativeBuilder(orm.getContext())
+    const myShopDS = dataset().from(s).select("shop.id", "shop.name")
+    const builder = await myShopDS.toNativeBuilder()
     console.log('sql1', builder.toString() )
 
 
@@ -91,7 +92,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
 
     console.log('finished')
 
-    const result = await new Dataset()
+    const result = await dataset()
             .from(s)
             .innerJoin(p, ({product, shop}) => product.shopId.equals(shop.id))
             // .innerJoin(p, ({And}) => And({"product.id": 5}) )
@@ -121,7 +122,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
                             products: {}
                         }
                     }),
-                    test: Scalar.number({sql:` 5 + ?`, args: [3]}),
+                    test: scalarNumber({sql:` 5 + ?`, args: [3]}),
                     products: shop.products({
                         select: {
                             shop: {
@@ -140,7 +141,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
         .from(Shop.datasource("myShop"))
         .where(({myShop}) => myShop.id.equals(1))
         .set({
-            name: Scalar.value('?',['hello'])
+            name: scalar('?',['hello'])
         }).execute().withOptions({
             onSqlRun: console.log
         })
@@ -169,9 +170,9 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
         .groupBy('hour')
         .select(({myShop}) => ({
             h1: myShop.hour,
-            cnt: Scalar.number(`COUNT(?)`, [myShop.hour]),
-            test: Scalar.number(`?`, [new Dataset().from(Shop.datasource('a')).select('id').limit(1)]),
-            a: new Dataset().from(Shop.datasource('a')).select('id').limit(1).toDScalarWithType( 
+            cnt: scalarNumber(`COUNT(?)`, [myShop.hour]),
+            test: scalarNumber(`?`, [dataset().from(Shop.datasource('a')).select('id').limit(1)]),
+            a: dataset().from(Shop.datasource('a')).select('id').limit(1).toDScalarWithType( 
                 (ds) => new ObjectType(ds.schema()) 
             )
         }))
@@ -245,7 +246,7 @@ import { NumberNotNullType, ObjectType } from "../../../dist/"
             })
         },
         where: ({root, Exists}) => Exists(
-            new Dataset().from(
+            dataset().from(
                 Product.datasource('product')
             ).where( ({product}) => root.id.equals(product.shopId) ).select('id')
         ),

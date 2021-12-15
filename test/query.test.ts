@@ -74,8 +74,8 @@ class Shop extends Model {
     hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
       return parent.$.products().exists()
     })
-    hasProductsAsync = Shop.compute( (parent): CFReturn<boolean> => {
-      return new Scalar( async(context) => {
+    hasProductsAsync = Shop.compute( (parent, arg: undefined, context): CFReturn<boolean> => {
+      return context.scalar( async(context) => {
         return parent.$.products().exists()
       })
     })
@@ -88,8 +88,8 @@ class Shop extends Model {
     hasEnoughProducts = Shop.compute( (parent, arg?: number): CFReturn<boolean> => {
       return parent.$.products().count().greaterThanOrEquals(arg ?? 1)
     })
-    hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg?): CFReturn<boolean> => {
-      return new Scalar( (context) => context.$.And(
+    hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg, context): CFReturn<boolean> => {
+      return context.scalar( (context) => context.$.And(
           parent.$.products().count().equals(2),
           parent.$.location.like('%A%')
         )

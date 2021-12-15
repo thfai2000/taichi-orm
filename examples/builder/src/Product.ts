@@ -1,4 +1,4 @@
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType } from "../../../dist/"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType, DatabaseContext } from "../../../dist/"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/"
 import { CFReturn } from "../../../dist"
@@ -16,20 +16,20 @@ export default class Product extends Model {
     availableEnd = this.field(DateNotNullType)
     remainingStock = this.field(NumberNotNullType)
 
-    isActive = Product.compute((parent, arg?: number): CFReturn<boolean> => {
-        return new Scalar( (context) => context.$.And(
+    isActive = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<boolean> => {
+        return context.scalar( (context) => context.$.And(
             parent.$.availableStart.lessThan( new Date() ),
             parent.$.availableEnd.greaterThan( new Date() ),
             parent.$.remainingStock.greaterThan(0)
         ))
     })
 
-    abc = Product.compute((parent, arg?: number): CFReturn<number> => {
-        return Scalar.number(`5 + ?`, [arg ?? 0])
+    abc = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<number> => {
+        return context.scalarNumber(`5 + ?`, [arg ?? 0])
     })
 
-    abc2 = Product.compute((parent, arg?: number): CFReturn<number> => {
-        return Scalar.number(`5 + ? + ?`, [ parent.$.abc(), arg] )
+    abc2 = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<number> => {
+        return context.scalarNumber(`5 + ? + ?`, [ parent.$.abc(), arg] )
     })
 
     // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(

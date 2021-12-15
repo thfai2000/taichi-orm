@@ -1,6 +1,6 @@
 import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeFunctionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg } from "."
 // import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, NoArg, Undetermined } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, Undetermined } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
@@ -90,10 +90,10 @@ export abstract class Model {
 
     static compute<M extends typeof Model, 
         S extends Scalar<any, any>,
-        ARG = NoArg
+        ARG
         >(
             this: M,
-            compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: ARG) => S
+            compute: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S
         )
             : ComputeProperty<
                 ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>,
@@ -104,7 +104,7 @@ export abstract class Model {
             CCF extends ComputeValueGetterDynamicReturn
         >(
             this: M,
-            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: Parameters<CCF>[0]) => ReturnType<CCF>
+            compute: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>
         ) 
             : ComputeProperty< 
                 ComputeFunctionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>,
@@ -153,7 +153,7 @@ export abstract class Model {
                 }
             }
 
-            const schema = new TableSchema(this.#entityName, props, this.id)
+            const schema = new TableSchema(this.#repository.context, this.#entityName, props, this.id)
             // schema.uuid = this.uuid
             // schema.id = this.id
             
@@ -179,9 +179,9 @@ export abstract class Model {
         parentKey = 'id'
         ){
 
-        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args?) => {
+        return this.compute<ParentModelType, ModelArrayRecord<RootModelType> >( (parent, args, context) => {
 
-            return new DScalar( (context: DatabaseContext<any>) => {
+            return context.dScalar( (context: DatabaseContext<any>) => {
                 const relatedModel = context.getRepository(relatedModelType)
                 const parentColumn = parent.getFieldProperty( parentKey  )
     
@@ -203,8 +203,8 @@ export abstract class Model {
         )
         {
                
-        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((parent, args?) => {
-            return new DScalar((context: DatabaseContext<any>) => {
+        return this.compute<ParentModelType, ModelObjectRecord<RootModelType> >((parent, args, context) => {
+            return context.dScalar((context: DatabaseContext<any>) => {
                 const relatedModel = context.getRepository(relatedModelType)
                 const parentColumn = parent.getFieldProperty( parentKey  )
 
@@ -230,8 +230,8 @@ export abstract class Model {
         parentKey = 'id'
         ){
 
-        return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType> >((parent, args?) => {
-            return new DScalar( (context: DatabaseContext<any>) => {
+        return this.compute<ParentModelType, ModelArrayRecordByThrough<RootModelType, ThroughModelType> >((parent, args, context) => {
+            return context.dScalar( (context: DatabaseContext<any>) => {
                 const relatedModel = context.getRepository(relatedModelType)
                 const parentColumn = parent.getFieldProperty(parentKey)
                 const throughModel = context.getRepository(throughModelType)

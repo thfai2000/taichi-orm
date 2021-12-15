@@ -135,7 +135,6 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> )[] = []
     // propertiesMap: {[key:string]: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> )} = {}
-    
     properties: (Property)[] = []
     propertiesMap: PropertyDict
 
@@ -242,6 +241,7 @@ export class DerivedTableSchema<D extends Dataset<Schema<PropDict>>, PropDict ex
 
 export class TableSchema<PropertyDict extends {[key:string]: Property}> extends Schema<PropertyDict> {
 
+    context: DatabaseContext<any>
     hooks: Hook[] = []
     // entityClass?: E
     #entityName: string
@@ -249,24 +249,25 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
 
     id: FieldProperty<PrimaryKeyType>
 
-    constructor(entityName: string, props: PropertyDict, id: FieldProperty<PrimaryKeyType>){
+    constructor(context: DatabaseContext<any>, entityName: string, props: PropertyDict, id: FieldProperty<PrimaryKeyType>){
         super(props)
+        this.context = context
         this.#entityName = entityName
         this.id = id
     }
 
-    tableName(context: DatabaseContext<any>, options?: TableOptions){
+    tableName(options?: TableOptions){
         if(this.overridedTableName){
             return this.overridedTableName
         } else {
             let name = this.#entityName
-            if( context.orm.ormConfig.entityNameToTableName) {
-                name = context.orm.ormConfig.entityNameToTableName(name)
+            if( this.context.orm.ormConfig.entityNameToTableName) {
+                name = this.context.orm.ormConfig.entityNameToTableName(name)
             }
             if(options?.tablePrefix){
                 name = options.tablePrefix + name
-            } else if(context.config?.tablePrefix){
-                name = context.config?.tablePrefix + name
+            } else if( this.context.config?.tablePrefix){
+                name = this.context.config?.tablePrefix + name
             }
             return name
         }
@@ -279,7 +280,7 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
 
     createTableStmt(context: DatabaseContext<any>, options?: TableOptions){
         const client = context.client()
-        const tableName = this.tableName(context, options)
+        const tableName = this.tableName(options)
 
         const props = this.properties.filter(p => p instanceof FieldProperty) as FieldProperty<FieldPropertyType<any>>[]
         
@@ -294,7 +295,7 @@ export class TableSchema<PropertyDict extends {[key:string]: Property}> extends 
     }
 
     datasource<T extends TableSchema<any>, Name extends string>(this: T, name: Name, options?: TableOptions) : TableDatasource<T, Name>{
-        const source = new TableDatasource(this, name, options)
+        const source = new TableDatasource(this.context, this, name, options)
         return source
     }
 }
@@ -311,32 +312,30 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     schema(): E
     $: PropertyValueGetters<E>
 
-    toRaw(context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw>
-    realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
+    toRaw(): Knex.Raw | Promise<Knex.Raw>
+    realSource(): SQLString | Promise<SQLString>
     
     // getProperty: <Name extends string, T extends PropertyType<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: () => { [key: string]: Scalar<PropertyType<any>, any>}
     getFieldProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any>
     getScalarProperty: <Name extends string>(name: Name) => Scalar<PropertyType<any>, any> 
     getComputeProperty: <Name extends string, ARG, S extends Scalar<PropertyType<any>, any> >(name: Name) => ComputeValueGetter<ARG, S>
-    // getAysncComputeProperty: <Name extends string, ARG extends any[], R>(name: string) => CompiledComputeFunctionPromise<Name, ARG, R>
-    // tableAlias: {
-    //     [key in keyof [alias] as alias]: string 
-    // }
 }
 
 abstract class DatasourceBase<E extends Schema<any>, Name extends string> implements Datasource<E, Name> {
 
+    protected context: DatabaseContext<any>
     protected _schema: E
     readonly sourceAlias: Name
     readonly sourceAliasAndSalt: string
     readonly $: PropertyValueGetters<E>
 
-    constructor(schema: E, sourceAlias: Name){
+    constructor(context: DatabaseContext<any>, schema: E, sourceAlias: Name){
         if( !Number.isInteger(sourceAlias.charAt(0)) && sourceAlias.charAt(0).toUpperCase() === sourceAlias.charAt(0) ){
             throw new Error('alias cannot start with Uppercase letter')
         }
 
+        this.context = context
         this._schema = schema
         this.sourceAlias = sourceAlias
         this.sourceAliasAndSalt = makeid(5)// this.sourceAlias + '___' + 
@@ -365,7 +364,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             }
         }) as PropertyValueGetters<E>
     }
-    abstract realSource(context: DatabaseContext<any>): SQLString | Promise<SQLString>
+    abstract realSource(): SQLString | Promise<SQLString>
 
     schema(): E {
         return this._schema
@@ -389,7 +388,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Scalar((context: DatabaseContext<any>) => {
+            return this.context.scalar((context: DatabaseContext<any>) => {
                 const orm = context.orm
                 const client = context.client()
                 const rawTxt = `${quote(client, this.sourceAliasAndSalt)}.${quote(client, fieldProp.fieldName(orm))}`
@@ -398,7 +397,6 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }
     }
 
-
     getComputeProperty<Name extends string, ARG, S extends Scalar<any,any> >(name: Name): ComputeValueGetter<ARG, S>{
         const prop = this._schema.propertiesMap[name]
         if( !(prop instanceof ComputeProperty)){
@@ -406,7 +404,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
         }else{
             const cProp = prop
             const c = (args?: ARG) => {
-                const subquery: S = cProp.computeValueGetterDefinition.fn.call(cProp, this, args)
+                const subquery: S = cProp.computeValueGetterDefinition.fn.call(cProp, this, args, this.context)
                 return subquery
             }
             return c
@@ -419,14 +417,14 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             throw new Error(`it is not field property ${name}`)
         } else {
             const fieldProp = prop
-            return new Scalar(fieldProp.scalar, null)
+            return new Scalar(this.context, fieldProp.scalar, null)
         }
     }
     
-    async toRaw(context: DatabaseContext<any>){
-        const client = context.client()
-        const sql = await this.realSource(context)
-        return context.raw(`${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
+    async toRaw(){
+        const client = this.context.client()
+        const sql = await this.realSource()
+        return this.context.raw(`${sql} AS ${quote(client, this.sourceAliasAndSalt)}`)
     }
 
 }
@@ -435,23 +433,27 @@ export class TableDatasource<E extends TableSchema<any>, Name extends string> ex
 
     readonly options?: TableOptions
 
-    constructor(schema: E, sourceAlias: Name, options?: TableOptions){
-        super(schema, sourceAlias)
+    constructor(context: DatabaseContext<any>, schema: E, sourceAlias: Name, options?: TableOptions){
+        super(context, schema, sourceAlias)
         this.options = options
+    }
+
+    getContext() {
+        return this.context
     }
 
     schema(): E {
         return this._schema
     }
 
-    realSource(context: DatabaseContext<any>){
-        const finalOptions = Object.assign({}, {tablePrefix: context.tablePrefix}, this.options ?? {})
+    realSource(){
+        const finalOptions = Object.assign({}, {tablePrefix: this.context.tablePrefix}, this.options ?? {})
 
-        const tableName = this.schema().tableName(context, finalOptions)
+        const tableName = this.schema().tableName(finalOptions)
         if(!tableName){
             throw new Error('Not yet registered')
         }
-        return quote(context.client(), tableName)
+        return quote(this.context.client(), tableName)
     }
 }
 
@@ -459,11 +461,11 @@ export class DerivedDatasource<D extends Dataset<any, any, any, any>, Name exten
 
     readonly dataset: D
     constructor(dataset: D, sourceAlias: Name){
-        super( dataset.schema(), sourceAlias)
+        super(dataset.getContext(), dataset.schema(), sourceAlias)
         this.dataset = dataset
     }
 
-    async realSource(context: DatabaseContext<any>){
-        return `(${(await this.dataset.toNativeBuilder(context))})`
+    async realSource(){
+        return `(${(await this.dataset.toNativeBuilder())})`
     }
 }

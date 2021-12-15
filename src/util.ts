@@ -6,7 +6,7 @@ import { ComputeProperty, FieldProperty, ScalarProperty, Schema, TableSchema } f
 
 export type Undetermined = 'undetermined'
 
-export type NoArg = { it_is_a_unique_field_indicates_no_arg: null}
+// export type NoArg = { it_is_a_unique_field_indicates_no_arg: null}
 
 // expands object types one level deep
 export type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
@@ -147,7 +147,7 @@ Pick<E, ({
 export type ExtractComputePropWithArgDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: E[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>, any>? 
-            (Arg extends NoArg? never: key)
+            key
                 : never
 })[keyof E]>
 

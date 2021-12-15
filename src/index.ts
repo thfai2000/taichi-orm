@@ -1,9 +1,9 @@
 import knex, { Knex } from 'knex'
 import * as fs from 'fs'
-import { FieldPropertyType, PrimaryKeyType, PropertyType } from './types'
-import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver} from './builder'
+import { FieldPropertyType, NumberNotNullType, PrimaryKeyType, PropertyType } from './types'
+import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver, RawExpression, DScalar, DScalarRawExpression} from './builder'
 
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, NoArg, camelize } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -116,16 +116,16 @@ export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyTyp
 export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG, 
     S extends Scalar<PropertyType<any>, any>
 >{
-    fn: (source: DS, arg?: ARG) => S
-    constructor(fn: (source: DS, arg?: ARG) => S ){
+    fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => S
+    constructor(fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => S ){
         this.fn = fn
     }
 }
 
 export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, ARG, A extends DBAction<void> >{
-    fn: (source: DS, arg: ARG) => A
+    fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => A
 
-    constructor(fn: (source: DS, arg?: ARG) => A ){
+    constructor(fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => A ){
         this.fn = fn
     }
 }
@@ -139,7 +139,7 @@ export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
 
     mode: 'dynamic' = 'dynamic'
     // fn: (context: DatabaseContext<any>, source: DS, arg?: Parameters<CCF>[0]) => Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never > | Promise<Scalarable< ReturnType<CCF> extends Scalar<infer P>?P: never >>
-    constructor(fn: (source: DS, arg?: Parameters<CCF>[0]) => 
+    constructor(fn: (source: DS, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => 
         ReturnType<CCF>
     ){
         super(fn)
@@ -167,7 +167,7 @@ export type ExtractValueTypeFromComputeProperty<T extends Property> =
 
 type ConstructValueTypeDictBySelectiveArgAttribute<SSA, P extends Property> = 
         P extends FieldProperty<any>? never:
-        P extends ComputeProperty<ComputeValueGetterDefinition<any, NoArg, any>, any>? ExtractValueTypeFromComputeProperty<P>:
+        P extends ComputeProperty<ComputeValueGetterDefinition<any, undefined, any>, any>? ExtractValueTypeFromComputeProperty<P>:
         P extends ComputeProperty<ComputeValueGetterDefinition<any, ((map: {root: PropertyValueGetters<infer S>, through: PropertyValueGetters<any>}) => TwoSourceArg<any, any>), any>, any>? ConstructValueTypeDictBySelectiveArg<S, 
                 (SSA extends ((...args: any[]) => any)? ReturnType<SSA>: SSA)
             >:
@@ -454,14 +454,30 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
     scalar<D extends PropertyType<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
 
-    scalar<D extends PropertyType<any>>(value: RawUnit, definition?: D | (new (...args: any[]) => D)): Scalar<D, any>;
+    scalar<D extends PropertyType<any>>(value: RawExpression<D>, definition?: D | (new (...args: any[]) => D)): Scalar<D, any>;
     
     scalar(...args:  any[]): Scalar<any, any>{
         
         if(typeof args[0] ==='string' && Array.isArray(args[1]) ){
-            return new Scalar({sql: args[0], args: args[1]}, args[2], this)
+            return new Scalar(this, {sql: args[0], args: args[1]}, args[2])
         }
-        return new Scalar(args[0], args[1], this)
+        return new Scalar(this, args[0], args[1])
+    }
+
+    scalarNumber(sql: string, args?: any[]): Scalar<NumberNotNullType, any>;
+    
+    scalarNumber(value: RawExpression<NumberNotNullType>): Scalar<NumberNotNullType, any>;
+
+    scalarNumber(...args: any[]): Scalar<NumberNotNullType, any>{
+        if(typeof args[0] ==='string' && Array.isArray(args[1])){
+            return new Scalar(this, {sql: args[0], args: args[1]}, NumberNotNullType)
+        }
+        return new Scalar(this, args[0], NumberNotNullType)
+    }
+
+    dScalar<D extends PropertyType<any>, DS extends Dataset<any, any, any, any> >
+        (value: DScalarRawExpression<DS>,  definition?: D | (new (...args: any[]) => D)): DScalar<D, DS> {
+        return new DScalar(this, value, definition)
     }
 
     raw = (sql: string, args?: any[]) => {
@@ -474,8 +490,8 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
 
     get $(): SQLKeywords< any, any> {
         const o = {}
-        const f = new ExpressionResolver< AddPrefix< {}, string>, any>(o)
-        return Object.assign(o, constructSqlKeywords(f, this))
+        const f = new ExpressionResolver< AddPrefix< {}, string>, any>(this, o)
+        return Object.assign(o, constructSqlKeywords(this, f))
     }
     
     update = () => {
@@ -487,7 +503,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
 
     insert = <T extends TableSchema< { id: FieldProperty<PrimaryKeyType>; } >>(into: T): InsertStatement<T> => {
-        return new InsertStatement(into, this)
+        return new InsertStatement(this, into)
     }
 
     client = (): string => this.orm.ormConfig.knexConfig.client.toString()
