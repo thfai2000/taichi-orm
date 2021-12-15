@@ -274,27 +274,27 @@ export interface SQLString{
 }
 
 
-export const parseName = (item: any) => {
-    const text = item.toString().trim()
+// export const parseName = (item: any) => {
+//     const text = item.toString().trim()
 
-    const e = /((?<![\\])[`'"])((?:.(?!(?<![\\])\1))*.?)\1/g
-    let r = e.exec(text)
-    if(r){
-        let last = r[0]
-        while( (r = e.exec(text) )){
-            last = r[0]
-        }
-        return last
-    } else {
-        const e = /\b[. ]+([a-zA-Z0-9_$]*)$/
-        const r = e.exec(text)
-        if(r && r[1]){
-            return r[1]
-        }else {
-            return text
-        }
-    }
-}
+//     const e = /((?<![\\])[`'"])((?:.(?!(?<![\\])\1))*.?)\1/g
+//     let r = e.exec(text)
+//     if(r){
+//         let last = r[0]
+//         while( (r = e.exec(text) )){
+//             last = r[0]
+//         }
+//         return last
+//     } else {
+//         const e = /\b[. ]+([a-zA-Z0-9_$]*)$/
+//         const r = e.exec(text)
+//         if(r && r[1]){
+//             return r[1]
+//         }else {
+//             return text
+//         }
+//     }
+// }
 
 
 export function isFunction(funcOrClass: any): funcOrClass is ((...args: any[]) => any) {

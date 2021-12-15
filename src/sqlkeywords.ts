@@ -118,8 +118,8 @@ export class NotOperator<Props, PropMap> extends ConditionOperator<Props, PropMa
     }
     toScalar(): Scalar<BooleanNotNullType, any> {
         return this.context.scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult( this.resolver.resolve(this.arg).toRaw(), k => context.raw( 
-                `NOT (${k.toString()})`) 
+            return thenResult( this.resolver.resolve(this.arg).toRaw(), k => context.raw(
+                `NOT (?)`, [k]) 
             )
         },new BooleanNotNullType())
     }
@@ -133,8 +133,8 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
     }
     toScalar(): Scalar<BooleanNotNullType, any> {
         return this.context.scalar((context: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> => {
-            return thenResult( this.arg.toNativeBuilder(), k => context.raw( 
-                `EXISTS (${k.toString()})`) 
+            return thenResult( this.arg.toNativeBuilder(), k => context.raw(
+                `EXISTS ?`, [k])
             )
         },new BooleanNotNullType())
     }
@@ -142,13 +142,13 @@ export class ExistsOperator<Props, PropMap> extends ConditionOperator<Props, Pro
 
 export class InOperator extends LeftAndRightAssertionOperator {
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} IN (${rights.map(o => '?')})`, [...rights])
+        return context.raw(`? IN (${rights.map(o => '?')})`, [left, ...rights])
     }
 }
 
 export class NotInOperator extends LeftAndRightAssertionOperator {
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} NOT IN (${rights.map(o => '?')})`, [...rights])
+        return context.raw(`? NOT IN (${rights.map(o => '?')})`, [left, ...rights])
     }
 }
 
@@ -158,7 +158,7 @@ export class LikeOperator extends LeftAndRightAssertionOperator {
     }
 
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} LIKE ?`, [rights[0]])
+        return context.raw(`? LIKE ?`, [left, rights[0]])
     }
 }
 
@@ -168,7 +168,7 @@ export class NotLikeOperator extends LeftAndRightAssertionOperator {
     }
 
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} NOT LIKE ?`, [rights[0]])
+        return context.raw(`? NOT LIKE ?`, [left, rights[0]])
     }
 }
 
@@ -177,7 +177,7 @@ export class EqualOperator extends LeftAndRightAssertionOperator{
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} = ?`, [rights[0]])
+        return context.raw(`? = ?`, [left, rights[0]])
     }
 }
 
@@ -186,7 +186,7 @@ export class NotEqualOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} <> ?`, [rights[0]])
+        return context.raw(`? <> ?`, [left, rights[0]])
     }
 }
 
@@ -195,7 +195,7 @@ export class IsNullOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any): Knex.Raw<any> {
-        return context.raw(`${left} IS NULL`)
+        return context.raw(`? IS NULL`, [left])
     }
 }
 
@@ -204,7 +204,7 @@ export class IsNotNullOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any): Knex.Raw<any> {
-        return context.raw(`${left} IS NOT NULL`)
+        return context.raw(`? IS NOT NULL`, [left])
     }
 }
 
@@ -213,7 +213,7 @@ export class GreaterThanOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} > ?`, [rights[0]])
+        return context.raw(`? > ?`, [left, rights[0]])
     }
 }
 
@@ -222,7 +222,7 @@ export class LessThanOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} < ?`, [rights[0]])
+        return context.raw(`? < ?`, [left, rights[0]])
     }
 }
 
@@ -231,7 +231,7 @@ export class GreaterThanOrEqualsOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} >= ?`, [rights[0]])
+        return context.raw(`? >= ?`, [left, rights[0]])
     }
 }
 
@@ -240,7 +240,7 @@ export class LessThanOrEqualsOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} <= ?`, [rights[0]])
+        return context.raw(`? <= ?`, [left, rights[0]])
     }
 }
 
@@ -249,7 +249,7 @@ export class BetweenOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand1, rightOperand2)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} BETWEEN ? AND ?`, [rights[0], rights[1]])
+        return context.raw(`? BETWEEN ? AND ?`, [left, rights[0], rights[1]])
     }
 }
 export class NotBetweenOperator extends LeftAndRightAssertionOperator {
@@ -257,7 +257,7 @@ export class NotBetweenOperator extends LeftAndRightAssertionOperator {
         super(context, leftOperand, rightOperand1, rightOperand2)
     }
     leftAndRightToRaw(context: DatabaseContext<any>, left: any, ...rights: any[] | Knex.Raw<any>[]): Knex.Raw<any> {
-        return context.raw(`${left} NOT BETWEEN ? AND ?`, [rights[0], rights[1]])
+        return context.raw(`? NOT BETWEEN ? AND ?`, [left, rights[0], rights[1]])
     }
 }
 
