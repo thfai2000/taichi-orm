@@ -3,7 +3,7 @@ import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValue
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, SQLString, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings } from "./util"
+import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -744,7 +744,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
     //     return Object.keys(this.#selectItems ?? {}).length > 0
     // }
 
-    async toSqlString(ctx?: DatabaseContext<any>): Promise<string>{
+    async toSqlString(): Promise<string>{
         const b: Knex.QueryBuilder = await this.toNativeBuilder()
         return b.toString()
     }
@@ -758,6 +758,8 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
         }
 
         const nativeQB = context.orm.getKnexInstance().clearSelect()
+        // @ts-ignore
+        nativeQB.originalThen = nativeQB.then
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
@@ -826,9 +828,9 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
                 context,
                 async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>, context: DatabaseContext<any>, executionOptions: ExecutionOptions){
 
-                    const nativeSql = await current.toNativeBuilder()
+                    const nativeBuilder = await current.toNativeBuilder()
 
-                    const data = await context.executeStatement(nativeSql, {}, executionOptions)
+                    const data = await context.executeStatement(nativeBuilder, executionOptions)
         
                     // console.log('data', data)
                     let rows: any
@@ -929,6 +931,8 @@ export class InsertStatement<T extends TableSchema<{
 
         let nativeQB = context.orm.getKnexInstance().from(this.#insertIntoSchema.tableName(context))
         //@ts-ignore
+        nativeQB.originalThen = nativeQB.then
+        //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
     
@@ -957,8 +961,8 @@ export class InsertStatement<T extends TableSchema<{
         return this.#insertItems
     }
 
-    execute(context?: DatabaseContext<any>) {
-        const ctx = context ?? this.context
+    execute() {
+        const ctx = this.context
 
         if(!ctx){
             throw new Error('There is no repository provided.')
@@ -993,9 +997,8 @@ export class InsertStatement<T extends TableSchema<{
 
                         if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
                             const queryBuilder = await statement.toNativeBuilder()
-                            const insertStmt = queryBuilder.toString()
                             // let insertedId: number
-                            const r = await context.executeStatement(insertStmt, {}, executionOptions)
+                            const r = await context.executeStatement(queryBuilder, executionOptions)
 
                             if( context.client().startsWith('pg')){
                                 return r.rows.map( (r : {id: number}) => ({id: r.id}) )
@@ -1010,8 +1013,7 @@ export class InsertStatement<T extends TableSchema<{
                                 //allow concurrent insert
                                 return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx)
-                                    const insertStmt = queryBuilder.toString()
-                                    const r = await context.executeStatement(insertStmt, {}, executionOptions)
+                                    const r = await context.executeStatement(queryBuilder, executionOptions)
                                     // get ResultSetHeader.insertId
                                     insertedId = r[0].insertId
                                     return {id: insertedId}
@@ -1022,9 +1024,8 @@ export class InsertStatement<T extends TableSchema<{
                                 return await statement.getInsertItems()!.reduce( async (preAcc, item, idx) => {
                                     const acc = await preAcc
                                     const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx)
-                                    const insertStmt = queryBuilder.toString()
                                     // let uuid = uuidv4()
-                                    await context.executeStatement(insertStmt, {}, executionOptions)
+                                    await context.executeStatement(queryBuilder, executionOptions)
                                     const result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
                                     acc.push({id: result[0].id})
                                     return acc
@@ -1173,6 +1174,8 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         const from = await this.fromItem.toRaw()
         let nativeQB = context.orm.getKnexInstance().from(from)
         //@ts-ignore
+        nativeQB.originalThen = nativeQB.then
+        //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
         await this.buildWhereClause(context, nativeQB)
@@ -1191,9 +1194,9 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return nativeQB
     }
 
-    execute(context?: DatabaseContext<any>) {
+    execute() {
 
-        const ctx = context ?? this.context
+        const ctx = this.context
         if(!ctx){
             throw new Error('There is no repository provided.')
         }
@@ -1215,8 +1218,8 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder()
-                        const result = await context.executeStatement(nativeSql, {}, executionOptions)
+                        const nativeBuilder = await statement.toNativeBuilder()
+                        const result = await context.executeStatement(nativeBuilder, executionOptions)
                         if (context.client().startsWith('pg')) {
                             const updatedIds: number[] = result.rows.map( (row: {id: number}) => row.id )
                             return updatedIds
@@ -1323,6 +1326,8 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         const from = await this.fromItem.toRaw()
         let nativeQB = context.orm.getKnexInstance().from(from)
         //@ts-ignore
+        nativeQB.originalThen = nativeQB.then
+        //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
         await this.buildWhereClause(context, nativeQB)
@@ -1337,9 +1342,9 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return nativeQB
     }
 
-    execute(context?: DatabaseContext<any>) {
+    execute() {
 
-        const ctx = context ?? this.context
+        const ctx = this.context
         if(!ctx){
             throw new Error('There is no repository provided.')
         }
@@ -1361,8 +1366,8 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
                     executionOptions = {...executionOptions, trx}
                     
                     if(!this.latestPreflightFunctionArg && !this.latestQueryAffectedFunctionArg){
-                        const nativeSql = await statement.toNativeBuilder()
-                        const result = await context.executeStatement(nativeSql, {}, executionOptions)
+                        const nativeBuilder = await statement.toNativeBuilder()
+                        const result = await context.executeStatement(nativeBuilder, executionOptions)
                         if (context.client().startsWith('pg')) {
                             const updatedIds: number[] =result.rows.map( (row: any) => Object.keys(row).map(k => row[k])[0] )
                             return updatedIds
@@ -1436,7 +1441,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     protected context: DatabaseContext<any>
     #calculatedDefinition: PropertyType<any> | null = null
     #calculatedRaw: Knex.Raw | null = null
-    #lastContext: DatabaseContext<any> | null = null
+    // #lastContext: DatabaseContext<any> | null = null
     // #afterResolvedHook: ((value: Value) => void | Promise<void>) | null = null
     
     // protected dataset:  | null = null
@@ -1568,7 +1573,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         ): Scalar<T, NewValue> {
         
         const s = new Scalar<T, NewValue>(this.context, (context) => {
-            const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset) as Value | Promise<Value>
+            const rawOrDataset = this.resolveIntoRawOrDataset(this.expressionOrDataset) as Value | Promise<Value>
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset, context) )
         })
 
@@ -1594,8 +1599,8 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         })
     }
 
-    private async calculateDefinition(context?: DatabaseContext<any>):  Promise<PropertyType<any>>  {
-        const ctx = (context ?? this.context)
+    private async calculateDefinition():  Promise<PropertyType<any>>  {
+        const ctx = this.context
         if(!ctx){
             throw new Error('There is no repository provided')
         }
@@ -1606,21 +1611,21 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
         // return this.#cachedDefinition
     }
 
-    private calculateRaw(context?: DatabaseContext<any>): Knex.Raw | Promise<Knex.Raw> {
+    private calculateRaw(): Knex.Raw | Promise<Knex.Raw> {
 
     
-        const ctx = (context ?? this.context)
-        if(!ctx){
-            throw new Error('There is no repository provided')
-        }
+        // const ctx = (context ?? this.context)
+        // if(!ctx){
+        //     throw new Error('There is no repository provided')
+        // }
         const expressionOrDataset = this.expressionOrDataset
 
-        const raw = thenResult( this.getDefinition(ctx), definition =>  {
+        const raw = thenResult( this.getDefinition(), definition =>  {
             // if(!definition){
             //     console.log('......', this.declaredDefinition, this.calculateDefinition, this.expressionOrDataset.toString())
             //     // throw new Error('It cannot toRaw because without definition')
             // }
-            return thenResult( this.resolveIntoRawOrDataset(ctx, expressionOrDataset), rawOrDataset => {
+            return thenResult( this.resolveIntoRawOrDataset(expressionOrDataset), rawOrDataset => {
                 
                 // let e: void | Promise<void> | boolean = true
                 // if(this.#afterResolvedHook){
@@ -1628,10 +1633,10 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                 // }
 
                 if(!(rawOrDataset instanceof Dataset)){
-                    const next = ctx.raw(rawOrDataset.toString())
-                    return (definition ?? new PropertyType()).transformQuery(next, ctx)
+                    const next = this.context.raw(rawOrDataset.toString())
+                    return (definition ?? new PropertyType()).transformQuery(next, this.context)
                 } else {
-                    return (definition ?? new PropertyType()).transformQuery(rawOrDataset, ctx)
+                    return (definition ?? new PropertyType()).transformQuery(rawOrDataset, this.context)
                 }
             
                 
@@ -1642,7 +1647,7 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
 
     }
 
-    protected resolveIntoRawOrDataset(context: DatabaseContext<any>, raw: RawExpression):
+    protected resolveIntoRawOrDataset(raw: RawExpression):
         ( Knex.Raw<any> | Promise<Knex.Raw<any>> | Dataset<any, any, any> | Promise< Dataset<any, any, any> >) {
 
         return thenResult(raw, ex => {
@@ -1652,17 +1657,17 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                 return ex
             } else if(ex instanceof Scalar) {
                 // console.log('here 2')
-                return this.resolveIntoRawOrDataset(context, ex.expressionOrDataset )
+                return this.resolveIntoRawOrDataset( ex.expressionOrDataset )
                 
             } else if( ex instanceof Function){
                 // console.log('resolve', ex.toString())
-                return this.resolveIntoRawOrDataset(context, ex(context))
+                return this.resolveIntoRawOrDataset(ex(this.context))
             } else if (typeof ex === 'string') {
 
-                return context.raw(ex)
+                return this.context.raw(ex)
             } else if (isSQLStringWithArgs(ex)){
                 if(!ex.args){
-                    return context.raw(ex.sql)
+                    return this.context.raw(ex.sql)
                 } else {
                     const rawArgs = ex.args.map( (arg) => {
                         if(arg instanceof Scalar){
@@ -1672,36 +1677,36 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
                         }
                         return arg
                     })
-                    return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => context.raw(ex.sql, rawArgs)) )
+                    return thenResultArray(rawArgs, rawArgs => thenResult(rawArgs, rawArgs => this.context.raw(ex.sql, rawArgs)) )
                 }
             }
             return ex
         })
     }
     
-    async getDefinition(context?: DatabaseContext<any>): Promise<PropertyType<any>>{
-        if(context && this.#lastContext !== context){
-            this.#calculatedRaw = null
-        }
+    async getDefinition(): Promise<PropertyType<any>>{
+        // if(context && this.#lastContext !== context){
+        //     this.#calculatedRaw = null
+        // }
 
         if(!this.#calculatedDefinition){
-            this.#calculatedDefinition = await this.calculateDefinition(context)
+            this.#calculatedDefinition = await this.calculateDefinition()
             // console.log('calculate the definition....', this.#calculatedDefinition)
-            this.#lastContext = context ?? null
+            // this.#lastContext = context ?? null
         }
         return this.#calculatedDefinition
     }
 
     async toRaw(): Promise<Knex.Raw> {
-        const context = this.context
+        // const context = this.context
 
-        if(context && this.#lastContext !== context){
-            this.#calculatedRaw = null
-        }
+        // if(context && this.#lastContext !== context){
+        //     this.#calculatedRaw = null
+        // }
 
         if(!this.#calculatedRaw){
-            this.#calculatedRaw = await this.calculateRaw(context)
-            this.#lastContext = context ?? null
+            this.#calculatedRaw = await this.calculateRaw()
+            // this.#lastContext = context ?? null
         }
         return this.#calculatedRaw
     }
@@ -1710,10 +1715,10 @@ export class Scalar<T extends PropertyType<any>, Value extends Knex.Raw | Datase
     //     return this
     // }
 
-    execute<S extends Scalar<T, Value>>(this: S, context?: DatabaseContext<any>)
+    execute<S extends Scalar<T, Value>>(this: S)
     : DBQueryRunner<S, T extends PropertyType<infer D>? D: any> 
         {
-        const ctx = context ?? this.context
+        const ctx = this.context
 
         if(!ctx){
             throw new Error('There is no repository provided.')
@@ -1771,7 +1776,7 @@ export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, a
     count(this: DScalar<any, DS>): Scalar<NumberNotNullType, any> {
         return super.transform( (value, ctx)=> {
             if(value instanceof Dataset){
-                return value.select( () => ({ count: new Scalar(this.context, 'Count(1)') }) ).toDScalarWithType(NumberNotNullType)
+                return value.select( () => ({ count: ctx.scalar('Count(1)') }) ).toDScalarWithType(NumberNotNullType)
             }
             throw new Error('count is only applicable to Dataset.')
         })
@@ -1790,8 +1795,8 @@ export class DScalar<T extends PropertyType<any>, DS extends Dataset<any, any, a
             fn: (value: DS, context: DatabaseContext<any>) => NewDScalar | Promise<NewDScalar>
         ): NewDScalar {
         
-        const s = new DScalar(this.context, (context) => {
-            const rawOrDataset = this.resolveIntoRawOrDataset(context, this.expressionOrDataset)
+        const s = this.context.dScalar((context) => {
+            const rawOrDataset = this.resolveIntoRawOrDataset(this.expressionOrDataset)
             return thenResult( rawOrDataset, rawOrDataset => fn(rawOrDataset as DS, context) )
         }) as NewDScalar
 
@@ -1816,19 +1821,19 @@ export function resolveValueIntoScalar(
         value: null | boolean | string | number | Date | ConditionOperator<any, any> | Dataset<any, any, any, any> | Scalar<any, any>
     ): Scalar<any, any> {
     if( value === null){
-        return new Scalar(context, (context: DatabaseContext<any>) => context.raw('?', [null]))
+        return context.scalar((context: DatabaseContext<any>) => context.raw('?', [null]))
     } else if (typeof value === 'boolean') {
         const boolValue = value
-        return new Scalar(context, (context: DatabaseContext<any>) => context.raw('?', [boolValue]), new BooleanType())
+        return context.scalar((context: DatabaseContext<any>) => context.raw('?', [boolValue]), new BooleanType())
     } else if (typeof value === 'string'){
         const stringValue = value
-        return new Scalar(context, (context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
+        return context.scalar((context: DatabaseContext<any>) => context.raw('?', [stringValue]), new StringType())
     } else if (typeof value === 'number'){
         const numberValue = value
-        return new Scalar(context, (context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
+        return context.scalar((context: DatabaseContext<any>) => context.raw('?', [numberValue]), new NumberType())
     } else if (value instanceof Date){
         const dateValue = value
-        return new Scalar(context, (context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
+        return context.scalar((context: DatabaseContext<any>) => context.raw('?', [dateValue]), new DateTimeType())
     } else if(value instanceof ConditionOperator){
         return value.toScalar()
     } else if (value instanceof Dataset) {

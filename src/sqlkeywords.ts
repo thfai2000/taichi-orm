@@ -21,7 +21,7 @@ export abstract class ConditionOperator<Props, SourcePropMap> {
         return this.context
     }
 
-    toSqlString(context?: DatabaseContext<any>){
+    toSqlString(){
         return this.toScalar().toRaw().toString()
     }
 }
@@ -32,7 +32,7 @@ export abstract class AssertionOperator{
 
     abstract getContext(): DatabaseContext<any> | null
 
-    toSqlString(context?: DatabaseContext<any>){
+    toSqlString(){
         return this.toScalar().toRaw().toString()
     }
 }

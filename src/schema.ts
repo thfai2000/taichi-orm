@@ -2,7 +2,7 @@ import { Knex } from "knex"
 import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
-import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote, SQLString } from "./util"
+import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote } from "./util"
 
 
 export abstract class Property {
@@ -120,7 +120,7 @@ export class ScalarProperty<S extends Scalar<any, any>> extends Property {
         }
 
     async prepareForParsing(context: DatabaseContext<any>): Promise<void> {
-        await (await this.scalar.getDefinition(context)).prepareForParsing(context)
+        await (await this.scalar.getDefinition()).prepareForParsing(context)
     }
 }
 
@@ -313,7 +313,7 @@ export interface Datasource<E extends Schema<any>, alias extends string> {
     $: PropertyValueGetters<E>
 
     toRaw(): Knex.Raw | Promise<Knex.Raw>
-    realSource(): SQLString | Promise<SQLString>
+    realSource(): string | Promise<string>
     
     // getProperty: <Name extends string, T extends PropertyType<any> >(name: Name) => Column<Name, T>
     getAllFieldProperty: () => { [key: string]: Scalar<PropertyType<any>, any>}
@@ -364,7 +364,7 @@ abstract class DatasourceBase<E extends Schema<any>, Name extends string> implem
             }
         }) as PropertyValueGetters<E>
     }
-    abstract realSource(): SQLString | Promise<SQLString>
+    abstract realSource(): string | Promise<string>
 
     schema(): E {
         return this._schema

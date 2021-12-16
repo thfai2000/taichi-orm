@@ -269,9 +269,10 @@ export function makeid(length: number) {
    return result.join('');
 }
 
-export interface SQLString{
-    toString(): string
-}
+// export interface SQLExecutable{
+//     toRaw(): Promise<Knex.Raw>
+//     toSqlString(): Promise<string>
+// }
 
 
 // export const parseName = (item: any) => {

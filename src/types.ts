@@ -2,7 +2,7 @@
 import { Knex } from "knex"
 import { DatabaseContext } from "."
 import { Dataset } from "./builder"
-import { makeid, quote, SimpleObject, SQLString, thenResult } from "./util"
+import { makeid, quote, SimpleObject, thenResult } from "./util"
 
 
 const nullableText = (nullable: boolean) => nullable? 'NULL': 'NOT NULL'

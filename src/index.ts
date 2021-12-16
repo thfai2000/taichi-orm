@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, NumberNotNullType, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver, RawExpression, DScalar, DScalarRawExpression} from './builder'
 
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SQLString, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -432,26 +432,56 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
         }))
     }
 
-    executeStatement = async (stmt: SQLString, variables: {[key:string]: any}, executionOptions: ExecutionOptions): Promise<any> => {
+    executeStatement(sql: string, variables: {[key:string]: any} | any[], executionOptions: ExecutionOptions): Promise<any>;
 
-        const sql = stmt.toString()
-        if(executionOptions?.onSqlRun) {
-            executionOptions.onSqlRun(sql)
+    executeStatement(stmt: Knex.QueryBuilder | Knex.Raw, executionOptions: ExecutionOptions): Promise<any>;
+    
+    async executeStatement(...args: any[]){
+
+        if(typeof args[0] ==='string'){
+
+            const variables = args[1] as {[key:string]: any}
+            const executionOptions = args[2] as ExecutionOptions
+
+            if(executionOptions?.onSqlRun) {
+                executionOptions.onSqlRun(args[0])
+            }
+            // console.log('sql', sql)
+            const KnexStmt = this.orm.getKnexInstance().raw(args[0], variables)
+            if (executionOptions?.trx) {
+                KnexStmt.transacting(executionOptions.trx)
+            }
+            let result = null
+            result = await KnexStmt
+     
+            return result
+
+        } else {
+            const stmt: Knex.QueryBuilder | Knex.Raw = args[0]
+            const executionOptions = args[1] as ExecutionOptions
+
+            if(executionOptions?.onSqlRun) {
+                executionOptions.onSqlRun(stmt.toString())
+            }
+            
+            // const KnexStmt = this.orm.getKnexInstance().raw('?', [stmt])
+            const KnexStmt = stmt
+            if (executionOptions?.trx) {
+                KnexStmt.transacting(executionOptions.trx)
+            }
+            let result = await new Promise((resolve, reject) => {
+                //@ts-ignore
+                KnexStmt.originalThen(resolve, reject)
+            })
+     
+            return result
         }
-        // console.log('sql', sql)
-        const KnexStmt = this.orm.getKnexInstance().raw(sql, variables)
-        if (executionOptions?.trx) {
-            KnexStmt.transacting(executionOptions.trx)
-        }
-        let result = null
-        result = await KnexStmt
- 
-        return result
     }
 
     dataset = (): Dataset<any> => {
         return new Dataset(this)
     }
+
     scalar<D extends PropertyType<any>>(sql: string, args?: any[], definition?: D | (new (...args: any[]) => D) ): Scalar<D, any>;
 
     scalar<D extends PropertyType<any>>(value: RawExpression<D>, definition?: D | (new (...args: any[]) => D)): Scalar<D, any>;
@@ -481,10 +511,15 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
     }
 
     raw = (sql: string, args?: any[]) => {
-        const r = this.orm.getKnexInstance().raw(sql, args ?? [])
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
+
+        const r = this.orm.getKnexInstance().raw(sql, args ?? [])        
+        
+        //@ts-ignore
+        r.originalThen = r.then
+
+        //@ts-ignore
         r.then = 'It is overridden. \'Then\' function is removed to prevent execution when it is passing across any async function(s).'
+
         return r
     }
 
