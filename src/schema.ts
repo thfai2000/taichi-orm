@@ -1,5 +1,5 @@
 import { Knex } from "knex"
-import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeFunctionDynamicReturn, ExtractValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
+import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ExtractValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
 import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote } from "./util"
@@ -29,8 +29,8 @@ export abstract class Property {
 }
 
 export class ComputeProperty<
-        Getter extends (ComputeValueGetterDefinition<any, any, any> | ComputeFunctionDynamicReturn<any, any>),
-        Setter extends (ComputeValueSetterDefinition<any, any, any> | undefined)
+        Getter extends (ComputeValueGetterDefinition<any, any, any> | ComputeValueGetterDefinitionDynamicReturn<any, any>),
+        Setter extends (ComputeValueSetterDefinition<any, any> | undefined)
 
     > extends Property {
 

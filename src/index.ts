@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, NumberNotNullType, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver, RawExpression, DScalar, DScalarRawExpression} from './builder'
 
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize, ExtractSchemaFromDatasource } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -27,7 +27,7 @@ export type SelectableProps<E> = {
 
 export type ConstructComputeValueGetterArgsDictFromSchema<E extends Schema<any>> = {
     [key in keyof ExtractComputePropWithArgDictFromSchema<E>]:
-        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >, any>? 
+        ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinitionDynamicReturn<any, infer ArgR >, any>? 
         Parameters<ArgR>[0]:
         ExtractComputePropWithArgDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, any>, any>?
         Arg: 
@@ -86,7 +86,7 @@ export type TwoSourceWhere<S extends Schema<any>, S2 extends Schema<any> > = Exp
 
 export type PropertyValueGetters<E extends Schema<any>> = {
     [key in keyof ExtractPropDictFromSchema<E> & string ]:
-        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeFunctionDynamicReturn<any, infer ArgR >, any>? 
+        ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinitionDynamicReturn<any, infer ArgR >, any>? 
         ArgR:
         ExtractPropDictFromSchema<E>[key] extends ComputeProperty<ComputeValueGetterDefinition<any, infer Arg, infer S>, any>?
         ComputeValueGetter<Arg, S>: 
@@ -109,9 +109,20 @@ export type PropertyValueGetters<E extends Schema<any>> = {
 //     toScalar(): Scalar<T, Value>
 // }
 
+export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractValueTypeDictFromSchema<S>>) => Partial<ExtractValueTypeDictFromSchema<S>>
+
+export type MutationHookDictionary<S extends Schema<any>> = {
+    afterCreate: MutationDataFunction<S>,
+    afterUpdate: MutationDataFunction<S>,
+    afterCreateOrUpdate: MutationDataFunction<S>,
+    afterDelete: MutationDataFunction<S>,
+    beforeCreate: MutationDataFunction<S>,
+    beforeUpdate: MutationDataFunction<S>,
+    beforeCreateOrUpdate: MutationDataFunction<S>,
+    beforeDelete: MutationDataFunction<S>
+}
 
 export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
-
 
 export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG, 
     S extends Scalar<PropertyType<any>, any>
@@ -122,15 +133,15 @@ export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG,
     }
 }
 
-export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, ARG, A extends DBAction<void> >{
-    fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => A
+export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, NewValue>{
+    fn: (source: DS, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void
 
-    constructor(fn: (source: DS, arg: ARG, context: DatabaseContext<any>) => A ){
+    constructor(fn: (source: DS, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void ){
         this.fn = fn
     }
 }
 
-export class ComputeFunctionDynamicReturn<DS extends Datasource<any, any>,
+export class ComputeValueGetterDefinitionDynamicReturn<DS extends Datasource<any, any>,
     CCF extends ComputeValueGetterDynamicReturn
 > extends ComputeValueGetterDefinition<DS,
             Parameters<CCF>[0],
@@ -469,7 +480,7 @@ export class DatabaseContext<ModelMap extends {[key:string]: typeof Model}> {
             if (executionOptions?.trx) {
                 KnexStmt.transacting(executionOptions.trx)
             }
-            let result = await new Promise((resolve, reject) => {
+            const result = await new Promise((resolve, reject) => {
                 //@ts-ignore
                 KnexStmt.originalThen(resolve, reject)
             })

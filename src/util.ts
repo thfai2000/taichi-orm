@@ -2,7 +2,7 @@ import { ComputeValueGetterDefinition } from ".";
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
-import { ComputeProperty, FieldProperty, ScalarProperty, Schema, TableSchema } from "./schema";
+import { ComputeProperty, Datasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./schema";
 
 export type Undetermined = 'undetermined'
 
@@ -52,6 +52,7 @@ export type UnionToIntersection<T> =
   (T extends any ? (x: T) => any : never) extends 
   (x: infer R) => any ? R : never
 
+export type ExtractSchemaFromDatasource<DS extends Datasource<any, any> > = DS extends Datasource<infer S, any>? S:never
 
 export type ExtractSchemaFieldOnlyFromSchema<CurrentSchema extends Schema<any>> = Schema<ExtractFieldPropDictFromSchema<CurrentSchema> >
 
