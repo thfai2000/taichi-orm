@@ -3,7 +3,7 @@ import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValue
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractValueTypeDictFromPropertyDict, ExtractValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings } from "./util"
+import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractGetValueTypeDictFromPropertyDict, ExtractGetValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractGetValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings, ExtractSetValueTypeDictFromPropertyDict } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -54,7 +54,7 @@ export type ValueTypeDictForExpression<E> = {
 }
 
 export type Expression<O, M> = 
-    Partial<ValueTypeDictForExpression<ExtractValueTypeDictFromPropertyDict<O>> > 
+    Partial<ValueTypeDictForExpression<ExtractGetValueTypeDictFromPropertyDict<O>> > 
     | ExpressionFunc<O, M>
     | AndOperator<O, M> 
     | OrOperator<O, M> 
@@ -814,7 +814,7 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
     }
 
     execute<D extends Dataset<ExistingSchema, SourceProps, SelectorMap, FromSource> >(this: D, ctx?: DatabaseContext<any>): 
-        DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>
+        DBQueryRunner<D, ExtractGetValueTypeDictFromSchema<ExistingSchema>[]>
     {
         const context = ctx ?? this.context
 
@@ -823,10 +823,10 @@ export class Dataset<ExistingSchema extends Schema<any>, SourceProps = {}, Selec
         }
         const current = this
 
-        return new DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>(
+        return new DBQueryRunner<D, ExtractGetValueTypeDictFromSchema<ExistingSchema>[]>(
                 current,
                 context,
-                async function(this: DBQueryRunner<D, ExtractValueTypeDictFromSchema<ExistingSchema>[]>, context: DatabaseContext<any>, executionOptions: ExecutionOptions){
+                async function(this: DBQueryRunner<D, ExtractGetValueTypeDictFromSchema<ExistingSchema>[]>, context: DatabaseContext<any>, executionOptions: ExecutionOptions){
 
                     const nativeBuilder = await current.toNativeBuilder()
 
@@ -893,7 +893,7 @@ export class InsertStatement<T extends TableSchema<{
     //     }
     // }
 
-    values<S extends Partial<ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
+    values<S extends Partial<ExtractSetValueTypeDictFromPropertyDict<ExtractPropDictFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
     (arrayOfkeyValues: S[] | ((map: Y ) => S[] )): InsertStatement<T>{
         
         let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
@@ -973,13 +973,13 @@ export class InsertStatement<T extends TableSchema<{
         return new DBMutationRunner<{
                             id: number;
                         }[] | null, 
-                        T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+                        T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
             async function(
                 this: DBMutationRunner<{
                             id: number;
                         }[] | null, 
-                        T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+                        T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
@@ -1122,7 +1122,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return this.baseRightJoin(source, expression) as any
     }
 
-    set<S extends Partial< ConstructMutationFromValueTypeDict< ExtractValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema< (FromSource extends Datasource<infer DS, any>?DS:never)>>>> , 
+    set<S extends Partial< ConstructMutationFromValueTypeDict< ExtractSetValueTypeDictFromPropertyDict<ExtractPropDictFromSchema< (FromSource extends Datasource<infer DS, any>?DS:never)>>>> , 
         Y extends UnionToIntersection< SelectorMap | SQLKeywords< SourceProps, SelectorMap> >>
     (keyValues: S | ((map: Y ) => S )): UpdateStatement<SourceProps, SelectorMap, FromSource>{
         
@@ -1208,9 +1208,9 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         type CurrentSchemaFieldOnly = ExtractSchemaFieldOnlyFromSchema<T>
         type I = number[] | null
 
-        return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+        return new DBMutationRunner<I, T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
-            async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+            async function(this: DBMutationRunner<I, T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
@@ -1356,9 +1356,9 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         type CurrentSchemaFieldOnly = ExtractSchemaFieldOnlyFromSchema<T>
         type I = number[] | null
 
-        return new DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
+        return new DBMutationRunner<I, T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>(
             ctx,
-            async function(this: DBMutationRunner<I, T, ExtractValueTypeDictFromSchema_FieldsOnly<T>[], ExtractValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
+            async function(this: DBMutationRunner<I, T, ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], ExtractGetValueTypeDictFromSchema_FieldsOnly<T>[], false, false>,
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 

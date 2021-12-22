@@ -1,8 +1,8 @@
 import { Knex } from "knex"
-import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ExtractValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
+import { ComputeValueGetter, ComputeValueGetterDefinition, DatabaseContext, Hook, ORM, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ExtractGetValueTypeDictFromDataset, ComputeValueSetterDefinition } from "."
 import { Dataset, Scalar } from "./builder"
 import { FieldPropertyType, ParsableObjectTrait, PrimaryKeyType, PropertyType } from "./types"
-import { ExtractValueTypeDictFromPropertyDict, isFunction, makeid, quote } from "./util"
+import { ExtractGetValueTypeDictFromPropertyDict, isFunction, makeid, quote } from "./util"
 
 
 export abstract class Property {
@@ -124,7 +124,7 @@ export class ScalarProperty<S extends Scalar<any, any>> extends Property {
     }
 }
 
-export class Schema<PropertyDict extends {[key:string]: Property}> implements ParsableObjectTrait<ExtractValueTypeDictFromPropertyDict<PropertyDict>>{
+export class Schema<PropertyDict extends {[key:string]: Property}> implements ParsableObjectTrait<ExtractGetValueTypeDictFromPropertyDict<PropertyDict>>{
 
     // properties: (ComputeProperty<any> 
     //     | FieldProperty<FieldPropertyTypeDefinition<any>> | Property<PropertyType<any> >)[] = []
@@ -162,14 +162,14 @@ export class Schema<PropertyDict extends {[key:string]: Property}> implements Pa
         }))
     }
 
-    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
+    parseRaw(rawValue: any, context: DatabaseContext<any>, prop?: string): ExtractGetValueTypeDictFromPropertyDict<PropertyDict> {
         return this.parseDataBySchema(rawValue, context)
     }
-    parseProperty(propertyvalue: ExtractValueTypeDictFromPropertyDict<PropertyDict>, context: DatabaseContext<any>, prop?: string) {
+    parseProperty(propertyvalue: ExtractGetValueTypeDictFromPropertyDict<PropertyDict>, context: DatabaseContext<any>, prop?: string) {
         return propertyvalue
     }
 
-    parseDataBySchema(row: any, context: DatabaseContext<any>): ExtractValueTypeDictFromPropertyDict<PropertyDict> {
+    parseDataBySchema(row: any, context: DatabaseContext<any>): ExtractGetValueTypeDictFromPropertyDict<PropertyDict> {
         const schema = this
         const output = {}
         for (const propName in row) {

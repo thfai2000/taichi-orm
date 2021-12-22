@@ -1,7 +1,7 @@
 import { AddPrefix, ConstructDatasetBySelectiveArg, ConstructScalarPropDictBySelectiveArg, Dataset, Datasource, DBQueryRunner, DerivedTableSchema, DScalar, ExtractPropDictFromModelType, ExtractPropDictFromSchema, ExtractSchemaFromModel, ExtractSchemaFromModelType, ExtractValueTypeDictFromDataset, ExtractValueTypeDictFromPropertyDict, ModelArrayRecordFunctionArg, ObjectTypeDataset, ParsableObjectTrait, ParsablePropertyTypeDefinition, Scalar, Schema, SelectedPropsToScalarPropertyDict } from "../../../dist/"
 import util from 'util'
 import {snakeCase} from 'lodash'
-import {  ORM } from "../../../dist"
+import { ORM } from "../../../dist"
 import ShopClass from './Shop'
 import ProductClass from './Product'
 import { NumberNotNullType, ObjectType } from "../../../dist/"

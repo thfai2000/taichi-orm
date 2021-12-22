@@ -1,6 +1,6 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractValueTypeDictFromSchema } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema } from "."
 // import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractValueTypeDictFromSchema_FieldsOnly, ExtractPropDictFromSchema, Undetermined } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractPropDictFromSchema, Undetermined, ExtractSetValueTypeDictFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
@@ -126,11 +126,11 @@ export abstract class Model {
         >(
             this: M,
             getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA) ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
-            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> ) => void
+            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> ) => void
         ) 
             : ComputeProperty< 
                 ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >,
-                ComputeValueSetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, Partial<ExtractValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> >
+                ComputeValueSetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> >
             >
     {
         return new ComputeProperty(new ComputeValueGetterDefinition(getter), setter ? new ComputeValueSetterDefinition(setter): undefined) as any
@@ -316,11 +316,11 @@ export class ModelRepository<MT extends typeof Model>{
         return this.#model.schema()
     }
 
-    createOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>) {
+    createOne(data: Partial<ExtractSetValueTypeDictFromSchema<ExtractSchemaFromModelType<MT>>>) {
         return this.context.insert(this.#model.schema()).values([data]).execute().getAffectedOne()
     }
 
-    createEach(arrayOfData: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>[]) {
+    createEach(arrayOfData: Partial<ExtractSetValueTypeDictFromSchema<ExtractSchemaFromModelType<MT>>>[]) {
         return this.context.insert(this.#model.schema()).values(arrayOfData).execute().getAffected()
     }
 
@@ -346,11 +346,11 @@ export class ModelRepository<MT extends typeof Model>{
         return this.dataset(findOptions).execute()
     }
 
-    update(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
+    update(data: Partial<ExtractSetValueTypeDictFromSchema<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
         return this.context.update().set(data).from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getAffected()
     }
 
-    updateOne(data: Partial<ExtractValueTypeDictFromSchema_FieldsOnly<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
+    updateOne(data: Partial<ExtractSetValueTypeDictFromSchema<ExtractSchemaFromModelType<MT>>>, args?: SingleSourceArg<ExtractSchemaFromModelType<MT>>["where"] ){
         return this.context.update().set(data).from(this.#model.schema().datasource('root')).where(args ?? {}).execute().getAffectedOne()
     }
    

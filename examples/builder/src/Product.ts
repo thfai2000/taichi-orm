@@ -17,6 +17,7 @@ export default class Product extends Model {
     remainingStock = this.field(NumberNotNullType)
 
     isActive = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<boolean> => {
+
         return context.scalar( (context) => context.$.And(
             parent.$.availableStart.lessThan( new Date() ),
             parent.$.availableEnd.greaterThan( new Date() ),
@@ -28,38 +29,41 @@ export default class Product extends Model {
         return context.scalarNumber(`5 + ?`, [arg ?? 0])
     })
 
+    //@ts-ignore
     abc2 = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<number> => {
         return context.scalarNumber(`5 + ? + ?`, [ parent.$.abc(), arg] )
-    }, (hooks, data, context: DatabaseContext<any>) => {
+    }
+    // , (hooks, data, context: DatabaseContext<any>) => {
 
-        hooks.afterCreateOrUpdate( async (record) => {
-            const {id} = record
-            const result
-            if(data.id){
-                result = await context.update().set({...data, abc2: id}).where({id: data.id})
-            } else {
-                result = await context.insert().values({...data, abc2: id})
-            }
-            return record
-        })
+    //     hooks.afterCreateOrUpdate( async (record) => {
+    //         const {id} = record
+    //         const result
+    //         if(data.id){
+    //             result = await context.update().set({...data, abc2: id}).where({id: data.id})
+    //         } else {
+    //             result = await context.insert().values({...data, abc2: id})
+    //         }
+    //         return record
+    //     })
 
-        hooks.beforeCreateOrUpdate( async ({record}) => {
-            //....
-            if(data.id){
+    //     hooks.beforeCreateOrUpdate( async ({record}) => {
+    //         //....
+    //         if(data.id){
                 
-            } else {
+    //         } else {
 
-            }
-        })
+    //         }
+    //     })
 
-        hooks.afterDelete( async(record) => {
+    //     hooks.afterDelete( async(record) => {
 
-            context.
+    //         context.
             
-            return record
-        })
+    //         return record
+    //     })
 
-    })
+    // }
+    )
 
     // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
     //     (parent, args?): any => {

@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, NumberNotNullType, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver, RawExpression, DScalar, DScalarRawExpression} from './builder'
 
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize, ExtractSchemaFromDatasource } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractGetValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractGetValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractGetValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize, ExtractSchemaFromDatasource } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -109,7 +109,7 @@ export type PropertyValueGetters<E extends Schema<any>> = {
 //     toScalar(): Scalar<T, Value>
 // }
 
-export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractValueTypeDictFromSchema<S>>) => Partial<ExtractValueTypeDictFromSchema<S>>
+export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractGetValueTypeDictFromSchema<S>>) => Partial<ExtractGetValueTypeDictFromSchema<S>>
 
 export type MutationHookDictionary<S extends Schema<any>> = {
     afterCreate: MutationDataFunction<S>,
@@ -194,7 +194,7 @@ type ExtractSpecificPropertyFromSchema<S extends Schema<any>, name extends strin
                 
 
 export type ConstructValueTypeDictBySelectiveArg<S extends Schema<any>, SSA> = 
-    ExtractValueTypeDictFromSchema_FieldsOnly<S>
+    ExtractGetValueTypeDictFromSchema_FieldsOnly<S>
     & (
         SSA extends {select: {[key:string]: any}} ?
         {
@@ -873,28 +873,28 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     }
     getAffected()
     : DBMutationRunner< 
-        ExtractValueTypeDictFromDataset<
+        ExtractGetValueTypeDictFromDataset<
             Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
         >[], S, PreflightRecordType, 
-            ExtractValueTypeDictFromDataset<
+            ExtractGetValueTypeDictFromDataset<
                 Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
             >[], isPreflight, true>;
 
     getAffected<D extends Dataset<Schema<any>>>(onQuery: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
+    : DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>;
 
 
     getAffected(...args: any[]){
         type D = Dataset<any>
         const onQuery: (() => D) = args[0] ?? ((dataset: D) => dataset)
 
-        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+        return new DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
-            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
+            async function(this: DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>[], S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, context, executionOptions, options)
-                return this.affectedResult as ExtractValueTypeDictFromDataset<D>[]
+                return this.affectedResult as ExtractGetValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
                 queryAffectedFunctionArg: onQuery
@@ -903,24 +903,24 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
     getAffectedOne()
     : DBMutationRunner< 
-        ExtractValueTypeDictFromDataset<
+        ExtractGetValueTypeDictFromDataset<
             Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
         >, S, PreflightRecordType, 
-            ExtractValueTypeDictFromDataset<
+            ExtractGetValueTypeDictFromDataset<
                 Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
             >[], isPreflight, true>;
 
     getAffectedOne<D extends Dataset<Schema<any>>>(onQuery: (dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D )
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
+    : DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>;
 
     getAffectedOne(...args: any[]){
 
         type D = Dataset<any>
         const onQuery: (() => D) = args[0] ?? ((dataset: D) => dataset)
 
-        return new DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+        return new DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
-            async function(this: DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>, 
+            async function(this: DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>, 
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                     
@@ -946,10 +946,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner<{
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: ExtractValueTypeDictFromDataset<
+            affected: ExtractGetValueTypeDictFromDataset<
                 Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
             >[] 
-        }, S, PreflightRecordType, ExtractValueTypeDictFromDataset<
+        }, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<
                 Dataset<ExtractSchemaFieldOnlyFromSchema<S>>
             >[], isPreflight, true>;
 
@@ -957,10 +957,10 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
     : DBMutationRunner<{
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: ExtractValueTypeDictFromDataset<
+            affected: ExtractGetValueTypeDictFromDataset<
                 D
             >[] 
-        }, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>;
+        }, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>;
 
     withAffected(...args: any[]){
         
@@ -969,11 +969,11 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
         type NewI = {
             result: I,
             preflight: isPreflight extends true? PreflightRecordType: never,
-            affected: ExtractValueTypeDictFromDataset<D>[] 
+            affected: ExtractGetValueTypeDictFromDataset<D>[] 
         }
-        const m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>(
+        const m = new DBMutationRunner<NewI, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>(
             this.context,
-            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractValueTypeDictFromDataset<D>[], isPreflight, true>,
+            async function(this: DBMutationRunner<NewI, S, PreflightRecordType, ExtractGetValueTypeDictFromDataset<D>[], isPreflight, true>,
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>) {
                 const result = await this.ancestor.action.call(this, context, executionOptions, options)
@@ -992,15 +992,15 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
     getPreflight<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
         onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
+    : DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>[], S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
         
-        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+        return new DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>[], S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
             this.context,
-            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>[], S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+            async function(this: DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>[], S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 await this.ancestor.action.call(this, context, executionOptions, options)
-                return this.preflightResult as ExtractValueTypeDictFromDataset<D>[]
+                return this.preflightResult as ExtractGetValueTypeDictFromDataset<D>[]
             }, {
                 parent: this,
                 preflightFunctionArg : onQuery ?? ((dataset: any) => dataset)
@@ -1009,11 +1009,11 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
     getPreflightOne<D extends Dataset<Schema<any>> = Dataset<ExtractSchemaFieldOnlyFromSchema<S>> >(
         onQuery?: ((dataset: Dataset<ExtractSchemaFieldOnlyFromSchema<S>>) => Promise<D> | D ))
-    : DBMutationRunner< ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
+    : DBMutationRunner< ExtractGetValueTypeDictFromDataset<D>, S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected> {
         
-        return new DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
+        return new DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>, S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>(
             this.context,
-            async function(this: DBMutationRunner<ExtractValueTypeDictFromDataset<D>, S, ExtractValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
+            async function(this: DBMutationRunner<ExtractGetValueTypeDictFromDataset<D>, S, ExtractGetValueTypeDictFromDataset<D>[], AffectedRecordType, true, isAffected>, 
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
 
@@ -1038,12 +1038,12 @@ export class DBMutationRunner<I, S extends TableSchema<any>, PreflightRecordType
 
         type NewI = {
             result: I,
-            preflight: ExtractValueTypeDictFromDataset<D>,
+            preflight: ExtractGetValueTypeDictFromDataset<D>,
             affected: isAffected extends true? AffectedRecordType: never,
         }
-        const m = new DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
+        const m = new DBMutationRunner<NewI, S, ExtractGetValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>(
             this.context,
-            async function(this: DBMutationRunner<NewI, S, ExtractValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
+            async function(this: DBMutationRunner<NewI, S, ExtractGetValueTypeDictFromDataset<D>, AffectedRecordType, true, isAffected>, 
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<S>, options: Partial<DBActionOptions>){
                 const result = await this.ancestor.action.call(this, context, executionOptions, options)
