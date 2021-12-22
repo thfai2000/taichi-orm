@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema, MutationHookDictionary } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractPropDictFromSchema, Undetermined, ExtractSetValueTypeDictFromSchema } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
@@ -95,7 +95,7 @@ export abstract class Model {
         >(
             this: M,
             getter: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S,
-            setter?: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>) => void
+            setter?: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
         )
             : ComputeProperty<
                 ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>,
@@ -108,7 +108,7 @@ export abstract class Model {
         >(
             this: M,
             getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>,
-            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => void
+            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
         ) 
             : ComputeProperty< 
                 ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>,
@@ -125,8 +125,8 @@ export abstract class Model {
             SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>
         >(
             this: M,
-            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg?: SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA) ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
-            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> ) => void
+            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: undefined | SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA), context: DatabaseContext<any> ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
+            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>>, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
         ) 
             : ComputeProperty< 
                 ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >,

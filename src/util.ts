@@ -109,7 +109,7 @@ export type ExtractSetValueTypeDictFromSchema<S extends Schema<any>> = ExtractSe
 
 export type ExtractGetValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
-
+export type ExtractSchemaFieldOnlyFromModel<M> = TableSchema< ExtractFieldPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
 export type ExtractSchemaFromModel<M> = TableSchema< FilterPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
 export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaFromModel<InstanceType<MT>>
 
