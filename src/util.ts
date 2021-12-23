@@ -45,7 +45,7 @@ export const SimpleObjectClass = ({} as {[key:string]: any}).constructor
 export function notEmpty<TValue>(value: TValue | null | undefined): value is TValue {
     return value !== null && value !== undefined;
 }
-export type ExtractGetValueTypeDictFromDataset<D extends Dataset<any>> = ExtractGetValueTypeDictFromSchema<D extends Dataset<infer S>?S:never>
+
 export type AnyDataset = Dataset<Schema<{[key:string]: ScalarProperty<any>}>>
 
 export type UnionToIntersection<T> = 
@@ -62,25 +62,15 @@ export type ConstructMutationFromValueTypeDict<D> = {
 }
 
 
-export type ExtractGetValueTypeFromProperty<T> = 
-    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
-        (
-            T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >, any>? X: 
-                        (
-                    T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
-                    T
-                )
-        )
+export type ExtractGetValueTypeDictFromDataset<D extends Dataset<any>> = ExtractGetValueTypeDictFromSchema<D extends Dataset<infer S>?S:never>
 
-export type ExtractSetValueTypeFromProperty<T> = 
-    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
-        (
-            T extends ComputeProperty<any, ComputeValueSetterDefinition<any, infer X >>? X: 
-                        (
-                    T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
-                    T
-                )
-        )
+export type ExtractGetValueTypeDictFromSchema<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< S extends Schema<infer Dict>?Dict:never>
+
+export type ExtractSetValueTypeDictFromSchema<S extends Schema<any>> = ExtractSetValueTypeDictFromPropertyDict< S extends Schema<infer Dict>?Dict:never>
+
+export type ExtractGetValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
+
+
 
 export type ExtractGetValueTypeDictFromPropertyDict<E> = {
     [key in keyof E]: 
@@ -103,15 +93,28 @@ export type ExtractPropDictFromPrefixedPropertyDict<E> = {
                 E[key]
 }
 
-export type ExtractGetValueTypeDictFromSchema<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< S extends Schema<infer Dict>?Dict:never>
+export type ExtractGetValueTypeFromProperty<T> = 
+    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
+        (
+            T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >, any>? X: 
+                        (
+                    T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
+                    T
+                )
+        )
 
-export type ExtractSetValueTypeDictFromSchema<S extends Schema<any>> = ExtractSetValueTypeDictFromPropertyDict< S extends Schema<infer Dict>?Dict:never>
+export type ExtractSetValueTypeFromProperty<T> = 
+    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
+        (
+            T extends ComputeProperty<any, ComputeValueSetterDefinition<any, infer X >>? X: 
+                        (
+                    T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
+                    T
+                )
+        )
 
-export type ExtractGetValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
-export type ExtractSchemaFieldOnlyFromModel<M> = TableSchema< ExtractFieldPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
-export type ExtractSchemaFromModel<M> = TableSchema< FilterPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
-export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaFromModel<InstanceType<MT>>
+
 
 
 export type ExtractFieldPropDictFromModel<M> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModel<M> >
@@ -123,14 +126,14 @@ export type ExtractFieldPropNameFromSchema<S extends Schema<any>> = S extends Sc
 
 
 export type ExtractPropDictFromModel<M extends Model> = ExtractPropDictFromSchema< ExtractSchemaFromModel<M> >
-
 export type ExtractPropDictFromModelType<MT extends typeof Model> = ExtractPropDictFromSchema< ExtractSchemaFromModelType<MT> >
+
 
 export type ExtractFieldPropDictFromSchema<S extends Schema<any>> = ExtractFieldPropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
-export type ExtractPropDictFromSchema<S extends Schema<any>> = FilterPropDictFromDict<
+export type ExtractPropDictFromSchema<S extends Schema<any>> = ExtractPropDictFromDict<
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
@@ -142,7 +145,13 @@ export type ExtractComputePropWithArgDictFromSchema<S extends Schema<any>> = Ext
     S extends Schema<infer PropertyDict>? PropertyDict: never
 >
 
-export type FilterPropDictFromDict<E> = 
+export type ExtractSchemaFieldOnlyFromModel<M> = TableSchema< ExtractFieldPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
+export type ExtractSchemaFromModelType<MT extends typeof Model> = ExtractSchemaFromModel<InstanceType<MT>>
+export type ExtractSchemaFromModel<M> = TableSchema< ExtractPropDictFromDict<M> & {id: FieldProperty<PrimaryKeyType>}>
+
+
+
+export type ExtractPropDictFromDict<E> = 
 Pick<E, ({
     [key in keyof E]: 
                     E[key] extends ComputeProperty<any, any>? key:
