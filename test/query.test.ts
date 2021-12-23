@@ -1,5 +1,5 @@
 import {Model, ModelObjectRecord} from '../dist/'
-import {CFReturn, DatabaseContext, ORM} from '../dist/'
+import {ScalarWithPropertyType, DatabaseContext, ORM} from '../dist/'
 import {snakeCase} from 'lodash'
 import {v4 as uuidv4} from 'uuid'
 import { PrimaryKeyType, 
@@ -67,28 +67,28 @@ class Shop extends Model {
     tel = this.field(StringType)
     fax = this.field(StringType)
     products = Shop.hasMany(Product, 'shopId')
-    productCount = Shop.compute( (parent): CFReturn<number> => {
+    productCount = Shop.compute( (parent): ScalarWithPropertyType<number> => {
       //@ts-ignore
       return parent.$.products().count()
     })
-    hasProducts = Shop.compute( (parent): CFReturn<boolean> => {
+    hasProducts = Shop.compute( (parent): ScalarWithPropertyType<boolean> => {
       return parent.$.products().exists()
     })
-    hasProductsAsync = Shop.compute( (parent, arg: undefined, context): CFReturn<boolean> => {
+    hasProductsAsync = Shop.compute( (parent, arg: undefined, context): ScalarWithPropertyType<boolean> => {
       return context.scalar( async(context) => {
         return parent.$.products().exists()
       })
     })
-    hasNoProducts = Shop.compute( (parent): CFReturn<boolean> => {
+    hasNoProducts = Shop.compute( (parent): ScalarWithPropertyType<boolean> => {
       return parent.$.products().exists().equals(false)
     })
-    hasOver2Products =  Shop.compute( (parent): CFReturn<boolean> => {
+    hasOver2Products =  Shop.compute( (parent): ScalarWithPropertyType<boolean> => {
       return parent.$.products().count().greaterThan(2)
     })
-    hasEnoughProducts = Shop.compute( (parent, arg?: number): CFReturn<boolean> => {
+    hasEnoughProducts = Shop.compute( (parent, arg?: number): ScalarWithPropertyType<boolean> => {
       return parent.$.products().count().greaterThanOrEquals(arg ?? 1)
     })
-    hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg, context): CFReturn<boolean> => {
+    hasTwoProductsAndlocationHasLetterA = Shop.compute( (parent, arg, context): ScalarWithPropertyType<boolean> => {
       return context.scalar( (context) => context.$.And(
           parent.$.products().count().equals(2),
           parent.$.location.like('%A%')

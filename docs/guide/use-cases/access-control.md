@@ -7,7 +7,7 @@ export default class Product extends Model {
 
     id = this.field(PrimaryKeyType)
 
-    isAccessibleByUserId = Product.compute((parent, userId: number): CFReturn<boolean> => {
+    isAccessibleByUserId = Product.compute((parent, userId: number): ScalarWithPropertyType<boolean> => {
         // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
         return new DScalar(context => context.dataset()
           .from( UserProduct.datasource('up') )
@@ -56,7 +56,7 @@ export default class RBACModel extends Model {
 
     static propertyOfEditableByUserId(entityName: string){
 
-      return Product.compute((parent, userId: number): CFReturn<boolean> => {
+      return Product.compute((parent, userId: number): ScalarWithPropertyType<boolean> => {
           // here we use a query builder to query another Model 'UserProduct' to find out if the product can be accessed by a user
           return new DScalar(context => context.dataset()
             .from( Role.datasource('role') )

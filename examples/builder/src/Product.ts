@@ -1,7 +1,7 @@
-import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType, DatabaseContext, Dataset } from "../../../dist/"
+import { NumberType, PrimaryKeyType, StringType, StringNotNullType, NumberNotNullType, DateNotNullType, BooleanNotNullType, DatabaseContext, Dataset, ExtractSchemaFromModel, TableSchema, FilterPropDictFromDict, FieldProperty, ExtractFieldPropDictFromDict, ComputeProperty } from "../../../dist/"
 import Shop from "./Shop"
 import { ModelArrayRecord, ModelObjectRecord, Model } from "../../../dist/"
-import { CFReturn } from "../../../dist"
+import { ScalarWithPropertyType } from "../../../dist"
 import { Scalar } from "../../../dist/"
 
 
@@ -16,23 +16,29 @@ export default class Product extends Model {
     availableEnd = this.field(DateNotNullType)
     remainingStock = this.field(NumberNotNullType)
 
-    isActive = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<boolean> => {
-
-        return context.scalar( (context) => context.$.And(
+    isActive = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>) : ScalarWithPropertyType<boolean> => {
+        return context.$.And(
             parent.$.availableStart.lessThan( new Date() ),
             parent.$.availableEnd.greaterThan( new Date() ),
             parent.$.remainingStock.greaterThan(0)
-        ))
+        )
     })
 
-    abc = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<number> => {
+    abc = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): ScalarWithPropertyType<number> => {
         return context.scalarNumber(`5 + ?`, [arg ?? 0])
     })
 
-    //@ts-ignore
-    abc2 = Product.compute((parent, arg: number | undefined, context: DatabaseContext<any>): CFReturn<number> => {
-        return context.scalarNumber(`5 + ? + ?`, [ parent.$.abc(), arg] )
-    }
+    abc2 = Product.compute({
+        getter: (parent, arg: number | undefined, context: DatabaseContext<any>): ScalarWithPropertyType<number> => {
+            return context.scalarNumber(`5 + ?`, [ parent.$.remainingStock, arg] )
+        },
+        setter: (parent, newValue: number, context, hooks) => {
+            // hooks.beforeCreateOrUpdate( (data: Partial<ExtractGetValueTypeDictFromPropertyDict<ExtractPropDictFromDict<Product> & { id: FieldProperty<PrimaryKeyType>; }>>) => {
+            //     return data
+            // })
+        }
+    })
+    
     // , (hooks, data, context: DatabaseContext<any>) => {
 
     //     hooks.afterCreateOrUpdate( async (record) => {
@@ -63,7 +69,7 @@ export default class Product extends Model {
     //     })
 
     // }
-    )
+    
 
     // shopWithName = Product.compute<typeof Product, ModelObjectRecord<typeof Shop> >(
     //     (parent, args?): any => {
@@ -87,7 +93,7 @@ export default class Product extends Model {
         }
     )
 
-    // myShopName = Product.compute((context, root, arg?: string): CFReturnModelArray<string | null> => {
+    // myShopName = Product.compute((context, root, arg?: string): ScalarWithPropertyTypeModelArray<string | null> => {
     //     return root.selector().myShop().cast(StringType)
     // })
 

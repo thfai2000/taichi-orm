@@ -63,7 +63,7 @@ export default class Product extends Model {
   
   // 'Enough' means at least certain amount of stock
   hasEnoughStock = Product.compute((parent, spare: number | undefined= 2)
-  : CFReturn<boolean> => {
+  : ScalarWithPropertyType<boolean> => {
     return parent.remainingStock.greaterThan(spare)
   }
 }

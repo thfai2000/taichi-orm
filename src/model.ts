@@ -1,6 +1,6 @@
 import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema, MutationHookDictionary } from "."
 // import { v4 as uuidv4 } from 'uuid'
-import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractPropDictFromSchema, Undetermined, ExtractSetValueTypeDictFromSchema } from "./util"
+import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractPropDictFromSchema, Undetermined, ExtractSetValueTypeDictFromSchema, ExtractFieldPropDictFromDict } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
 import { ArrayType, FieldPropertyType, ObjectType, ParsableObjectTrait, ParsableTrait, PrimaryKeyType, PropertyType, StringNotNullType } from "./types"
 import { ComputeProperty, Datasource, FieldProperty, Property, Schema, TableDatasource, TableOptions, TableSchema } from "./schema"
@@ -62,6 +62,7 @@ export type ModelArrayRecordByThrough<MT extends typeof Model, MT2 extends typeo
                 ConstructDatasetBySelectiveArg<MT, MSA>
             >
 
+
 export abstract class Model {
 
     #entityName: string
@@ -94,8 +95,24 @@ export abstract class Model {
         NewValue = never
         >(
             this: M,
-            getter: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S,
-            setter?: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            getter: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S
+        )
+            : ComputeProperty<
+                ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>,
+                undefined
+            >;
+
+
+    static compute<M extends typeof Model, 
+        S extends Scalar<any, any>,
+        ARG,
+        NewValue
+        >(
+            this: M,
+            options: {
+                getter: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S,
+                setter: (a: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            }
         )
             : ComputeProperty<
                 ComputeValueGetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, ARG, S>,
@@ -107,17 +124,36 @@ export abstract class Model {
             NewValue = never
         >(
             this: M,
-            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>,
-            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>
+        ) 
+            : ComputeProperty< 
+                ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>,
+                undefined
+            >;
+
+    static compute<M extends typeof Model,
+            CCF extends ComputeValueGetterDynamicReturn,
+            NewValue
+        >(
+            this: M,
+            options: {
+                getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>,
+                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            }
         ) 
             : ComputeProperty< 
                 ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, CCF>,
                 ComputeValueSetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, NewValue>
             >;
 
-    static compute(...args: any[])
+    static compute(...args: any[]): any
     {
-        return new ComputeProperty(new ComputeValueGetterDefinition(args[0]), args[1]? new ComputeValueSetterDefinition(args[1]): undefined )
+        const options = args[0]
+        if('getter' in options && 'setter' in options){
+            return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), new ComputeValueSetterDefinition(options.setter) )
+        } else {
+            return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), undefined )
+        }
     }
 
     static computeModelObject<M extends typeof Model,
@@ -125,15 +161,36 @@ export abstract class Model {
             SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>
         >(
             this: M,
-            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: undefined | SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA), context: DatabaseContext<any> ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
-            setter?: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>>, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: undefined | SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA), context: DatabaseContext<any> ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>
+        )
+            : ComputeProperty< 
+                ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >,
+                undefined
+            >;
+
+    static computeModelObject<M extends typeof Model,
+            R extends typeof Model,
+            SSA extends SingleSourceArg< ExtractSchemaFromModelType<R>> = SingleSourceArg< ExtractSchemaFromModelType<R>>
+        >(
+            this: M, 
+            options: {
+                getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: undefined | SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA), context: DatabaseContext<any> ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
+                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>>, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+            }
         ) 
             : ComputeProperty< 
                 ComputeValueGetterDefinitionDynamicReturn<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>,  ModelObjectRecord<R> >,
                 ComputeValueSetterDefinition<Datasource<ExtractSchemaFromModel<InstanceType<M>>, any>, Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>> >
-            >
+            >;
+
+    static computeModelObject(...args: any[]): any
     {
-        return new ComputeProperty(new ComputeValueGetterDefinition(getter), setter ? new ComputeValueSetterDefinition(setter): undefined) as any
+        const options = args[0]
+        if('getter' in options && 'setter' in options){
+            return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), new ComputeValueSetterDefinition(options.setter) )
+        } else {
+            return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), undefined )
+        }
     }
 
     // hook(newHook: Hook){
@@ -675,3 +732,22 @@ export class ModelRepository<MT extends typeof Model>{
 
 //         return record
 //     }
+
+
+
+// type ExtractAttributes<A> = {
+//     [key in keyof A]: A[key]
+// }
+
+// class A {
+
+//     b = 5
+
+//     a(): ExtractAttributes<A>{
+//         throw new Error('aaa')
+//     }
+// }
+
+// const aaa = new A()
+
+// let c = aaa.a()

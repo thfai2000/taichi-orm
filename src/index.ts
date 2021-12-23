@@ -18,7 +18,7 @@ export * from './schema'
 export * from './types'
 export * from './util'
 
-export type CFReturn<D> = Scalar<PropertyType<D>, any>
+export type ScalarWithPropertyType<D> = Scalar<PropertyType<D>, any>
 
 export type SelectableProps<E> = {
     [key in keyof E]: Scalar<any, any>
