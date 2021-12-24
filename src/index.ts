@@ -109,17 +109,17 @@ export type PropertyValueGetters<E extends Schema<any>> = {
 //     toScalar(): Scalar<T, Value>
 // }
 
-export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractGetValueTypeDictFromSchema<S>>) => Partial<ExtractGetValueTypeDictFromSchema<S>>
+export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>) => Promise<Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>> | Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>
 
 export type MutationHookDictionary<S extends Schema<any>> = {
-    afterCreate: MutationDataFunction<S>,
-    afterUpdate: MutationDataFunction<S>,
-    afterCreateOrUpdate: MutationDataFunction<S>,
-    afterDelete: MutationDataFunction<S>,
-    beforeCreate: MutationDataFunction<S>,
-    beforeUpdate: MutationDataFunction<S>,
-    beforeCreateOrUpdate: MutationDataFunction<S>,
-    beforeDelete: MutationDataFunction<S>
+    afterCreate: (callback: MutationDataFunction<S>) => void,
+    afterUpdate:(callback: MutationDataFunction<S>) => void,
+    afterCreateOrUpdate: (callback: MutationDataFunction<S>) => void,
+    afterDelete: (callback: MutationDataFunction<S>) => void,
+    beforeCreate: (callback: MutationDataFunction<S>) => void,
+    beforeUpdate: (callback: MutationDataFunction<S>) => void,
+    beforeCreateOrUpdate: (callback: MutationDataFunction<S>) => void,
+    beforeDelete: (callback: MutationDataFunction<S>) => void
 }
 
 export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
