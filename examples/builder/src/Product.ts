@@ -29,10 +29,14 @@ export default class Product extends Model {
     })
 
     abc2 = Product.compute({
-        getter: (parent, arg: number | undefined, context: DatabaseContext<any>): ScalarWithPropertyType<number> => {
-            return context.scalarNumber(`5 + ?`, [ parent.$.remainingStock, arg] )
+        getter: (parent, arg: undefined, context: DatabaseContext<any>): ScalarWithPropertyType<number> => {
+            return context.scalarNumber(`5 + ?`, [parent.$.remainingStock] )
         },
-        setter: (parent, newValue: number, context, hooks) => {
+        setter: (parent, newValue: number | ScalarWithPropertyType<number>, context, hooks) => {
+            hooks.beforeMutation( (values) => {
+                values.remainingStock = context.scalarNumber(`? - 5`, [newValue])
+                return values
+            })
             // hooks.beforeCreateOrUpdate( (data: Partial<ExtractGetValueTypeDictFromPropertyDict<ExtractPropDictFromDict<Product> & { id: FieldProperty<PrimaryKeyType>; }>>) => {
             //     return data
             // })

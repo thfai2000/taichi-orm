@@ -3,7 +3,7 @@ import * as fs from 'fs'
 import { FieldPropertyType, NumberNotNullType, PrimaryKeyType, PropertyType } from './types'
 import {Dataset, Scalar, Expression, AddPrefix, ExpressionFunc, UpdateStatement, InsertStatement, RawUnit, DeleteStatement, ExpressionResolver, RawExpression, DScalar, DScalarRawExpression} from './builder'
 
-import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractGetValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractGetValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractGetValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize, ExtractSchemaFromDatasource } from './util'
+import { expandRecursively, ExpandRecursively, ExtractFieldPropDictFromDict, ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractSchemaFromModelType, ExtractGetValueTypeDictFromSchema_FieldsOnly, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, thenResult, UnionToIntersection, ExtractGetValueTypeDictFromSchema, ExtractSchemaFieldOnlyFromSchema, AnyDataset, ExtractGetValueTypeDictFromDataset, ExtractComputePropWithArgDictFromSchema, camelize, ExtractSchemaFromDatasource, ExtractSetValueTypeDictFromSchema_FieldsOnly } from './util'
 import { Model, ModelRepository } from './model'
 import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableOptions, TableSchema } from './schema'
 
@@ -105,21 +105,22 @@ export type PropertyValueGetters<E extends Schema<any>> = {
     }
 }
 
-// export interface Scalarable<T extends PropertyType<any>, Value extends Knex.Raw | Dataset<any, any, any, any> > {
-//     toScalar(): Scalar<T, Value>
-// }
+export type FieldValuesToBeSet<S extends Schema<any>> = Partial<ExtractSetValueTypeDictFromSchema_FieldsOnly<S>>
 
-export type MutationDataFunction<S extends Schema<any>> = (data: Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>) => Promise<Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>> | Partial<ExtractGetValueTypeDictFromSchema_FieldsOnly<S>>
+
+export type SetValuesCallback<S extends Schema<any>> = (valuesToBeSet: FieldValuesToBeSet<S>, trx: Knex.Transaction, mutationName: 'create'|'update'|'delete') => Promise<FieldValuesToBeSet<S>> | FieldValuesToBeSet<S>
+
+export type AfterMutationCallback<S extends Schema<any>> = (affectedRecord: any, trx: Knex.Transaction, mutationName: 'create'|'update'|'delete') => Promise<void> | void
 
 export type MutationHookDictionary<S extends Schema<any>> = {
-    afterCreate: (callback: MutationDataFunction<S>) => void,
-    afterUpdate:(callback: MutationDataFunction<S>) => void,
-    afterCreateOrUpdate: (callback: MutationDataFunction<S>) => void,
-    afterDelete: (callback: MutationDataFunction<S>) => void,
-    beforeCreate: (callback: MutationDataFunction<S>) => void,
-    beforeUpdate: (callback: MutationDataFunction<S>) => void,
-    beforeCreateOrUpdate: (callback: MutationDataFunction<S>) => void,
-    beforeDelete: (callback: MutationDataFunction<S>) => void
+    beforeCreate: (setValuesCallback: SetValuesCallback<S>) => void,
+    beforeUpdate: (setValuesCallback: SetValuesCallback<S>) => void,
+    beforeMutation: (setValuesCallback: SetValuesCallback<S>) => void,
+    beforeDelete: (callback: ((trx: Knex.Transaction) => Promise<void> | void )) => void
+    afterCreate: (callback: AfterMutationCallback<S>) => void,
+    afterUpdate:(callback: AfterMutationCallback<S>) => void,
+    afterMutation: (callback: AfterMutationCallback<S>) => void,
+    afterDelete: (callback: AfterMutationCallback<S>) => void,
 }
 
 export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )

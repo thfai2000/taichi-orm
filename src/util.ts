@@ -1,4 +1,4 @@
-import { ComputeValueGetterDefinition, ComputeValueSetterDefinition } from ".";
+import { ComputeValueGetterDefinition, ComputeValueSetterDefinition, ScalarWithPropertyType } from ".";
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
@@ -56,10 +56,10 @@ export type ExtractSchemaFromDatasource<DS extends Datasource<any, any> > = DS e
 
 export type ExtractSchemaFieldOnlyFromSchema<CurrentSchema extends Schema<any>> = Schema<ExtractFieldPropDictFromSchema<CurrentSchema> >
 
-export type ConstructMutationFromValueTypeDict<D> = {
-    [key in keyof D]: 
-            D[key] | Scalar<PropertyType<D[key]>, any>
-}
+// export type ConstructMutationFromValueTypeDict<D> = {
+//     [key in keyof D]: 
+//             D[key] | Scalar<PropertyType<D[key]>, any>
+// }
 
 
 export type ExtractGetValueTypeDictFromDataset<D extends Dataset<any>> = ExtractGetValueTypeDictFromSchema<D extends Dataset<infer S>?S:never>
@@ -70,7 +70,7 @@ export type ExtractSetValueTypeDictFromSchema<S extends Schema<any>> = ExtractSe
 
 export type ExtractGetValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractGetValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
-
+export type ExtractSetValueTypeDictFromSchema_FieldsOnly<S extends Schema<any>> = ExtractSetValueTypeDictFromPropertyDict< ExtractFieldPropDictFromSchema<S>> 
 
 export type ExtractGetValueTypeDictFromPropertyDict<E> = {
     [key in keyof E]: 
@@ -104,7 +104,7 @@ export type ExtractGetValueTypeFromProperty<T> =
         )
 
 export type ExtractSetValueTypeFromProperty<T> = 
-    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive:
+    T extends FieldProperty<FieldPropertyType<infer Primitive>>? Primitive | ScalarWithPropertyType<Primitive>:
         (
             T extends ComputeProperty<any, ComputeValueSetterDefinition<any, infer X >>? X: 
                         (
@@ -112,9 +112,6 @@ export type ExtractSetValueTypeFromProperty<T> =
                     T
                 )
         )
-
-
-
 
 
 export type ExtractFieldPropDictFromModel<M> = ExtractFieldPropDictFromSchema< ExtractSchemaFromModel<M> >

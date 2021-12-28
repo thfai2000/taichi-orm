@@ -1,9 +1,9 @@
 import { Knex}  from "knex"
-import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions } from "."
+import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions, ScalarWithPropertyType } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
-import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractGetValueTypeDictFromPropertyDict, ExtractGetValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ConstructMutationFromValueTypeDict, ExtractSchemaFieldOnlyFromSchema, ExtractGetValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings, ExtractSetValueTypeDictFromPropertyDict } from "./util"
+import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractGetValueTypeDictFromPropertyDict, ExtractGetValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ExtractSchemaFieldOnlyFromSchema, ExtractGetValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings, ExtractSetValueTypeDictFromPropertyDict, ExtractSetValueTypeDictFromSchema } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
 // type ReplaceReturnType<T extends (...a: any) => any, TNewReturn> = (...a: Parameters<T>) => TNewReturn;
@@ -74,6 +74,8 @@ export type Prefixed<Prefix extends string, MainName extends string, Content> = 
 export type AddPrefix<E, k extends string, delimitor extends string = '.'> = {
     [key in keyof E & string as `${k}${delimitor}${key}`]: Prefixed<k, key, E[key]>
 }
+
+export type ValuesToBeSet<S extends Schema<any>> = Partial<ExtractSetValueTypeDictFromSchema<S>>
 
 abstract class StatementBase {
 
@@ -893,7 +895,7 @@ export class InsertStatement<T extends TableSchema<{
     //     }
     // }
 
-    values<S extends Partial<ExtractSetValueTypeDictFromPropertyDict<ExtractPropDictFromSchema<T>>> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
+    values<S extends ValuesToBeSet<T> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
     (arrayOfkeyValues: S[] | ((map: Y ) => S[] )): InsertStatement<T>{
         
         let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
@@ -1122,7 +1124,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return this.baseRightJoin(source, expression) as any
     }
 
-    set<S extends Partial< ConstructMutationFromValueTypeDict< ExtractSetValueTypeDictFromPropertyDict<ExtractPropDictFromSchema< (FromSource extends Datasource<infer DS, any>?DS:never)>>>> , 
+    set<S extends ValuesToBeSet<(FromSource extends Datasource<infer SC, any>?SC:never)>, 
         Y extends UnionToIntersection< SelectorMap | SQLKeywords< SourceProps, SelectorMap> >>
     (keyValues: S | ((map: Y ) => S )): UpdateStatement<SourceProps, SelectorMap, FromSource>{
         
