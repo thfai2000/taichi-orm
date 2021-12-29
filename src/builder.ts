@@ -1,8 +1,8 @@
 import { Knex}  from "knex"
-import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions, ScalarWithPropertyType } from "."
+import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions, ScalarWithPropertyType, ComputeValueSetterDefinition } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
-import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
+import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, Property, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
 import { ExtractFieldPropDictFromSchema, ExtractPropDictFromSchema, ExtractGetValueTypeDictFromPropertyDict, ExtractGetValueTypeDictFromSchema, isFunction, makeid, notEmpty, quote, ScalarDictToValueTypeDict, SimpleObject, SimpleObjectClass, thenResult, thenResultArray, UnionToIntersection, ExtractSchemaFieldOnlyFromSchema, ExtractGetValueTypeDictFromSchema_FieldsOnly, isScalarMap, isArrayOfStrings, ExtractSetValueTypeDictFromPropertyDict, ExtractSetValueTypeDictFromSchema } from "./util"
 import { ArrayTypeDataset, ObjectTypeDataset } from "./model"
 
@@ -113,7 +113,7 @@ abstract class StatementBase {
         }, Promise.resolve({} as {[key:string]: Knex.Raw<any>}) )
     }
 
-    abstract toNativeBuilder(): Promise<Knex.QueryBuilder>
+    // abstract toNativeBuilder(): Promise<Knex.QueryBuilder>
 
     abstract execute(this: StatementBase): any
 }
@@ -880,7 +880,7 @@ export class InsertStatement<T extends TableSchema<{
     [x: string]: any
 
     #insertIntoSchema: T
-    #insertItems: { [key: string]: Scalar<any, any> }[] | null = null
+    #insertItems: (() => Promise<{ [key: string]: Scalar<any, any> }[]>) | null = null
     // #uuidForInsertion: string | null = null
 
     constructor(context: DatabaseContext<any>, insertToSchema: T){
@@ -896,34 +896,49 @@ export class InsertStatement<T extends TableSchema<{
     // }
 
     values<S extends ValuesToBeSet<T> , Y extends UnionToIntersection< SQLKeywords< '', {}> >>
-    (arrayOfkeyValues: S[] | ((map: Y ) => S[] )): InsertStatement<T>{
+    (arrayOfkeyValues: S[] | ((map: Y ) => S[] ) | ((map: Y ) => Promise<S[]> ) ): InsertStatement<T>{
         
-        let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
-        const selectorMap = {}
-        const resolver = new ExpressionResolver(this.context, selectorMap, undefined, [])
-        
-        if(arrayOfkeyValues instanceof Function){    
-            Object.assign(selectorMap, this.sqlKeywords(resolver) )
-            const map = Object.assign({}, constructSqlKeywords<any, any>(this.context, resolver)) as Y
-            arrayOfNameMap = arrayOfkeyValues(map)
-        } else {
-            arrayOfNameMap = arrayOfkeyValues
+        // this.#resolvedInsertItems = null
+        this.#insertItems = async () => {
+            let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
+            const selectorMap = {}
+            const resolver = new ExpressionResolver(this.context, selectorMap, undefined, [])
+            
+            if(arrayOfkeyValues instanceof Function){    
+                Object.assign(selectorMap, this.sqlKeywords(resolver) )
+                const map = Object.assign({}, constructSqlKeywords<any, any>(this.context, resolver)) as Y
+                arrayOfNameMap = await arrayOfkeyValues(map)
+            } else {
+                arrayOfNameMap = arrayOfkeyValues
+            }
+
+            const pMap = this.#insertIntoSchema.propertiesMap as Record<string, ComputeProperty<any, any> | FieldProperty<any>>
+
+            return arrayOfNameMap.map(nameMap => Object.keys(nameMap).reduce( (acc, key) => {
+                let setValue = nameMap[key]
+                if(pMap[key] instanceof ComputeProperty){
+                    const cp: ComputeProperty<any, ComputeValueSetterDefinition<any, any> | undefined> = pMap[key] as ComputeProperty<any, any>
+                    if(cp.computeValueSetterDefinition){
+                        setValue = cp.computeValueSetterDefinition.fn(null, nameMap[key], this.context, {})
+                    }
+                }
+                
+                acc[key] = resolver.resolve(setValue)
+                
+                return acc
+            }, {} as { [key: string]: Scalar<any, any> } ))
         }
-
-        this.#insertItems = arrayOfNameMap.map(nameMap => Object.keys(nameMap).reduce( (acc, key) => {
-            acc[key] = resolver.resolve(nameMap[key])
-            return acc
-        }, {} as { [key: string]: Scalar<any, any> } ))
-
 
         return this
     }
 
-    async toNativeBuilder(): Promise<Knex.QueryBuilder> {
-        return this.toNativeBuilderWithSpecificRow(null)
-    }
+    // async toNativeBuilder(): Promise<Knex.QueryBuilder> {
+    //     return this.toNativeBuilderWithSpecificRow(null)
+    // }
 
-    async toNativeBuilderWithSpecificRow(atRowIdx: number | null, ctx?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
+    private async toNativeBuilderWithSpecificRow(resolvedInsertItems: {
+        [key: string]: Scalar<any, any>;
+    }[], atRowIdx: number | null, ctx?: DatabaseContext<any>): Promise<Knex.QueryBuilder> {
 
         const context = ctx ?? this.context
 
@@ -937,16 +952,11 @@ export class InsertStatement<T extends TableSchema<{
         //@ts-ignore
         nativeQB.then = 'It is overridden. Then function is removed to prevent execution when it is passing accross the async functions'
 
-    
-        if(!this.#insertItems){
-            throw new Error('No insert Items')
-        }
-
         const targetSchema = this.#insertIntoSchema
         const schemaPrimaryKeyFieldName = targetSchema.id.fieldName(context.orm)
         // const schemaPrimaryKeyPropName = targetSchema.id.name
 
-        const filteredInsertItems = atRowIdx === null? this.#insertItems : [this.#insertItems[atRowIdx]]
+        const filteredInsertItems = atRowIdx === null? resolvedInsertItems : [resolvedInsertItems[atRowIdx]]
 
         const insertItems = await Promise.all(filteredInsertItems.map( async(insertItem) => await this.scalarMap2RawMap(this.#insertIntoSchema, Object.assign({}, insertItem), context)))
         
@@ -959,9 +969,6 @@ export class InsertStatement<T extends TableSchema<{
         return nativeQB        
     }
 
-    getInsertItems(){
-        return this.#insertItems
-    }
 
     execute() {
         const ctx = this.context
@@ -995,10 +1002,17 @@ export class InsertStatement<T extends TableSchema<{
                     executionOptions = {...executionOptions, trx: trx}
 
                     const executionFuncton = async() => {
+
+                        if(!statement.#insertItems){
+                            throw new Error('No insert Items')
+                        }
+
+                        const resolvedInsertItems = await statement.#insertItems()
+
                         // let afterMutationHooks = schema.hooks.filter()
 
                         if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
-                            const queryBuilder = await statement.toNativeBuilder()
+                            const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, null)
                             // let insertedId: number
                             const r = await context.executeStatement(queryBuilder, executionOptions)
 
@@ -1013,8 +1027,8 @@ export class InsertStatement<T extends TableSchema<{
                             if (context.client().startsWith('mysql')) {
                                 let insertedId: number
                                 //allow concurrent insert
-                                return await Promise.all(statement.getInsertItems()!.map( async (item, idx) => {
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx)
+                                return await Promise.all( (resolvedInsertItems).map( async (item, idx) => {
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, idx)
                                     const r = await context.executeStatement(queryBuilder, executionOptions)
                                     // get ResultSetHeader.insertId
                                     insertedId = r[0].insertId
@@ -1023,9 +1037,9 @@ export class InsertStatement<T extends TableSchema<{
 
                             } else if (context.client().startsWith('sqlite')) {
                                 //only allow one by one insert
-                                return await statement.getInsertItems()!.reduce( async (preAcc, item, idx) => {
+                                return await (resolvedInsertItems).reduce( async (preAcc, item, idx) => {
                                     const acc = await preAcc
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(idx)
+                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, idx)
                                     // let uuid = uuidv4()
                                     await context.executeStatement(queryBuilder, executionOptions)
                                     const result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
@@ -1159,7 +1173,7 @@ export class UpdateStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
     //     ctx?.dataset().
     // }
 
-    async toNativeBuilder(): Promise<Knex.QueryBuilder> {
+    private async toNativeBuilder(): Promise<Knex.QueryBuilder> {
 
         const context = this.context
 
@@ -1314,7 +1328,7 @@ export class DeleteStatement<SourceProps ={}, SelectorMap ={}, FromSource extend
         return this.baseRightJoin(source, expression) as any
     }
 
-    async toNativeBuilder(): Promise<Knex.QueryBuilder> {
+    private async toNativeBuilder(): Promise<Knex.QueryBuilder> {
 
         const context = this.context
 

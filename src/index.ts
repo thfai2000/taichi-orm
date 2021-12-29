@@ -135,9 +135,9 @@ export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG,
 }
 
 export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, NewValue>{
-    fn: (source: DS, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void
+    fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void
 
-    constructor(fn: (source: DS, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void ){
+    constructor(fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void ){
         this.fn = fn
     }
 }
