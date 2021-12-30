@@ -2,7 +2,7 @@ import { ComputeValueGetterDefinition, ComputeValueSetterDefinition, ScalarWithP
 import { Dataset, Prefixed, Scalar } from "./builder";
 import { Model } from "./model";
 import { FieldPropertyType, PrimaryKeyType, PropertyType } from "./types";
-import { ComputeProperty, Datasource, FieldProperty, ScalarProperty, Schema, TableSchema } from "./schema";
+import { ComputeProperty, Datasource, FieldProperty, Property, ScalarProperty, Schema, TableSchema } from "./schema";
 
 export type Undetermined = 'undetermined'
 
@@ -99,7 +99,9 @@ export type ExtractGetValueTypeFromProperty<T> =
             T extends ComputeProperty<ComputeValueGetterDefinition<any, any, Scalar<PropertyType<infer X>, any> >, any>? X: 
                         (
                     T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
-                    T
+                        (
+                            T extends Property? any: never
+                        )
                 )
         )
 
@@ -109,7 +111,9 @@ export type ExtractSetValueTypeFromProperty<T> =
             T extends ComputeProperty<any, ComputeValueSetterDefinition<any, infer X >>? X: 
                         (
                     T extends ScalarProperty<Scalar<PropertyType<infer Primitive>, any>>? Primitive:
-                    T
+                    (
+                        T extends Property? any: never
+                    )
                 )
         )
 

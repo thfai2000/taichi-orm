@@ -1,4 +1,4 @@
-import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema, MutationHookDictionary } from "."
+import {  DBMutationRunner, DBQueryRunner, DatabaseContext, ExecutionOptions, MutationName, SingleSourceArg, ComputeValueGetterDefinition, Hook, PropertyValueGetters, ComputeValueGetterDefinitionDynamicReturn, ComputeValueGetterDynamicReturn, SingleSourceWhere, DBActionOptions, ConstructScalarPropDictBySelectiveArg, TwoSourceArg, ConstructValueTypeDictBySelectiveArg, ComputeValueSetterDefinition, ExtractGetValueTypeDictFromSchema, PropertyMutationHookDictionary } from "."
 // import { v4 as uuidv4 } from 'uuid'
 import { ExtractPropDictFromModelType, ExtractSchemaFromModel, ExtractSchemaFromModelType, UnionToIntersection, ExtractPropDictFromSchema, Undetermined, ExtractSetValueTypeDictFromSchema, ExtractFieldPropDictFromDict } from "./util"
 import {  Scalar, Dataset, AddPrefix, DScalar } from "./builder"
@@ -111,7 +111,7 @@ export abstract class Model {
             this: M,
             options: {
                 getter: (parent: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: ARG, context: DatabaseContext<any>) => S,
-                setter: (a: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+                setter: (a: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: NewValue, context: DatabaseContext<any>, hooks: PropertyMutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
             }
         )
             : ComputeProperty<
@@ -138,7 +138,7 @@ export abstract class Model {
             this: M,
             options: {
                 getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: Parameters<CCF>[0], context: DatabaseContext<any>) => ReturnType<CCF>,
-                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: NewValue, context: DatabaseContext<any>, hooks: PropertyMutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
             }
         ) 
             : ComputeProperty< 
@@ -175,7 +175,7 @@ export abstract class Model {
             this: M, 
             options: {
                 getter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, arg: undefined | SSA | ((map: ModelArrayRecordFunctionArg<R>) => SSA), context: DatabaseContext<any> ) => DScalar< ObjectTypeDataset<ConstructDatasetBySelectiveArg<R, SSA>>, ConstructDatasetBySelectiveArg<R, SSA>>,
-                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>>, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
+                setter: (source: Datasource<ExtractSchemaFromModel<InstanceType<M>>,any>, newValue: Partial<ExtractGetValueTypeDictFromSchema<ExtractSchemaFromModelType<R>>>, context: DatabaseContext<any>, hooks: PropertyMutationHookDictionary< ExtractSchemaFromModel<InstanceType<M>> >) => void
             }
         ) 
             : ComputeProperty< 

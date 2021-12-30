@@ -110,17 +110,49 @@ export type FieldValuesToBeSet<S extends Schema<any>> = Partial<ExtractSetValueT
 
 export type SetValuesCallback<S extends Schema<any>> = (valuesToBeSet: FieldValuesToBeSet<S>, trx: Knex.Transaction, mutationName: 'create'|'update'|'delete') => Promise<FieldValuesToBeSet<S>> | FieldValuesToBeSet<S>
 
-export type AfterMutationCallback<S extends Schema<any>> = (affectedRecord: any, trx: Knex.Transaction, mutationName: 'create'|'update'|'delete') => Promise<void> | void
+export type AfterMutationCallback<S extends Schema<any>> = (affectedRecord: any, beforeRecord: any, trx: Knex.Transaction, mutationName: 'create'|'update'|'delete') => Promise<void> | void
 
-export type MutationHookDictionary<S extends Schema<any>> = {
-    beforeCreate: (setValuesCallback: SetValuesCallback<S>) => void,
-    beforeUpdate: (setValuesCallback: SetValuesCallback<S>) => void,
-    beforeMutation: (setValuesCallback: SetValuesCallback<S>) => void,
-    beforeDelete: (callback: ((trx: Knex.Transaction) => Promise<void> | void )) => void
-    afterCreate: (callback: AfterMutationCallback<S>) => void,
-    afterUpdate:(callback: AfterMutationCallback<S>) => void,
-    afterMutation: (callback: AfterMutationCallback<S>) => void,
-    afterDelete: (callback: AfterMutationCallback<S>) => void,
+export class PropertyMutationHookDictionary<S extends Schema<any>> {
+    
+    beforeCreateCallback: SetValuesCallback<S> | null = null
+    beforeUpdateCallback: SetValuesCallback<S> | null = null
+    beforeDeleteCallback: SetValuesCallback<S> | null = null
+    beforeMutationCallback: SetValuesCallback<S> | null = null
+    
+    afterCreateCallback: AfterMutationCallback<S> | null = null
+    afterUpdateCallback: AfterMutationCallback<S> | null = null
+    afterDeleteCallback: AfterMutationCallback<S> | null = null
+    afterMutationCallback: AfterMutationCallback<S> | null = null
+
+    constructor(){}
+    beforeCreate(setValuesCallback: SetValuesCallback<S>): void {
+        this.beforeCreateCallback = setValuesCallback
+    }
+
+    beforeUpdate(setValuesCallback: SetValuesCallback<S>): void {
+        this.beforeUpdateCallback = setValuesCallback
+    }
+
+    beforeDelete(setValuesCallback: SetValuesCallback<S>): void {
+        this.beforeDeleteCallback = setValuesCallback
+    }
+
+    beforeMutation(setValuesCallback: SetValuesCallback<S>): void {
+        this.beforeMutationCallback = setValuesCallback
+    }
+
+    afterCreate(callback: AfterMutationCallback<S>): void {
+        this.afterCreateCallback = callback
+    }
+    afterUpdate(callback: AfterMutationCallback<S>): void {
+        this.afterUpdateCallback = callback
+    }
+    afterDelete(callback: AfterMutationCallback<S>): void {
+        this.afterDeleteCallback = callback
+    }
+    afterMutation(callback: AfterMutationCallback<S>): void {
+        this.afterMutationCallback = callback
+    }
 }
 
 export type ComputeValueGetterDynamicReturn = ((arg?: any) => Scalar<PropertyType<any>, any> )
@@ -135,9 +167,9 @@ export class ComputeValueGetterDefinition<DS extends Datasource<any, any>, ARG,
 }
 
 export class ComputeValueSetterDefinition<DS extends Datasource<any, any>, NewValue>{
-    fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void
+    fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: PropertyMutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void
 
-    constructor(fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: MutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void ){
+    constructor(fn: (source: DS | null, arg: NewValue, context: DatabaseContext<any>, hooks: PropertyMutationHookDictionary< ExtractSchemaFromDatasource<DS> >) => void ){
         this.fn = fn
     }
 }

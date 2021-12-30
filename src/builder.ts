@@ -1,5 +1,5 @@
 import { Knex}  from "knex"
-import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions, ScalarWithPropertyType, ComputeValueSetterDefinition } from "."
+import { PropertyValueGetters, ComputeValueGetter, DatabaseContext, ComputeValueGetterDefinition, ExecutionOptions, DBQueryRunner, DBMutationRunner, MutationExecutionOptions, ScalarWithPropertyType, ComputeValueSetterDefinition, PropertyMutationHookDictionary } from "."
 import { AndOperator, ConditionOperator, InOperator, EqualOperator, IsNullOperator, NotOperator, OrOperator, GreaterThanOperator, LessThanOperator, GreaterThanOrEqualsOperator, LessThanOrEqualsOperator, BetweenOperator, NotBetweenOperator, LikeOperator, SQLKeywords, constructSqlKeywords, NotInOperator, NotLikeOperator, NotEqualOperator, IsNotNullOperator, AssertionOperatorWrapper, ExistsOperator } from "./sqlkeywords"
 import { BooleanType, BooleanNotNullType, DateTimeType, NumberType, NumberNotNullType, ObjectType, PropertyType, StringType, ArrayType, PrimaryKeyType, StringNotNullType, ParsableObjectTrait } from "./types"
 import { ComputeProperty, Datasource, DerivedDatasource, DerivedTableSchema, FieldProperty, Property, ScalarProperty, Schema, TableDatasource, TableSchema } from "./schema"
@@ -880,7 +880,7 @@ export class InsertStatement<T extends TableSchema<{
     [x: string]: any
 
     #insertIntoSchema: T
-    #insertItems: (() => Promise<{ [key: string]: Scalar<any, any> }[]>) | null = null
+    #insertItems: ((trx: Knex.Transaction) => Promise<{ [key: string]: {value: Scalar<any, any>, hooks: PropertyMutationHookDictionary<T>} }[]>) | null = null
     // #uuidForInsertion: string | null = null
 
     constructor(context: DatabaseContext<any>, insertToSchema: T){
@@ -899,8 +899,8 @@ export class InsertStatement<T extends TableSchema<{
     (arrayOfkeyValues: S[] | ((map: Y ) => S[] ) | ((map: Y ) => Promise<S[]> ) ): InsertStatement<T>{
         
         // this.#resolvedInsertItems = null
-        this.#insertItems = async () => {
-            let arrayOfNameMap: { [key: string]: any | Scalar<any, any> }[]
+        this.#insertItems = async (trx: Knex.Transaction) => {
+            let arrayOfNameMap: Partial<ExtractSetValueTypeDictFromPropertyDict<ExtractFieldPropDictFromSchema<T>>>[] //{ [key: string]: any | Scalar<any, any> }[] 
             const selectorMap = {}
             const resolver = new ExpressionResolver(this.context, selectorMap, undefined, [])
             
@@ -914,19 +914,37 @@ export class InsertStatement<T extends TableSchema<{
 
             const pMap = this.#insertIntoSchema.propertiesMap as Record<string, ComputeProperty<any, any> | FieldProperty<any>>
 
-            return arrayOfNameMap.map(nameMap => Object.keys(nameMap).reduce( (acc, key) => {
-                let setValue = nameMap[key]
+            return await Promise.all(arrayOfNameMap.map( async (nameMap) => await Object.keys(nameMap).reduce( async (accP, key) => {
+                const acc = await accP
+                const hooks: PropertyMutationHookDictionary<T> = new PropertyMutationHookDictionary<T>()
+                //@ts-ignore
+                let setValue: any = nameMap[key]
                 if(pMap[key] instanceof ComputeProperty){
                     const cp: ComputeProperty<any, ComputeValueSetterDefinition<any, any> | undefined> = pMap[key] as ComputeProperty<any, any>
                     if(cp.computeValueSetterDefinition){
-                        setValue = cp.computeValueSetterDefinition.fn(null, nameMap[key], this.context, {})
+                        let r: any = cp.computeValueSetterDefinition.fn(null, setValue, this.context, hooks)
+                        if(r instanceof Promise){
+                            throw new Error('Setter Definition cannot return Promise')
+                        }
+                        if(hooks.beforeCreateCallback){
+                            setValue = await hooks.beforeCreateCallback(nameMap, trx, 'create')
+                        }
+                        if(hooks.beforeMutationCallback){
+                            setValue = await hooks.beforeMutationCallback(nameMap, trx, 'create')
+                        }
                     }
                 }
-                
-                acc[key] = resolver.resolve(setValue)
+
+                setValue = resolver.resolve(setValue)
+
+                acc[key] = {
+                    value: setValue,
+                    hooks
+                }
                 
                 return acc
-            }, {} as { [key: string]: Scalar<any, any> } ))
+            }, Promise.resolve({} as { [key: string]: {value: Scalar<any, any>, hooks: PropertyMutationHookDictionary<T>} }) ))
+            )
         }
 
         return this
@@ -1000,67 +1018,72 @@ export class InsertStatement<T extends TableSchema<{
 
                     //replace the trx
                     executionOptions = {...executionOptions, trx: trx}
+                    
+                    if(!statement.#insertItems){
+                        throw new Error('No insert Items')
+                    }
+                    const resolvedInsertItems = await statement.#insertItems(trx)
+                    const resolvedInsertItemValues = resolvedInsertItems.map(item => Object.keys(item).reduce( (acc, key) => {
+                        acc[key] = item[key].value
+                        return acc
+                    }, {} as {[key:string]: Scalar<any, any>}))
 
-                    const executionFuncton = async() => {
-
-                        if(!statement.#insertItems){
-                            throw new Error('No insert Items')
+                    let hasAfterActionHooks = false
+                    const resolvedInsertItemHooks = resolvedInsertItems.map(item => Object.keys(item).reduce( (acc, key) => {
+                        if(item[key].hooks.afterCreateCallback || item[key].hooks.afterMutationCallback){
+                            hasAfterActionHooks = true
                         }
+                        acc[key] = item[key].hooks
+                        return acc
+                    }, {} as {[key:string]: PropertyMutationHookDictionary<T> }))
 
-                        const resolvedInsertItems = await statement.#insertItems()
+                    if (!this.latestQueryAffectedFunctionArg && !hasAfterActionHooks ) {
+                        const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItemValues, null)
+                        // let insertedId: number
+                        await context.executeStatement(queryBuilder, executionOptions)
+                        return null
+                        // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+        
+                    } else {
 
-                        // let afterMutationHooks = schema.hooks.filter()
+                        let insertedIds: any = null
 
-                        if (!this.latestQueryAffectedFunctionArg || context.client().startsWith('pg')) {
-                            const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, null)
+                        if(context.client().startsWith('pg')){
+                            const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItemValues, null)
                             // let insertedId: number
                             const r = await context.executeStatement(queryBuilder, executionOptions)
 
-                            if( context.client().startsWith('pg')){
-                                return r.rows.map( (r : {id: number}) => ({id: r.id}) )
-                            } else {
-                                return null
-                            }
-                            // return await this.afterMutation( undoExpandRecursively(record), schema, actionName, propValues, executionOptions)
+                            insertedIds = r.rows.map( (r : {id: number}) => ({id: r.id}) )
+
+                        } else if (context.client().startsWith('mysql')) {
+                            let insertedId: number
+                            //allow concurrent insert
+                            insertedIds =  await Promise.all( (resolvedInsertItems).map( async (item, idx) => {
+                                const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItemValues, idx)
+                                const r = await context.executeStatement(queryBuilder, executionOptions)
+                                // get ResultSetHeader.insertId
+                                insertedId = r[0].insertId
+                                return {id: insertedId}
+                            }))
+
+                        } else if (context.client().startsWith('sqlite')) {
+                            //only allow one by one insert
+                            insertedIds = await (resolvedInsertItems).reduce( async (preAcc, item, idx) => {
+                                const acc = await preAcc
+                                const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItemValues, idx)
+                                // let uuid = uuidv4()
+                                await context.executeStatement(queryBuilder, executionOptions)
+                                const result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
+                                acc.push({id: result[0].id})
+                                return acc
+
+                            }, Promise.resolve([]) as Promise<{id: number}[]>)
             
                         } else {
-                            if (context.client().startsWith('mysql')) {
-                                let insertedId: number
-                                //allow concurrent insert
-                                return await Promise.all( (resolvedInsertItems).map( async (item, idx) => {
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, idx)
-                                    const r = await context.executeStatement(queryBuilder, executionOptions)
-                                    // get ResultSetHeader.insertId
-                                    insertedId = r[0].insertId
-                                    return {id: insertedId}
-                                }))
-
-                            } else if (context.client().startsWith('sqlite')) {
-                                //only allow one by one insert
-                                return await (resolvedInsertItems).reduce( async (preAcc, item, idx) => {
-                                    const acc = await preAcc
-                                    const queryBuilder = await statement.toNativeBuilderWithSpecificRow(resolvedInsertItems, idx)
-                                    // let uuid = uuidv4()
-                                    await context.executeStatement(queryBuilder, executionOptions)
-                                    const result = await context.executeStatement('SELECT last_insert_rowid() AS id', {}, executionOptions)
-                                    acc.push({id: result[0].id})
-                                    return acc
-
-                                }, Promise.resolve([]) as Promise<{id: number}[]>)
-                
-                            } else {
-                                throw new Error('Unsupport client')
-                            }
-
+                            throw new Error('Unsupport client')
                         }
 
-                    }
-                    
-                    const insertedIds = await executionFuncton()
-
-                    if(this.latestQueryAffectedFunctionArg){
-    
-                        const queryAffectedFunctionArg = this.latestQueryAffectedFunctionArg
+                        const queryAffectedFunctionArg = this.latestQueryAffectedFunctionArg ?? ( (dataset: Dataset<any, {}, {}, Datasource<any, any>>) => dataset)
                         
                         const queryAffectedFunction = async() => {
                             
@@ -1074,14 +1097,31 @@ export class InsertStatement<T extends TableSchema<{
                             
                             const finalDs = (await queryAffectedFunctionArg(queryDataset as any))
                             const result = await finalDs.execute().withOptions(executionOptions)
-                            return result
-                            
+
+                            return i.map(idItem => result.find(item => item['id'] === idItem.id ) )
                         }
     
                         this.affectedResult = (await queryAffectedFunction()) as any[]
-                    }
+                        if(!this.affectedResult){
+                            throw new Error('Unexpected Result')
+                        }
+                        const affectedResult = this.affectedResult
 
-                    return insertedIds
+                        if(hasAfterActionHooks){
+                            await Promise.all(resolvedInsertItemHooks.map(item => Promise.all(Object.values(item).map( async (m, index) => {
+
+                                if(m.afterCreateCallback){
+                                    await m.afterCreateCallback(affectedResult[index], null, trx, 'create')
+                                }
+                                if(m.afterMutationCallback){
+                                    await m.afterMutationCallback(affectedResult[index], null, trx, 'create')
+                                }
+                            }))))
+                        }
+                    
+                        return insertedIds
+
+                    }
 
                 }, executionOptions.trx)
 
