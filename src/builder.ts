@@ -1010,10 +1010,6 @@ export class InsertStatement<T extends TableSchema<{
                 context: DatabaseContext<any>,
                 executionOptions: MutationExecutionOptions<T>) {
                 
-                if(!statement.getInsertItems()){
-                    throw new Error('Unexpected')
-                }
-
                 return await context.startTransaction(async (trx) => {
 
                     //replace the trx

@@ -149,10 +149,10 @@ export abstract class Model {
     static compute(...args: any[]): any
     {
         const options = args[0]
-        if('getter' in options && 'setter' in options){
+        if('getter' in options || 'setter' in options){
             return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), new ComputeValueSetterDefinition(options.setter) )
         } else {
-            return new ComputeProperty(new ComputeValueGetterDefinition(options.getter), undefined )
+            return new ComputeProperty(new ComputeValueGetterDefinition(options), undefined )
         }
     }
 
